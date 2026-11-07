@@ -1,0 +1,17 @@
+{
+  "name": "ppt-native-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Editable native PowerPoint generation engine for the ppt skill",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test ../tests/native_engine.test.js",
+    "demo": "node ../examples/native_demo.js native-demo.pptx"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
