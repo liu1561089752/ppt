@@ -34,9 +34,9 @@ function resolveTheme(input = {}) {
     cardBorder: true, softShadow: false, accentRule: true
   }, source.effects);
   merged.layouts = mergeObject({
-    pageMarginX: merged.margins && merged.margins.x || 0.72,
-    pageMarginY: merged.margins && merged.margins.y || 0.52,
-    columnGap: 0.28, sectionGap: 0.34
+    pageMarginX: source.margins?.x ?? source.spacing?.pageX ?? source.spacing?.xl ?? (merged.margins && merged.margins.x) ?? 0.72,
+    pageMarginY: source.margins?.y ?? source.spacing?.pageY ?? (merged.margins && merged.margins.y) ?? 0.52,
+    columnGap: source.spacing?.lg ?? 0.28, sectionGap: source.spacing?.xl ?? 0.34
   }, source.layouts);
   return merged;
 }
