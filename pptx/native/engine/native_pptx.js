@@ -154,6 +154,8 @@ async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
   await result.pptx.writeFile({ fileName: outputPath });
+  const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
+  await applyEastAsianFontPatch(outputPath, cjkFace);
   return {
     outputPath,
     report: result.report,
