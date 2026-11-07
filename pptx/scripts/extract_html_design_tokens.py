@@ -123,7 +123,7 @@ def parse_linear_gradient(value: str) -> dict | None:
 def parse_box_shadow(value: str) -> dict | None:
     """Map one simple CSS box-shadow to PowerPoint outer-shadow parameters."""
     value = value.strip()
-    if not value or value.lower() == "none" or "," in value:
+    if not value or value.lower() == "none" or len(split_css_args(value)) > 1:
         return None
     color_match = re.search(r"(rgba?\([^)]*\)|#[0-9a-f]{3,8}|black|white|red|green|blue)", value, re.I)
     color_text = color_match.group(1) if color_match else "rgba(0,0,0,0.18)"
