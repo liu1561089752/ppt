@@ -32,7 +32,19 @@ function validateDeck(deck) {
         errors.push(p + '.text rich-text runs must be strings or objects with a text field');
       }
       if (element.type === 'image' && !element.path && !element.data) errors.push(p + ' requires path or data');
-      if (element.type === 'chart' && (!Array.isArray(element.data) || element.data.length === 0)) errors.push(p + '.data must be a non-empty chart series array');
+      if (element.type === 'chart') {
+        const chartTypes = new Set(['bar', 'line', 'pie', 'doughnut', 'area']);
+        if (element.chartType !== undefined && !chartTypes.has(element.chartType)) errors.push(p + '.chartType is not supported');
+        if (!Array.isArray(element.data) || element.data.length === 0) {
+          errors.push(p + '.data must be a non-empty chart series array');
+        } else {
+          element.data.forEach((series, seriesIndex) => {
+            if (!series || !Array.isArray(series.labels) || !Array.isArray(series.values) || series.labels.length !== series.values.length || series.values.some((value) => !Number.isFinite(value))) {
+              errors.push(p + '.data[' + seriesIndex + '] must have matching labels and finite numeric values');
+            }
+          });
+        }
+      }
       ['x', 'y', 'w', 'h'].forEach((key) => {
         if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0)) {
           errors.push(p + '.' + key + ' must be a finite non-negative number');
