@@ -6,32 +6,50 @@ on:
     paths:
       - "pptx/native/**"
       - "pptx/tests/**"
+      - "pptx/examples/**"
+      - "pptx/SKILL.md"
       - ".github/workflows/native-ppt.yml"
   pull_request:
     paths:
       - "pptx/native/**"
       - "pptx/tests/**"
+      - "pptx/examples/**"
+      - "pptx/SKILL.md"
       - ".github/workflows/native-ppt.yml"
 
 jobs:
-  test:
+  test-and-render:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Install rendering tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-impress poppler-utils
       - name: Install native engine dependencies
         working-directory: pptx/native
         run: npm install --no-audit --no-fund
       - name: Run native engine tests
         working-directory: pptx/native
         run: npm test
-      - name: Generate editable demo deck
+      - name: Generate editable demo decks
         working-directory: pptx/native
-        run: npm run demo
-      - name: Upload demo deck
+        run: |
+          npm run demo
+          npm run demo:components
+      - name: Render and verify demo decks
+        working-directory: pptx/native
+        run: |
+          npm run render:demo
+          npm run render:components
+      - name: Upload PPTX and rendered previews
         uses: actions/upload-artifact@v4
         with:
-          name: native-ppt-demo
-          path: pptx/native/native-demo.pptx
+          name: native-ppt-rendered-demos
+          path: |
+            pptx/native/native-demo.pptx
+            pptx/native/native-components-demo.pptx
+            pptx/native/render-check/
