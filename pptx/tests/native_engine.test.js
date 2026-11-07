@@ -88,3 +88,27 @@ test('OOXML font patch adds an explicit East Asian typeface', () => {
   assert.ok(patched.includes('<a:ea typeface="Microsoft YaHei"/>'));
   assert.equal((patched.match(/<a:ea /g) || []).length, 2);
 });
+
+
+test('deck schema accepts native editable chart data', () => {
+  const deck = { slides: [{ elements: [{ type: 'chart', chartType: 'bar', x: 1, y: 1, w: 5, h: 3, data: [{ name: 'Series', labels: ['A', 'B'], values: [1, 2] }] }] }] };
+  assert.deepEqual(validateDeck(deck), []);
+});
+
+test('process and timeline components compose native shapes, text, and connectors', () => {
+  const api = require('../native');
+  const flow = api.components.processFlow([{ title: '输入' }, { title: '分析' }, { title: '输出' }]);
+  assert.equal(flow.filter((element) => element.type === 'line').length, 2);
+  assert.equal(flow.filter((element) => element.type === 'shape').length, 3);
+  const timeline = api.components.timeline([{ date: 'Q1', title: '启动' }, { date: 'Q2', title: '交付' }]);
+  assert.ok(timeline.some((element) => element.shape === 'ellipse'));
+  assert.ok(api.templates.comparison({ left: { title: 'A' }, right: { title: 'B' } }).elements.length > 0);
+});
+
+test('East Asian font patch updates an existing typeface rather than duplicating it', () => {
+  const { patchEastAsianFonts } = require('../native/engine/east_asian_font');
+  const source = '<a:rPr><a:ea typeface="Old Font"/><a:latin typeface="Aptos"/></a:rPr>';
+  const patched = patchEastAsianFonts(source, 'New CJK Font');
+  assert.equal((patched.match(/<a:ea /g) || []).length, 1);
+  assert.ok(patched.includes('typeface="New CJK Font"'));
+});
