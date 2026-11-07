@@ -92,7 +92,8 @@ function hero(options = {}) {
   const theme = resolveTheme(options.theme);
   const margin = theme.layouts.pageMarginX;
   const gradient = theme.backgrounds && theme.backgrounds.gradient;
-  const shadow = theme.effects && theme.effects.shadow;
+  const shadowValue = theme.effects && theme.effects.shadow;
+  const shadow = shadowValue && typeof shadowValue === 'object' ? shadowValue : null;
   const opacity = theme.effects && Number.isFinite(theme.effects.opacity) ? theme.effects.opacity : 1;
   const panelStops = gradient && Array.isArray(gradient.stops)
     ? gradient.stops.map((stop) => Object.assign({}, stop, {
@@ -150,15 +151,15 @@ function editorial(options = {}) {
     { type: 'shape', x: rightX, y: 3.22, w: columnW, h: 2.72, fill: theme.colors.surface,
       lineColor: theme.colors.border, lineWidth: 0.7, radius: theme.radii.medium },
     { type: 'text', text: options.leftHeading || '观点与背景',
-      x: leftX + 0.28, y: 3.52, w: columnW - 0.56, h: 0.4,
+      x: leftX + 0.28, y: 3.5, w: columnW - 0.56, h: 0.52,
       fontSize: theme.sizes.heading, bold: true, color: theme.colors.primary },
     components.paragraph(options.leftBody || '说明问题背景、关键事实和上下文。用简短段落保留阅读节奏。',
-      { theme, x: leftX + 0.28, y: 4.12, w: columnW - 0.56, h: 1.42, fontSize: theme.sizes.body, color: theme.colors.foreground }),
+      { theme, x: leftX + 0.28, y: 4.16, w: columnW - 0.56, h: 1.38, fontSize: theme.sizes.body, color: theme.colors.foreground }),
     { type: 'text', text: options.rightHeading || '证据与行动',
-      x: rightX + 0.28, y: 3.52, w: columnW - 0.56, h: 0.4,
+      x: rightX + 0.28, y: 3.5, w: columnW - 0.56, h: 0.52,
       fontSize: theme.sizes.heading, bold: true, color: theme.colors.primary },
     components.paragraph(options.rightBody || '用数据、案例或行动建议支撑结论，并明确下一步的优先顺序。',
-      { theme, x: rightX + 0.28, y: 4.12, w: columnW - 0.56, h: 1.42, fontSize: theme.sizes.body, color: theme.colors.foreground })
+      { theme, x: rightX + 0.28, y: 4.16, w: columnW - 0.56, h: 1.38, fontSize: theme.sizes.body, color: theme.colors.foreground })
   ];
   return { background: options.background || theme.colors.background, elements };
 }
