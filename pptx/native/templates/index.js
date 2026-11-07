@@ -1,78 +1,88 @@
 'use strict';
 
 const components = require('../components');
+const { resolveTheme } = require('../themes/design_system');
 
 function cover(options = {}) {
+  const theme = resolveTheme(options.theme);
   return {
-    background: options.background || 'F7F7F4',
+    background: options.background || theme.colors.background,
     elements: [
       components.title(options.title || '演示文稿标题', {
-        x: 0.85, y: 1.6, w: 11.6, h: 1.0,
-        fontSize: options.titleSize || 34,
-        color: options.titleColor || '183B3A'
+        theme, x: theme.layouts.pageMarginX, y: 1.6, w: 11.6, h: 1.0,
+        fontSize: options.titleSize || 34, color: options.titleColor || theme.colors.primary
       }),
       components.paragraph(options.subtitle || '副标题 / 日期 / 汇报对象', {
-        x: 0.9, y: 2.85, w: 10.8, h: 0.7,
-        fontSize: options.subtitleSize || 18,
-        color: options.subtitleColor || '6B7470'
+        theme, x: theme.layouts.pageMarginX + 0.05, y: 2.85, w: 10.8, h: 0.7,
+        fontSize: options.subtitleSize || 18, color: options.subtitleColor || theme.colors.muted
       }),
-      components.divider({ x: 0.9, y: 4.0, w: 2.0, color: options.accent || 'D36B45', width: 2.4 })
+      components.divider({ theme, x: theme.layouts.pageMarginX + 0.05, y: 4.0, w: 2.0, color: options.accent || theme.colors.accent, width: 2.4 })
     ]
   };
 }
 
 function content(options = {}) {
+  const theme = resolveTheme(options.theme);
   return {
-    background: options.background || 'FFFFFF',
-    margin: 0.72,
+    background: options.background || theme.colors.surface,
+    margin: theme.layouts.pageMarginX,
     elements: [
-      components.title(options.title || '页面标题', { x: 0.72, y: 0.52, w: 11.9, h: 0.58, fontSize: 26 }),
-      components.divider({ x: 0.74, y: 1.24, w: 11.85 }),
+      components.title(options.title || '页面标题', { theme, x: theme.layouts.pageMarginX, y: 0.52, w: 11.9, h: 0.58, fontSize: theme.sizes.title }),
+      components.divider({ theme, x: theme.layouts.pageMarginX + 0.02, y: 1.24, w: 11.85 }),
       components.paragraph(options.body || '在这里放置核心观点、解释和证据。', {
-        x: 0.78, y: 1.62, w: 11.65, h: options.bodyHeight,
-        fontSize: options.bodySize || 17
+        theme, x: theme.layouts.pageMarginX + 0.06, y: 1.62, w: 11.65,
+        h: options.bodyHeight, fontSize: options.bodySize || theme.sizes.body
       })
     ]
   };
 }
 
 function kpi(options = {}) {
+  const theme = resolveTheme(options.theme);
   const values = options.items || [];
-  const gap = 0.22;
-  const x0 = 0.75;
+  const gap = theme.layouts.columnGap;
+  const x0 = theme.layouts.pageMarginX;
   const y = 2.0;
-  const cardW = (11.85 - gap * Math.max(0, values.length - 1)) / Math.max(1, values.length);
+  const cardW = (13.333 - x0 * 2 - gap * Math.max(0, values.length - 1)) / Math.max(1, values.length);
   const elements = [
-    components.title(options.title || '关键指标', { x: 0.72, y: 0.55, w: 11.9, h: 0.6, fontSize: 26 }),
-    components.divider({ x: 0.74, y: 1.28, w: 11.85 })
+    components.title(options.title || '关键指标', { theme, x: x0, y: 0.55, w: 11.9, h: 0.6, fontSize: theme.sizes.title }),
+    components.divider({ theme, x: x0 + 0.02, y: 1.28, w: 11.85 })
   ];
   values.forEach((item, index) => {
-    elements.push(...components.kpiCard(Object.assign({}, item, { x: x0 + index * (cardW + gap), y, w: cardW })));
+    elements.push(...components.kpiCard(Object.assign({}, item, {
+      theme, x: x0 + index * (cardW + gap), y, w: cardW
+    })));
   });
-  return { background: options.background || 'F7F7F4', elements };
+  return { background: options.background || theme.colors.background, elements };
 }
 
 function comparison(options = {}) {
+  const theme = resolveTheme(options.theme);
   const left = options.left || {};
   const right = options.right || {};
+  const margin = theme.layouts.pageMarginX;
+  const gap = theme.layouts.columnGap * 1.5;
+  const cardW = (13.333 - margin * 2 - gap) / 2;
   return {
-    background: options.background || 'F7F7F4',
+    background: options.background || theme.colors.background,
     elements: [
-      components.title(options.title || '方案对比', { x: 0.72, y: 0.55, w: 11.9, h: 0.6, fontSize: 26 }),
-      components.divider({ x: 0.74, y: 1.28, w: 11.85 }),
-      ...components.infoCard({ x: 0.78, y: 1.8, w: 5.65, h: 4.6, title: left.title || '方案 A', body: left.body || '', fill: left.fill || 'FFFFFF' }),
-      ...components.infoCard({ x: 6.9, y: 1.8, w: 5.65, h: 4.6, title: right.title || '方案 B', body: right.body || '', fill: right.fill || 'FFFFFF' })
+      components.title(options.title || '方案对比', { theme, x: margin, y: 0.55, w: 11.9, h: 0.6, fontSize: theme.sizes.title }),
+      components.divider({ theme, x: margin + 0.02, y: 1.28, w: 11.85 }),
+      ...components.infoCard({ theme, x: margin, y: 1.8, w: cardW, h: 4.6, title: left.title || '方案 A', body: left.body || '', fill: left.fill || theme.colors.surface }),
+      ...components.infoCard({ theme, x: margin + cardW + gap, y: 1.8, w: cardW, h: 4.6, title: right.title || '方案 B', body: right.body || '', fill: right.fill || theme.colors.surface })
     ]
   };
 }
 
 function process(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const margin = theme.layouts.pageMarginX;
   return {
-    background: options.background || 'FFFFFF',
+    background: options.background || theme.colors.surface,
     elements: [
-      components.title(options.title || '关键流程', { x: 0.72, y: 0.55, w: 11.9, h: 0.6, fontSize: 26 }),
-      components.divider({ x: 0.74, y: 1.28, w: 11.85 }),
-      ...components.processFlow(options.steps || [], { x: 0.78, y: 2.2, w: 11.75 })
+      components.title(options.title || '关键流程', { theme, x: margin, y: 0.55, w: 11.9, h: 0.6, fontSize: theme.sizes.title }),
+      components.divider({ theme, x: margin + 0.02, y: 1.28, w: 11.85 }),
+      ...components.processFlow(options.steps || [], { theme, x: margin + 0.06, y: 2.2, w: 11.75 })
     ]
   };
 }
