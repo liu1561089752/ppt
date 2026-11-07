@@ -1,0 +1,37 @@
+name: Native PPT engine tests
+
+on:
+  push:
+    branches: [main, native-ppt-engine]
+    paths:
+      - "pptx/native/**"
+      - "pptx/tests/**"
+      - ".github/workflows/native-ppt.yml"
+  pull_request:
+    paths:
+      - "pptx/native/**"
+      - "pptx/tests/**"
+      - ".github/workflows/native-ppt.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install native engine dependencies
+        working-directory: pptx/native
+        run: npm install --no-audit --no-fund
+      - name: Run native engine tests
+        working-directory: pptx/native
+        run: npm test
+      - name: Generate editable demo deck
+        working-directory: pptx/native
+        run: npm run demo
+      - name: Upload demo deck
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ppt-demo
+          path: pptx/native/native-demo.pptx
