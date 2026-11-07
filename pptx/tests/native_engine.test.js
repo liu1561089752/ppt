@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { toInches, normalizePageSize } = require('../native/core/units');
 const { validateDeck } = require('../native/core/schema');
-const { estimateLineCount, estimateTextHeight } = require('../native/engine/text_measure');
+const { estimateLineCount, estimateTextHeight, wrapText } = require('../native/engine/text_measure');
+const { FontManager } = require('../native/engine/font_manager');
 const { layoutSlide } = require('../native/engine/layout');
 const { validateSlide } = require('../native/engine/validation');
 
@@ -41,4 +42,25 @@ test('validator reports out-of-bounds and overlapping text', () => {
   ], { width: 13.333, height: 7.5 });
   assert.ok(warnings.some((w) => w.code === 'TEXT_OVERLAP'));
   assert.ok(warnings.some((w) => w.code === 'OUT_OF_BOUNDS'));
+});
+
+
+test('text wrapping inserts explicit line breaks for long CJK content', () => {
+  const wrapped = wrapText('这是一个用于测试中文文本自动换行的较长句子', 1.5, 18);
+  assert.ok(wrapped.includes('\\n'));
+  assert.ok(wrapped.split('\\n').length > 1);
+});
+
+test('font manager safely falls back when no font files are configured', () => {
+  const manager = new FontManager();
+  assert.equal(manager.measure('中文', 18, 'Missing Font'), null);
+  assert.equal(manager.inspect().configuredFaces.length, 0);
+});
+
+test('validator detects fixed-height text overflow risk', () => {
+  const elements = layoutSlide({
+    elements: [{ type: 'text', text: '这是一段很长很长的中文内容，需要自动换行并且高度不足时发出警告。'.repeat(4), x: 1, y: 1, w: 1.4, h: 0.25, fontSize: 18 }]
+  }, normalizePageSize('wide'), {});
+  const warnings = validateSlide(elements, normalizePageSize('wide'));
+  assert.ok(warnings.some((warning) => warning.code === 'TEXT_OVERFLOW_RISK'));
 });
