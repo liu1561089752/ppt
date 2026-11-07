@@ -24,3 +24,4 @@ Native output now sets East Asian font properties in OOXML, supports editable Po
 
 Batch conversion is available through `node pptx/batch_native_pptx.js --input-dir <deck-spec-directory> --output-dir <output-directory>`. Each JSON Deck Spec is rendered to a separate editable PPTX; see `pptx/SKILL.md` for options.
 Reference PPTX analysis for Native mode is available with `python pptx/scripts/extract_native_design.py reference.pptx extracted-design/`; it samples all slides and exports design tokens, layout geometry, repeated component signatures, and font usage.
+The legacy HTML batch converter also now preserves source slide order under concurrent rendering by assigning each job a pre-created slide slot.
