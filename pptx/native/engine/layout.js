@@ -24,12 +24,13 @@ function layoutSlide(slide, pageSize, theme = {}, options = {}) {
       };
       if (typeof element.text === 'string') {
         element._renderText = wrapText(element.text, width, fontSize, measureOptions);
-        if (height === undefined) height = estimateTextHeight(element._renderText, width, fontSize, measureOptions);
-      } else if (height === undefined) {
+        element._requiredTextHeight = estimateTextHeight(element._renderText, width, fontSize, measureOptions);
+      } else {
         const plainText = element.text.map((run) => typeof run === 'string' ? run : (run.text || '')).join('');
-        element._requiredTextHeight = estimateTextHeight(plainText, width, fontSize, measureOptions);\n        height = height === undefined ? element._requiredTextHeight : height;
+        element._requiredTextHeight = estimateTextHeight(plainText, width, fontSize, measureOptions);
         element._layoutWarnings = ['Rich-text runs are measured as plain text; explicit line breaks are recommended.'];
       }
+      if (height === undefined) height = element._requiredTextHeight;
     } else if (height === undefined) {
       height = element.type === 'line' ? 0.01 : 1.0;
     }
