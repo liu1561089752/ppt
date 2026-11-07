@@ -53,6 +53,24 @@ const deck = {
           body: '检查文字换行、对象边界、字体替换和不同 Office 渲染结果。'
         })
       ]
+    },
+    {
+      background: 'FFFFFF',
+      elements: [
+        components.title('可编辑原生图表', { x: 0.72, y: 0.55, w: 11.9, h: 0.6, fontSize: 26 }),
+        components.divider({ x: 0.74, y: 1.28, w: 11.85 }),
+        {
+          type: 'chart',
+          chartType: 'bar',
+          x: 0.9, y: 1.7, w: 11.4, h: 4.8,
+          data: [{
+            name: '年度营收',
+            labels: ['2022', '2023', '2024', '2025'],
+            values: [6.2, 7.8, 10.1, 12.8]
+          }],
+          options: { showLegend: false, showValue: true, valAxisMinVal: 0 }
+        }
+      ]
     }
   ]
 };
