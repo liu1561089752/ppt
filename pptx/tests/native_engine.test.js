@@ -210,3 +210,31 @@ test('native templates propagate custom design tokens into editable elements', (
   const rule = slide.elements.find((element) => element.type === 'line');
   assert.equal(rule.color, '00A6A6');
 });
+
+
+test('native shape styles preserve transparency, rotation, line dash, and shadow options', () => {
+  const { shapeStyle } = require('../native/engine/native_pptx');
+  const style = shapeStyle({
+    x: 1, y: 1, w: 4, h: 2, fill: '123456', fillTransparency: 22,
+    lineColor: 'ABCDEF', lineWidth: 1.5, lineTransparency: 35, lineDash: 'dash',
+    transparency: 12, rotate: 8,
+    shadow: { color: '000000', opacity: 0.24, blur: 6, angle: 90, distance: 3 }
+  }, { colors: { surface: 'FFFFFF', border: 'CCCCCC' } });
+  assert.equal(style.fill.transparency, 22);
+  assert.equal(style.line.transparency, 35);
+  assert.equal(style.line.dash, 'dash');
+  assert.equal(style.transparency, 12);
+  assert.equal(style.rotate, 8);
+  assert.equal(style.shadow.opacity, 0.24);
+  assert.equal(style.shadow.blur, 6);
+});
+
+test('native shape style keeps backwards-compatible defaults', () => {
+  const { shapeStyle } = require('../native/engine/native_pptx');
+  const style = shapeStyle({ x: 0, y: 0, w: 1, h: 1, fill: 'FFFFFF' }, { colors: { surface: 'FFFFFF', border: '000000' } });
+  assert.equal(style.fill.transparency, 0);
+  assert.equal(style.line.width, 0.8);
+  assert.equal(style.transparency, 0);
+  assert.equal(style.rotate, 0);
+  assert.equal(style.shadow, undefined);
+});
