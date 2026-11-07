@@ -264,7 +264,7 @@ test('generated PPTX contains editable DrawingML gradient fill', async () => {
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
-  const JSZip = require('jszip');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
   const { generatePptx } = require('../native/engine/native_pptx');
   const output = path.join(os.tmpdir(), 'native-gradient-' + process.pid + '.pptx');
   try {
