@@ -21,3 +21,5 @@ The example writes `native-demo.pptx` in the current directory. See [the native 
 Native mode now also includes configurable font-file metrics (via fontkit), CJK-aware explicit wrapping, estimated text-overflow warnings, and starter component/template factories. See the typography and component sections in `pptx/SKILL.md`. Font metrics require actual font files to be configured; otherwise the conservative fallback estimator is used.
 
 Native output now sets East Asian font properties in OOXML, supports editable PowerPoint charts, and includes process-flow, timeline, comparison, and KPI templates. CI uses LibreOffice plus Poppler to render both demo decks and upload PPTX/PDF/PNG previews as artifacts.
+
+Batch conversion is available through `node pptx/batch_native_pptx.js --input-dir <deck-spec-directory> --output-dir <output-directory>`. Each JSON Deck Spec is rendered to a separate editable PPTX; see `pptx/SKILL.md` for options.
