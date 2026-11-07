@@ -32,7 +32,7 @@ function paragraph(text, options = {}) {
     fontFace: options.fontFace || theme.fonts.body,
     fontSize: options.fontSize || theme.sizes.body,
     color: options.color || theme.colors.foreground,
-    bold: !!options.bold,
+    bold: options.bold === undefined ? ['bold', '600', '700', '800', '900'].includes(String(theme.typography.bodyWeight).toLowerCase()) : !!options.bold,
     align: options.align || 'left',
     valign: options.valign || 'top',
     margin: options.margin === undefined ? 0.02 : options.margin,
