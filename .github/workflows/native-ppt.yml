@@ -17,6 +17,8 @@ on:
     paths:
       - "pptx/native/**"
       - "pptx/batch_native_pptx.js"
+      - "pptx/batch_html2pptx.js"
+      - "pptx/slide_order.js"
       - "pptx/scripts/extract_native_design.py"
       - "pptx/tests/**"
       - "pptx/examples/**"
@@ -39,7 +41,9 @@ jobs:
         working-directory: pptx/native
         run: npm install --no-audit --no-fund
       - name: Check legacy batch converter syntax
-        run: |\n          node --check pptx/batch_html2pptx.js\n          node --check pptx/slide_order.js
+        run: |
+          node --check pptx/batch_html2pptx.js
+          node --check pptx/slide_order.js
       - name: Run native engine tests
         working-directory: pptx/native
         run: npm test
