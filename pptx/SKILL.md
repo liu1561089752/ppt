@@ -66,13 +66,13 @@ For **new presentations**, use **Native PowerPoint mode by default**. Do not cre
 
 Native workflow:
 1. Keep the content work in Stages 1–3 below: clarify the brief, research, build the story, and plan slide-by-slide design.
-2. For a reference PPTX, run `python pptx/scripts/extract_native_design.py <reference.pptx> <design_dir>` and use its design tokens and geometry patterns.
-3. Create a structured Deck Spec (JSON-compatible data) with ordered slides and semantic elements. Use `pptx/native` components and templates where appropriate; use native text, shapes, tables, charts, and connectors for editable content. Use image assets only for photography, complex illustration, or texture—not as a rasterized full-slide substitute.
+2. For a reference PPTX, run `python pptx/scripts/extract_native_design.py <reference.pptx> <design_dir>` and use its design tokens and geometry patterns. For an HTML/CSS design reference, run `python pptx/scripts/extract_html_design_tokens.py <reference.html-or-css> <design_dir>`, inspect `theme.json` and `design-tokens.json`, and use the reviewed theme as `deck.theme`. Keep `source.css` as the fidelity reference; token extraction is best-effort, not a full CSS renderer.
+3. Create a structured Deck Spec (JSON-compatible data) with ordered slides and semantic elements. Treat the visual design as a first-class input: preserve the reference's palette, typography, spacing rhythm, hierarchy, card treatment, image composition, and distinctive layout patterns. Pass the shared theme into templates/components rather than relying on their defaults. Do not reduce expressive source designs to generic title-plus-divider slides. Use native text, shapes, tables, charts, and connectors for editable content; use SVG/image assets selectively for complex illustration, texture, or browser-only effects—not as a rasterized full-slide substitute.
 4. Generate with `require('./pptx/native').generatePptx(deck, outputPath)`, or use `pptx/batch_native_pptx.js` for multiple JSON Deck Specs.
 5. Inspect the generation report, run the CI-equivalent LibreOffice render check, and review the PDF/PNG previews for wrapping, overflow, missing fonts, object collisions, and visual hierarchy. Report any unresolved warnings.
 6. Keep speaker notes in the Deck Spec slide's `notes` field; the Native renderer writes them to the PowerPoint notes part.
 
-Use the HTML compatibility workflow below only for existing HTML slide projects, explicit HTML deliverables, or visual effects not yet supported by Native components. Existing PPTX template editing follows the dedicated editing section.
+Use the HTML compatibility workflow below only for existing HTML slide projects, explicit HTML deliverables, or visual effects not yet supported by Native components. Changing renderers must not mean discarding the original design language: when migrating an HTML reference to Native, carry forward the extracted theme and manually translate important CSS compositions/effects into editable PowerPoint elements or targeted vector assets. Existing PPTX template editing follows the dedicated editing section.
 
 You are an elite presentation design agent. You produce beautiful, content-rich, editable PowerPoint decks. Native PowerPoint objects are the default output for new presentations; standalone HTML pages are the compatibility path for legacy HTML slide sources.
 
@@ -93,7 +93,13 @@ write the result into `<work_dir>/slides/`,the <work_dir> is directly the downlo
 then SKIP the palette and typography questions in the list below (the user has implicitly answered
 them by handing you the reference). Still ask the remaining questions.
 
-  • **HTML reference** (`*.html` containing the desired deck-wide style):
+  • **HTML/CSS reference** (`*.html` or `*.css` containing the desired deck-wide style):
+      ```
+      python pptx/scripts/extract_html_design_tokens.py <reference.html-or-css> <work_dir>/slides/design-tokens
+      ```
+      Inspect `theme.json`, `design-tokens.json`, and `source.css`. Apply the reviewed `theme.json` values to the Native Deck Spec's `theme` field. This extracts reusable tokens; it does not promise pixel-identical recreation of arbitrary CSS layouts, gradients, filters, or animations.
+
+  • **Legacy HTML source** (`*.html` containing the desired deck-wide style):
       ```
       python /home/z/my-project/skills/ppt/scripts/extract_html_style.py \
           <reference.html> <work_dir>/slides
