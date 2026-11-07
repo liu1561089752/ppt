@@ -3,10 +3,10 @@
 const { estimateTextHeight, wrapText } = require('./text_measure');
 
 function layoutSlide(slide, pageSize, theme = {}, options = {}) {
-  const margin = slide.margin === undefined ? (theme.margins?.x || 0.58) : slide.margin;
-  const gap = slide.gap === undefined ? 0.22 : slide.gap;
+  const margin = slide.margin === undefined ? (theme.layouts?.pageMarginX || theme.margins?.x || 0.58) : slide.margin;
+  const gap = slide.gap === undefined ? (theme.layouts?.sectionGap || theme.spacing?.md || 0.22) : slide.gap;
   const contentWidth = pageSize.width - margin * 2;
-  let cursorY = slide.startY === undefined ? (theme.margins?.y || margin) : slide.startY;
+  let cursorY = slide.startY === undefined ? (theme.layouts?.pageMarginY || theme.margins?.y || margin) : slide.startY;
 
   return (slide.elements || []).map((source, index) => {
     const element = Object.assign({}, source);
