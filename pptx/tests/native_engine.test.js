@@ -445,7 +445,7 @@ test('deck schema validates image opacity, exclusive sources, and rich-text run 
     { type: 'line', x: 0, y: 5, w: 2, h: 0, width: 0 }
   ] }] });
   assert.ok(errors.some((message) => message.includes('either path or data')));
-  assert.ok(errors.some((message) => message.includes('image') && message.includes('transparency')));
+  assert.ok(errors.some((message) => message.includes('.transparency must be between 0 and 100')));
   assert.ok(errors.some((message) => message.includes('options.fontSize')));
   assert.ok(errors.some((message) => message.includes('options.transparency')));
   assert.ok(errors.some((message) => message.includes('width must be finite')));
