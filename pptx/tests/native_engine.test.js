@@ -64,3 +64,18 @@ test('validator detects fixed-height text overflow risk', () => {
   const warnings = validateSlide(elements, normalizePageSize('wide'));
   assert.ok(warnings.some((warning) => warning.code === 'TEXT_OVERFLOW_RISK'));
 });
+
+
+test('Chinese punctuation is not stranded at the start of a wrapped line', () => {
+  const wrapped = wrapText('第一段，第二段。第三段！', 1.2, 20);
+  assert.ok(wrapped.split('\n').every((line) => !/^[，。！？：；、]/u.test(line)));
+});
+
+test('component factories return editable PowerPoint elements', () => {
+  const api = require('../native');
+  const card = api.components.kpiCard({ label: '营收', value: '¥12.8M', x: 1, y: 1 });
+  assert.equal(card[0].type, 'shape');
+  assert.ok(card.slice(1).every((element) => element.type === 'text'));
+  const cover = api.templates.cover({ title: '年度报告' });
+  assert.ok(cover.elements.some((element) => element.type === 'text' && element.text === '年度报告'));
+});
