@@ -340,3 +340,15 @@ test('deck schema rejects invalid native shape effects before serialization', ()
   assert.ok(errors.some((message) => message.includes('shadow.blur')));
   assert.ok(errors.some((message) => message.includes('rotate must be finite')));
 });
+
+
+test('deck schema validates text and line transparency and typography', () => {
+  const errors = validateDeck({ slides: [{ elements: [
+    { type: 'text', text: 'bad', x: 0, y: 0, w: 2, h: 1, fontSize: 0, transparency: 110 },
+    { type: 'line', x: 0, y: 2, w: 2, h: 0, transparency: -1 },
+    { type: 'shape', x: 0, y: 3, w: 2, h: 1, shadow: { type: 'invalid' } }
+  ] }] });
+  assert.ok(errors.some((message) => message.includes('fontSize')));
+  assert.ok(errors.filter((message) => message.includes('transparency')).length >= 2);
+  assert.ok(errors.some((message) => message.includes('shadow.type')));
+});

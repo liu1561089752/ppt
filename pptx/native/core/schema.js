@@ -32,6 +32,18 @@ function validateDeck(deck) {
         errors.push(p + '.text rich-text runs must be strings or objects with a text field');
       }
       if (element.type === 'image' && !element.path && !element.data) errors.push(p + ' requires path or data');
+      if (element.type === 'text' && element.transparency !== undefined &&
+          (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
+        errors.push(p + '.transparency must be between 0 and 100');
+      }
+      if (element.type === 'text' && element.fontSize !== undefined &&
+          (!Number.isFinite(element.fontSize) || element.fontSize <= 0)) {
+        errors.push(p + '.fontSize must be finite and greater than zero');
+      }
+      if (element.type === 'line' && element.transparency !== undefined &&
+          (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
+        errors.push(p + '.transparency must be between 0 and 100');
+      }
       if (element.type === 'shape') {
         ['transparency', 'fillTransparency', 'lineTransparency'].forEach((key) => {
           if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0 || element[key] > 100)) {
@@ -51,6 +63,7 @@ function validateDeck(deck) {
             if (shadow[key] !== undefined && (!Number.isFinite(shadow[key]) || shadow[key] < 0)) errors.push(p + '.shadow.' + key + ' must be finite and non-negative');
           });
           if (shadow.angle !== undefined && !Number.isFinite(shadow.angle)) errors.push(p + '.shadow.angle must be finite');
+          if (shadow.type !== undefined && !['outer', 'inner'].includes(shadow.type)) errors.push(p + '.shadow.type must be outer or inner');
           if (shadow.color !== undefined && (typeof shadow.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(shadow.color))) errors.push(p + '.shadow.color must be a six-digit hex color');
         } else if (element.shadow !== undefined && element.shadow !== false && element.shadow !== true) {
           errors.push(p + '.shadow must be a boolean or options object');
