@@ -13,7 +13,9 @@
     "batch:example": "node ../batch_native_pptx.js --input ../examples/native_deck.json --output-dir batch-dist",
     "render:batch": "python scripts/render_check.py batch-dist/native_deck.pptx --output-dir render-check/batch",
     "demo:theme": "node ../examples/native_design_migration_demo.js native-theme-profile/theme.json native-design-migration-demo.pptx",
-    "render:theme": "python scripts/render_check.py native-design-migration-demo.pptx --output-dir render-check/native-design-migration-demo"
+    "render:theme": "python scripts/render_check.py native-design-migration-demo.pptx --output-dir render-check/native-design-migration-demo",
+    "demo:parity": "node ../examples/native_design_parity_demo.js native-theme-profile/theme.json native-design-parity-demo.pptx",
+    "render:parity": "python scripts/render_check.py native-design-parity-demo.pptx --output-dir render-check/native-design-parity-demo"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",
