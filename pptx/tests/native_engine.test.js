@@ -79,3 +79,12 @@ test('component factories return editable PowerPoint elements', () => {
   const cover = api.templates.cover({ title: '年度报告' });
   assert.ok(cover.elements.some((element) => element.type === 'text' && element.text === '年度报告'));
 });
+
+
+test('OOXML font patch adds an explicit East Asian typeface', () => {
+  const { patchEastAsianFonts } = require('../native/engine/east_asian_font');
+  const source = '<a:rPr lang="en-US"><a:latin typeface="Aptos"/></a:rPr><a:defRPr/>';
+  const patched = patchEastAsianFonts(source, 'Microsoft YaHei');
+  assert.ok(patched.includes('<a:ea typeface="Microsoft YaHei"/>'));
+  assert.equal((patched.match(/<a:ea /g) || []).length, 2);
+});
