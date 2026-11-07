@@ -52,4 +52,29 @@ function kpi(options = {}) {
   return { background: options.background || 'F7F7F4', elements };
 }
 
-module.exports = { cover, content, kpi };
+function comparison(options = {}) {
+  const left = options.left || {};
+  const right = options.right || {};
+  return {
+    background: options.background || 'F7F7F4',
+    elements: [
+      components.title(options.title || '方案对比', { x: 0.72, y: 0.55, w: 11.9, h: 0.6, fontSize: 26 }),
+      components.divider({ x: 0.74, y: 1.28, w: 11.85 }),
+      ...components.infoCard({ x: 0.78, y: 1.8, w: 5.65, h: 4.6, title: left.title || '方案 A', body: left.body || '', fill: left.fill || 'FFFFFF' }),
+      ...components.infoCard({ x: 6.9, y: 1.8, w: 5.65, h: 4.6, title: right.title || '方案 B', body: right.body || '', fill: right.fill || 'FFFFFF' })
+    ]
+  };
+}
+
+function process(options = {}) {
+  return {
+    background: options.background || 'FFFFFF',
+    elements: [
+      components.title(options.title || '关键流程', { x: 0.72, y: 0.55, w: 11.9, h: 0.6, fontSize: 26 }),
+      components.divider({ x: 0.74, y: 1.28, w: 11.85 }),
+      ...components.processFlow(options.steps || [], { x: 0.78, y: 2.2, w: 11.75 })
+    ]
+  };
+}
+
+module.exports = { cover, content, kpi, comparison, process };
