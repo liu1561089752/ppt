@@ -10,7 +10,8 @@
     "demo:components": "node ../examples/native_components_demo.js native-components-demo.pptx",
     "render:demo": "python scripts/render_check.py native-demo.pptx --output-dir render-check",
     "render:components": "python scripts/render_check.py native-components-demo.pptx --output-dir render-check",
-    "batch:example": "node ../batch_native_pptx.js --input ../examples/native_deck.json --output-dir batch-dist"
+    "batch:example": "node ../batch_native_pptx.js --input ../examples/native_deck.json --output-dir batch-dist",
+    "render:batch": "python scripts/render_check.py batch-dist/native_deck.pptx --output-dir render-check"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",
