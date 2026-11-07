@@ -352,3 +352,23 @@ test('deck schema validates text and line transparency and typography', () => {
   assert.ok(errors.filter((message) => message.includes('transparency')).length >= 2);
   assert.ok(errors.some((message) => message.includes('shadow.type')));
 });
+
+
+test('native radius tokens serialize as editable rounded-rectangle geometry', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const output = path.join(os.tmpdir(), 'native-rounded-rect-' + process.pid + '.pptx');
+  try {
+    await generatePptx({ slides: [{ elements: [
+      { type: 'shape', x: 1, y: 1, w: 4, h: 2, fill: 'FFFFFF', radius: 0.16 }
+    ] }] }, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(xml.includes('<a:prstGeom prst="roundRect">'));
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});

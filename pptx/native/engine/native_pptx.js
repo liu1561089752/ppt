@@ -88,7 +88,8 @@ function addElement(slide, el, theme, pptx) {
       slide.addText(el._renderText || el.text, opts);
     }
   } else if (el.type === 'shape') {
-    const shape = el.shape || pptx.ShapeType.rect;
+    // A radius token must select a rounded-rectangle geometry; rectRadius alone is ignored by some renderers.
+    const shape = el.shape || (el.radius ? pptx.ShapeType.roundRect : pptx.ShapeType.rect);
     slide.addShape(shape, shapeStyle(el, theme));
   } else if (el.type === 'line') {
     slide.addShape(pptx.ShapeType.line, {
