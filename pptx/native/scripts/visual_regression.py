@@ -38,10 +38,8 @@ def metrics(reference: Image.Image, actual: Image.Image) -> dict:
     b = ImageStat.Stat(gray_cur)
     mean_a, mean_b = a.mean[0], b.mean[0]
     var_a, var_b = a.var[0], b.var[0]
-    covariance = ImageStat.Stat(ImageChops.multiply(
-        ImageChops.subtract(gray_ref, Image.new("L", ref.size, int(mean_a))),
-        ImageChops.subtract(gray_cur, Image.new("L", cur.size, int(mean_b))),
-    )).mean[0]
+    mean_product = ImageStat.Stat(ImageChops.multiply(gray_ref, gray_cur)).mean[0]
+    covariance = mean_product - mean_a * mean_b
     c1, c2 = 6.5025, 58.5225
     ssim = ((2 * mean_a * mean_b + c1) * (2 * covariance + c2)) / (
         (mean_a * mean_a + mean_b * mean_b + c1) * (var_a + var_b + c2)
@@ -131,7 +129,6 @@ def self_test() -> None:
         baseline.mkdir()
         current.mkdir()
         image = Image.new("RGB", (80, 60), "white")
-        image.rectangle if False else None
         from PIL import ImageDraw
         ImageDraw.Draw(image).rectangle((10, 10, 30, 30), fill="black")
         image.save(baseline / "slide-1.png")
