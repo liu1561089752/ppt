@@ -26,7 +26,7 @@ const deck = {
         x: 1.1, y: 2.05, w: 6.8, h: 1.0, fontFace: fonts.body, fontSize: sizes.body || 18,
         color: colors.foreground || 'F5F7F8', valign: 'top' },
       { type: 'shape', x: 1.08, y: 3.55, w: 6.7, h: 2.05, fill: colors.surface || '1B2836',
-        lineColor: colors.border || '344657', lineWidth: 1.0, radius: 0.18 },
+        lineColor: colors.border || '344657', lineWidth: 0.75, radius: theme.radii && theme.radii.medium || 0.18 },
       { type: 'text', text: '设计迁移原则', x: 1.42, y: 3.88, w: 5.9, h: 0.48,
         fontFace: fonts.heading, fontSize: sizes.heading || 26, bold: true, color: colors.primary || 'F2AA4C' },
       { type: 'text', text: '颜色、字体、卡片和留白应由同一套设计 Tokens 驱动。',
