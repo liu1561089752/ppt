@@ -28,16 +28,27 @@ def read_css(path: Path) -> str:
 
 def normalize_color(value: str) -> str | None:
     value = value.strip()
-    match = COLOR_RE.match(value)
-    if not match:
-        return None
     if value.startswith("#"):
         raw = value[1:]
         if len(raw) == 3:
             raw = "".join(ch * 2 for ch in raw)
-        if len(raw) == 6:
+        if len(raw) == 4:
+            raw = "".join(ch * 2 for ch in raw[:3])
+        if len(raw) == 8:
+            raw = raw[:6]
+        if len(raw) == 6 and re.fullmatch(r"[0-9a-fA-F]{6}", raw):
             return raw.upper()
-    return value
+        return None
+    rgb = re.match(r"rgba?\(\s*([\d.]+)%?\s*,\s*([\d.]+)%?\s*,\s*([\d.]+)%?(?:\s*,\s*[\d.]+)?\s*\)", value, re.I)
+    if rgb:
+        channels = [float(part) for part in rgb.groups()]
+        if "%" in value:
+            channels = [round(part * 2.55) for part in channels]
+        channels = [max(0, min(255, round(part))) for part in channels]
+        return "".join(f"{part:02X}" for part in channels)
+    named = {"black": "000000", "white": "FFFFFF", "red": "FF0000",
+             "green": "008000", "blue": "0000FF", "transparent": "FFFFFF"}
+    return named.get(value.lower())
 
 
 def length_to_inches(value: str) -> float | None:
