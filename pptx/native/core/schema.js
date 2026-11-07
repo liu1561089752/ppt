@@ -38,9 +38,13 @@ function validateDeck(deck) {
           errors.push(p + '.' + key + ' must be a finite non-negative number');
         }
       });
-      ['w', 'h'].forEach((key) => {
-        if (element[key] === 0) errors.push(p + '.' + key + ' must be greater than zero');
-      });
+      if (element.type === 'line') {
+        if (element.w === 0 && element.h === 0) errors.push(p + ' line must have a non-zero width or height');
+      } else {
+        ['w', 'h'].forEach((key) => {
+          if (element[key] === 0) errors.push(p + '.' + key + ' must be greater than zero');
+        });
+      }
     });
   });
   return errors;
