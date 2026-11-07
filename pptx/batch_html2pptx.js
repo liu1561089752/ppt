@@ -20,6 +20,7 @@ const path = require('path');
 const fs = require('fs');
 const pptxgen = require('pptxgenjs');
 const html2pptx = require(path.join(__dirname, 'html2pptx1.js'));
+const { createOrderedSlideTasks, removeFailedSlideTasks } = require('./slide_order');
 
 // M-23③:BOUNDS 严重档阈值(pt)。溢出超过此值视为真实排版缺陷(页剔除+failed 计数),
 // 低于此值视为排版噪声(仅告警)。与 html2pptx1.js 的 BOUNDS_SEVERE_PT 保持一致。
@@ -103,12 +104,7 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
   // Pre-create slide slots in source order. HTML rendering may run concurrently,
   // but each worker writes into its assigned slide so completion order cannot
   // reorder the final presentation.
-  const tasks = htmlFiles.map((htmlFile, index) => ({
-    htmlFile,
-    index,
-    slide: pptx.addSlide(),
-    failed: false,
-  }));
+  const tasks = createOrderedSlideTasks(pptx, htmlFiles);
 
   const failures = [];
   const mustFix = [];
@@ -168,11 +164,8 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   // Remove failed slots in descending source order so earlier slide indices stay stable.
-  const failedTasks = tasks.filter(task => task.failed).sort((a, b) => b.index - a.index);
+  const failedTasks = removeFailedSlideTasks(pptx, tasks);
   for (const task of failedTasks) {
-    if (task.slide && typeof pptx.removeSlide === 'function') {
-      pptx.removeSlide(task.slide._slideNum);
-    }
     if (!failures.some(failure => failure.file === task.htmlFile)) {
       const issue = mustFix.find(item => item.task === task);
       failures.push({
