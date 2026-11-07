@@ -65,6 +65,87 @@ def font_family(value: str) -> str:
     return value.strip().split(",")[0].strip().strip("\"'") or "Aptos"
 
 
+
+def split_css_args(value: str) -> list[str]:
+    """Split comma-separated CSS arguments without breaking rgb()/rgba() values."""
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    for index, char in enumerate(value):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            parts.append(value[start:index].strip())
+            start = index + 1
+    parts.append(value[start:].strip())
+    return [part for part in parts if part]
+
+
+def parse_linear_gradient(value: str) -> dict | None:
+    """Parse a conservative subset of CSS linear-gradient into editable PPT stops."""
+    match = re.match(r"^linear-gradient\((.*)\)$", value.strip(), re.I | re.S)
+    if not match:
+        return None
+    parts = split_css_args(match.group(1))
+    if len(parts) < 2:
+        return None
+    angle = 180.0
+    direction = parts[0].lower()
+    if re.match(r"^[+-]?[\d.]+deg$", direction):
+        angle = 90.0 - float(direction[:-3])
+        parts = parts[1:]
+    elif direction.startswith("to "):
+        mapping = {"to right": 0.0, "to left": 180.0, "to bottom": 270.0,
+                   "to top": 90.0, "to bottom right": 315.0, "to top right": 45.0,
+                   "to bottom left": 225.0, "to top left": 135.0}
+        if direction not in mapping:
+            return None
+        angle = mapping[direction]
+        parts = parts[1:]
+    if len(parts) < 2:
+        return None
+    stops = []
+    for index, part in enumerate(parts):
+        stop_match = re.match(r"^(.*?)(?:\s+([+-]?[\d.]+)%)?$", part)
+        if not stop_match:
+            return None
+        color_text = stop_match.group(1).strip()
+        color = normalize_color(color_text)
+        if not color:
+            return None
+        position = float(stop_match.group(2)) / 100 if stop_match.group(2) is not None else index / (len(parts) - 1)
+        stops.append({"position": max(0.0, min(1.0, position)), "color": color})
+    return {"angle": round(angle % 360, 3), "stops": stops, "source": "css-linear-gradient"}
+
+
+def parse_box_shadow(value: str) -> dict | None:
+    """Map one simple CSS box-shadow to PowerPoint outer-shadow parameters."""
+    value = value.strip()
+    if not value or value.lower() == "none" or "," in value:
+        return None
+    color_match = re.search(r"(rgba?\([^)]*\)|#[0-9a-f]{3,8}|black|white|red|green|blue)", value, re.I)
+    color_text = color_match.group(1) if color_match else "rgba(0,0,0,0.18)"
+    color = normalize_color(color_text)
+    if not color:
+        return None
+    alpha_match = re.match(r"rgba?\([^)]*,\s*([\d.]+)\s*\)$", color_text, re.I)
+    opacity = max(0.0, min(1.0, float(alpha_match.group(1)))) if alpha_match else 0.18
+    lengths = re.findall(r"-?\d+(?:\.\d+)?(?:px|pt|rem|em|in)?", value[:color_match.start()] if color_match else value)
+    if len(lengths) < 2:
+        return None
+    x = length_to_inches(lengths[0]) or 0.0
+    y = length_to_inches(lengths[1]) or 0.0
+    blur = length_to_inches(lengths[2]) if len(lengths) > 2 else 0.0
+    distance = (x * x + y * y) ** 0.5
+    import math
+    angle = (math.degrees(math.atan2(y, x)) + 360) % 360 if distance else 45.0
+    return {"type": "outer", "color": color, "opacity": opacity,
+            "blur": round((blur or 0) * 72, 2), "distance": round(distance * 72, 2),
+            "angle": round(angle, 2), "source": "css-box-shadow"}
+
+
 def extract(css: str) -> dict:
     raw_vars: dict[str, str] = {}
     for name, value in VAR_RE.findall(css):
@@ -77,6 +158,8 @@ def extract(css: str) -> dict:
     radii: dict[str, float] = {}
     typography: dict[str, object] = {}
     layouts: dict[str, float] = {}
+    backgrounds: dict[str, object] = {}
+    effects: dict[str, object] = {}
     aliases = {
         "background": ("background", "bg", "canvas"),
         "foreground": ("foreground", "text", "ink", "body-text"),
@@ -88,6 +171,19 @@ def extract(css: str) -> dict:
         "border": ("border", "line", "stroke")
     }
     for name, value in raw_vars.items():
+        if "gradient" in name:
+            parsed_gradient = parse_linear_gradient(value)
+            if parsed_gradient:
+                backgrounds.setdefault("gradient", parsed_gradient)
+        if "shadow" in name:
+            parsed_shadow = parse_box_shadow(value)
+            if parsed_shadow:
+                effects.setdefault("shadow", parsed_shadow)
+        if "opacity" in name:
+            try:
+                effects.setdefault("opacity", max(0.0, min(1.0, float(value))))
+            except ValueError:
+                pass
         color = normalize_color(value)
         if color:
             for token, keys in aliases.items():
@@ -136,6 +232,20 @@ def extract(css: str) -> dict:
     selectors: dict[str, dict[str, str]] = {}
     for selector_text, body in RULE_RE.findall(css):
         declarations = {k.lower(): v.strip() for k, v in DECL_RE.findall(body)}
+        for property_name in ("background", "background-image"):
+            if property_name in declarations and "linear-gradient(" in declarations[property_name].lower():
+                parsed_gradient = parse_linear_gradient(declarations[property_name])
+                if parsed_gradient:
+                    backgrounds.setdefault("gradient", parsed_gradient)
+        if "box-shadow" in declarations:
+            parsed_shadow = parse_box_shadow(declarations["box-shadow"])
+            if parsed_shadow:
+                effects.setdefault("shadow", parsed_shadow)
+        if "opacity" in declarations:
+            try:
+                effects.setdefault("opacity", max(0.0, min(1.0, float(declarations["opacity"]))))
+            except ValueError:
+                pass
         selector = selector_text.strip().lower()
         if selector in ("body", "html", ":root", "*", "h1", "h2", "h3", "p", ".card", ".slide-title"):
             selectors[selector] = declarations
@@ -189,12 +299,14 @@ def extract(css: str) -> dict:
         "theme": {
             "colors": colors, "fonts": fonts, "sizes": sizes,
             "spacing": spacing, "radii": radii,
-            "typography": typography, "layouts": layouts
+            "typography": typography, "layouts": layouts,
+            "backgrounds": backgrounds, "effects": effects
         },
         "cssSelectors": selectors,
         "notes": [
             "CSS tokens are best-effort mappings; review before production use.",
-            "Complex selectors, gradients, filters, pseudo-elements and browser-only effects are preserved only in rawCssVariables/source CSS, not recreated automatically as PowerPoint effects."
+            "Simple linear-gradient() and single box-shadow declarations are extracted as migration hints; review CSS angle, shadow units, opacity scope and renderer differences before applying."
+            "Complex selectors, multiple shadows, filters, pseudo-elements, blend modes and browser-only effects are not recreated automatically."
         ]
     }
 
@@ -215,6 +327,11 @@ def self_test() -> None:
     assert theme["spacing"]["lg"] == round(32 / 96, 4), theme
     assert theme["radii"]["medium"] == round(12 / 96, 4), theme
     assert normalize_color("rgb(18, 52, 86)") == "123456"
+    visual = extract(":root { --hero-gradient: linear-gradient(135deg, #112233 0%, #e56a42 100%); --card-shadow: 0 8px 24px rgba(0,0,0,0.2); --surface-opacity: 0.85; }")["theme"]
+    assert visual["backgrounds"]["gradient"]["stops"][0]["color"] == "112233", visual
+    assert visual["backgrounds"]["gradient"]["angle"] == 315.0, visual
+    assert visual["effects"]["shadow"]["opacity"] == 0.2, visual
+    assert visual["effects"]["opacity"] == 0.85, visual
     assert theme["typography"] == {}, theme
     print("HTML/CSS design token extraction self-test passed.")
 

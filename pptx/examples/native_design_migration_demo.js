@@ -9,6 +9,23 @@ if (!fs.existsSync(themePath)) {
   throw new Error('Theme JSON not found: ' + themePath + '. Run extract_html_design_tokens.py first.');
 }
 const theme = JSON.parse(fs.readFileSync(themePath, 'utf8'));
+const cover = templates.cover({
+  theme,
+  title: '保留设计语言，而不是退回默认模板',
+  subtitle: 'HTML/CSS 视觉 Tokens → Native PowerPoint 原生对象'
+});
+const extractedGradient = theme.backgrounds && theme.backgrounds.gradient;
+const extractedShadow = theme.effects && theme.effects.shadow;
+if (extractedGradient && extractedGradient.stops && extractedGradient.stops.length >= 2) {
+  cover.elements.push({
+    type: 'shape', x: 9.0, y: 1.15, w: 3.2, h: 4.8,
+    fill: extractedGradient.stops[0].color, line: false,
+    gradient: { angle: extractedGradient.angle, stops: extractedGradient.stops },
+    shadow: extractedShadow || undefined,
+    rotate: 2
+  });
+}
+
 const deck = {
   title: 'HTML/CSS design migration preview',
   author: 'PPT project',
@@ -16,11 +33,7 @@ const deck = {
   pageSize: 'wide',
   theme,
   slides: [
-    templates.cover({
-      theme,
-      title: '保留设计语言，而不是退回默认模板',
-      subtitle: 'HTML/CSS 视觉 Tokens → Native PowerPoint 原生对象'
-    }),
+    cover,
     templates.kpi({
       theme,
       title: '统一视觉规范驱动组件',

@@ -188,12 +188,22 @@ async function buildPresentation(deck, options = {}) {
 function gradientFillXml(gradient) {
   const stops = gradient && gradient.stops;
   if (!Array.isArray(stops) || stops.length < 2) throw new Error('Gradient fill requires at least two color stops');
-  const normalized = stops.map((stop) => {
-    const position = Math.max(0, Math.min(100000, Math.round(Number(stop.position) * (Number(stop.position) <= 1 ? 100000 : 1))));
-    if (!Number.isFinite(position)) throw new Error('Gradient stop position must be finite');
-    return { position, color: cleanColor(stop.color, '000000'), transparency: Math.max(0, Math.min(100, Number(stop.transparency) || 0)) };
+  const rawAngle = gradient.angle === undefined ? 0 : Number(gradient.angle);
+  if (!Number.isFinite(rawAngle)) throw new Error('Gradient angle must be finite');
+  const normalized = stops.map((stop, index) => {
+    if (!stop || !Number.isFinite(Number(stop.position)) || Number(stop.position) < 0 || Number(stop.position) > 1) {
+      throw new Error('Gradient stop ' + index + ' position must be between 0 and 1');
+    }
+    if (typeof stop.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(stop.color)) {
+      throw new Error('Gradient stop ' + index + ' color must be a six-digit hex color');
+    }
+    const transparency = stop.transparency === undefined ? 0 : Number(stop.transparency);
+    if (!Number.isFinite(transparency) || transparency < 0 || transparency > 100) {
+      throw new Error('Gradient stop ' + index + ' transparency must be between 0 and 100');
+    }
+    return { position: Math.round(Number(stop.position) * 100000), color: cleanColor(stop.color, '000000'), transparency };
   }).sort((a, b) => a.position - b.position);
-  const angle = Math.round((((Number(gradient.angle) || 0) % 360 + 360) % 360) * 60000);
+  const angle = Math.round((((rawAngle % 360) + 360) % 360) * 60000);
   const stopXml = normalized.map((stop) =>
     '<a:gs pos="' + stop.position + '"><a:srgbClr val="' + stop.color + '">' +
     (stop.transparency ? '<a:alpha val="' + Math.round((100 - stop.transparency) * 1000) + '"/>' : '') +
@@ -210,16 +220,28 @@ async function patchGradientFills(outputPath, deck) {
     const file = zip.file(name);
     if (!file) continue;
     let shapeIndex = 0;
+    let patchedGradientCount = 0;
     const shapeElements = deck.slides[slideIndex].elements.filter((element) => element.type === 'text' || element.type === 'shape');
     let xml = await file.async('string');
+    const serializedShapeCount = (xml.match(/<p:sp>/gu) || []).length;
+    if (serializedShapeCount !== shapeElements.length) {
+      throw new Error('Gradient patch alignment mismatch on slide ' + (slideIndex + 1) +
+        ': Deck Spec has ' + shapeElements.length + ' text/shape elements but PPTX has ' + serializedShapeCount + ' p:sp elements');
+    }
     xml = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
       const element = shapeElements[shapeIndex++];
       if (!element || element.type !== 'shape' || !element.gradient) return whole;
       const fillXml = gradientFillXml(element.gradient);
       const patched = inner.replace(/<a:solidFill>[\s\S]*?<\/a:solidFill>/u, fillXml);
-      if (patched === inner) throw new Error('Unable to locate solid shape fill for gradient on slide ' + (slideIndex + 1));
+      if (patched === inner) throw new Error('Unable to locate solid shape fill for gradient on slide ' + (slideIndex + 1) + ', element ' + (shapeIndex - 1));
+      patchedGradientCount += 1;
       return '<p:sp>' + patched + '</p:sp>';
     });
+    const expectedGradientCount = shapeElements.filter((element) => element.type === 'shape' && element.gradient).length;
+    if (patchedGradientCount !== expectedGradientCount) {
+      throw new Error('Gradient patch count mismatch on slide ' + (slideIndex + 1) +
+        ': expected ' + expectedGradientCount + ', patched ' + patchedGradientCount);
+    }
     zip.file(name, xml);
   }
   const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });

@@ -281,3 +281,30 @@ test('generated PPTX contains editable DrawingML gradient fill', async () => {
     if (fs.existsSync(output)) fs.unlinkSync(output);
   }
 });
+
+
+test('gradient patch keeps text, lines, and multiple shapes aligned in source order', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const output = path.join(os.tmpdir(), 'native-gradient-order-' + process.pid + '.pptx');
+  const gradient = (color) => ({ angle: 90, stops: [{ position: 0, color }, { position: 1, color: 'FFFFFF' }] });
+  try {
+    await generatePptx({ slides: [{ elements: [
+      { type: 'text', text: 'before', x: 0.5, y: 0.5, w: 2, h: 0.4 },
+      { type: 'line', x: 0.5, y: 1.2, w: 2, h: 0 },
+      { type: 'shape', x: 0.5, y: 1.5, w: 2, h: 1, fill: '112233', gradient: gradient('112233') },
+      { type: 'text', text: 'between', x: 0.5, y: 2.7, w: 2, h: 0.4 },
+      { type: 'shape', x: 3, y: 1.5, w: 2, h: 1, fill: '445566', gradient: gradient('445566') }
+    ] }] }, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.equal((xml.match(/<a:gradFill/g) || []).length, 2);
+    assert.ok(xml.includes('<a:srgbClr val="112233">'));
+    assert.ok(xml.includes('<a:srgbClr val="445566">'));
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
