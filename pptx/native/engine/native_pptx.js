@@ -58,7 +58,9 @@ function shapeStyle(el, theme) {
     ? { color: 'FFFFFF', transparency: 100 }
     : {
         color: cleanColor(el.fill, theme.colors.surface),
-        transparency: el.fillTransparency === undefined ? 0 : el.fillTransparency
+        transparency: el.fillTransparency === undefined
+          ? (el.transparency === undefined ? 0 : el.transparency)
+          : el.fillTransparency
       };
   const line = el.line === false
     ? { color: 'FFFFFF', transparency: 100 }
@@ -99,7 +101,7 @@ function addElement(slide, el, theme, pptx) {
         return {
           text: run.text || '',
           options: Object.assign({}, run.options || {}, {
-            fontFace: (run.options && run.options.fontFace) || el.fontFace || theme.fonts.body
+            fontFace: (run.options && run.options.fontFace) || opts.fontFace
           })
         };
       });

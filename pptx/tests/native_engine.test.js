@@ -481,3 +481,28 @@ test('native text boxes inherit shared theme line spacing when not overridden', 
   const textObject = result.pptx._slides[0]._slideObjects.find((object) => object._type === 'text');
   assert.equal(textObject.options.lineSpacingMultiple, 1.42);
 });
+
+
+test('shape-level transparency maps to editable fill transparency', () => {
+  const { shapeStyle } = require('../native/engine/native_pptx');
+  const theme = require('../native/themes/default');
+  const inherited = shapeStyle({ x: 0, y: 0, w: 1, h: 1, fill: '123456', transparency: 35 }, theme);
+  const explicit = shapeStyle({ x: 0, y: 0, w: 1, h: 1, fill: '123456', transparency: 35, fillTransparency: 12 }, theme);
+  assert.equal(inherited.fill.transparency, 35);
+  assert.equal(explicit.fill.transparency, 12);
+});
+
+test('rich text runs inherit the enclosing title font face', async () => {
+  const { buildPresentation } = require('../native');
+  const result = await buildPresentation({
+    theme: { fonts: { heading: 'Display Face', body: 'Body Face' } },
+    slides: [{ elements: [
+      { type: 'text', role: 'title', text: [{ text: 'Styled' }, { text: ' title', options: { bold: true } }],
+        x: 1, y: 1, w: 5, h: 1 }
+    ] }]
+  });
+  const textObject = result.pptx._slides[0]._slideObjects.find((object) => object._type === 'text');
+  assert.equal(textObject.options.fontFace, 'Display Face');
+  assert.equal(textObject.options.text[0].options.fontFace, 'Display Face');
+  assert.equal(textObject.options.text[1].options.fontFace, 'Display Face');
+});
