@@ -75,7 +75,7 @@ jobs:
             if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
               python scripts/visual_regression.py \
                 --baseline-dir "$golden" \
-                --current-dir render-check \
+                --current-dir "render-check/$deck" \
                 --output-dir "visual-regression/$deck" \
                 --max-mae 0.015 --min-ssim 0.97
             else
