@@ -100,14 +100,14 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';
 
-  // 页数守恒已废除(M-22):失败页不再预分配页槽,成功才进 pptx。
-  // html2pptx 内部成功时自行 addSlide(未传 slide 引用),因此这里只登记任务,
-  // 转换完成的先后顺序不影响页内内容;失败页的槽位自然不会产生。
-  // 严重溢出(MUST FIX)的页同样视为转换失败:在页循环里把该页刚生成的 slide
-  // 从 pptx.slides 里移除,保证“页数 == 成功页数”,产物里绝不留下空白页。
-  const tasks = htmlFiles.map((htmlFile) => ({
+  // Pre-create slide slots in source order. HTML rendering may run concurrently,
+  // but each worker writes into its assigned slide so completion order cannot
+  // reorder the final presentation.
+  const tasks = htmlFiles.map((htmlFile, index) => ({
     htmlFile,
-    slide: null,
+    index,
+    slide: pptx.addSlide(),
+    failed: false,
   }));
 
   const failures = [];
@@ -120,7 +120,8 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
     while (true) {
       const i = nextIndex++;
       if (i >= total) return;
-      const { htmlFile } = tasks[i];
+      const task = tasks[i];
+      const { htmlFile, slide } = task;
       const base = path.basename(htmlFile);
       console.log(`    [start ${i + 1}/${total}] ${base}`);
       try {
@@ -128,28 +129,24 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
         const screenshotPath = options.previewDir
           ? path.join(options.previewDir, base.replace(/\.html$/i, '.png'))
           : null;
-        // 不再预分配 slide:html2pptx 成功时自行 addSlide,
-        // 失败时(抛错)不会产生任何页槽 —— 页数与成功页严格一致。
         // M-67:allowedRoots 传给引擎,限定本地图片源白名单(slidesDir + previewDir)。
         const allowedRoots = [path.resolve(slidesDir)];
         if (options.previewDir) allowedRoots.push(path.resolve(options.previewDir));
-        const { warnings, slide } = await html2pptx(htmlFile, pptx, { fontConfig, screenshotPath, allowedRoots });
+        const { warnings } = await html2pptx(htmlFile, pptx, { fontConfig, screenshotPath, allowedRoots, slide });
         const mustFixHere = (warnings || []).some(w => w.includes('MUST FIX'));
         // M-23③:BOUNDS 溢出超过 BOUNDS_SEVERE_PT(20pt)也按 mustFix 处理
         const boundsSevere = (warnings || []).some(w => {
           if (!w.includes('⚠ BOUNDS')) return false;
           return boundsOverflowPt(w) > BOUNDS_SEVERE_PT;
         });
-        if ((mustFixHere || boundsSevere) && slide && typeof pptx.removeSlide === 'function') {
-          // 严重缺陷页不交付:把刚生成的页从产物中移除,走失败通道
-          pptx.removeSlide(slide._slideNum);
-        }
+        if (mustFixHere || boundsSevere) task.failed = true;
         if (warnings && warnings.length > 0) {
           warnings.forEach(w => {
             // Severe overflow / severe BOUNDS are must-fix signals — surface loudly.
             const severeBounds = w.includes('⚠ BOUNDS') && boundsOverflowPt(w) > BOUNDS_SEVERE_PT;
             if (w.includes('MUST FIX') || severeBounds) {
-              mustFix.push({ file: base, message: w });
+              task.failed = true;
+              mustFix.push({ file: base, message: w, task });
               console.error(`      ${base}: ${w}`);
             } else {
               console.warn(`      ${base}: ${w}`);
@@ -158,8 +155,8 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
         }
       } catch (err) {
         console.error(`      [error] ${base}: ${err.message}`);
+        task.failed = true;
         failures.push({ file: htmlFile, error: err });
-        if (strict) throw err;
       } finally {
         doneCount++;
         console.log(`    [done  ${doneCount}/${total}] ${base}`);
@@ -169,6 +166,25 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
 
   const workerCount = Math.max(1, Math.min(concurrency, total));
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  // Remove failed slots in descending source order so earlier slide indices stay stable.
+  const failedTasks = tasks.filter(task => task.failed).sort((a, b) => b.index - a.index);
+  for (const task of failedTasks) {
+    if (task.slide && typeof pptx.removeSlide === 'function') {
+      pptx.removeSlide(task.slide._slideNum);
+    }
+    if (!failures.some(failure => failure.file === task.htmlFile)) {
+      const issue = mustFix.find(item => item.task === task);
+      failures.push({
+        file: task.htmlFile,
+        error: new Error(issue ? issue.message : 'Slide conversion failed'),
+      });
+    }
+  }
+
+  if (strict && failures.length > 0) {
+    throw new Error(failures.map(failure => path.basename(failure.file) + ': ' + failure.error.message).join('\\n'));
+  }
 
   if (failures.length > 0) {
     console.warn(`  ${failures.length} slide(s) failed during conversion.`);
@@ -181,11 +197,6 @@ async function buildPptxFromDirInner(slidesDir, outputPath, options, htmlFiles) 
     console.error(`\n  🚨🚨 ${mustFix.length} slide(s) with SEVERE defects (overflow/BOUNDS>${BOUNDS_SEVERE_PT}pt) — MUST FIX and re-run:`);
     mustFix.forEach(({ file, message }) => console.error(`     - ${file}: ${message}`));
     console.error('');
-    // 严重溢出页已从产物中剔除:该页不再出现在 pptx 里,按失败口径上报
-    for (const mf of mustFix) {
-      const f = htmlFiles.find(hf => path.basename(hf) === mf.file);
-      if (f && !failures.some(x => x.file === f)) failures.push({ file: f, error: new Error(mf.message) });
-    }
   }
 
   await pptx.writeFile({ fileName: outputPath });
