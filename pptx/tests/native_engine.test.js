@@ -118,3 +118,17 @@ test('deck schema accepts horizontal and vertical native lines', () => {
   assert.deepEqual(validateDeck({ slides: [{ elements: [{ type: 'line', x: 1, y: 1, w: 4, h: 0 }, { type: 'line', x: 1, y: 1, w: 0, h: 2 }] }] }), []);
   assert.ok(validateDeck({ slides: [{ elements: [{ type: 'line', x: 1, y: 1, w: 0, h: 0 }] }] }).length > 0);
 });
+
+
+test('native renderer accepts a valid editable bar chart', async () => {
+  const { buildPresentation } = require('../native');
+  const result = await buildPresentation({
+    slides: [{
+      elements: [{
+        type: 'chart', chartType: 'bar', x: 1, y: 1, w: 5, h: 3,
+        data: [{ name: 'Revenue', labels: ['2024', '2025'], values: [10, 12] }]
+      }]
+    }]
+  });
+  assert.equal(result.pptx._slides.length, 1);
+});
