@@ -238,3 +238,18 @@ test('native shape style keeps backwards-compatible defaults', () => {
   assert.equal(style.rotate, 0);
   assert.equal(style.shadow, undefined);
 });
+
+
+test('gradient fills serialize editable DrawingML gradient stops and transparency', () => {
+  const { gradientFillXml } = require('../native/engine/native_pptx');
+  const xml = gradientFillXml({ angle: 135, stops: [
+    { position: 0, color: '#112233' },
+    { position: 1, color: 'E56A42', transparency: 25 }
+  ] });
+  assert.ok(xml.includes('<a:gradFill'));
+  assert.ok(xml.includes('<a:lin ang="8100000"'));
+  assert.ok(xml.includes('<a:gs pos="0">'));
+  assert.ok(xml.includes('<a:gs pos="100000">'));
+  assert.ok(xml.includes('<a:alpha val="75000"/>'));
+  assert.throws(() => gradientFillXml({ stops: [{ position: 0, color: 'FFFFFF' }] }), /at least two/);
+});
