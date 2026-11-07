@@ -8,6 +8,7 @@ const { estimateLineCount, estimateTextHeight, wrapText } = require('../native/e
 const { FontManager } = require('../native/engine/font_manager');
 const { layoutSlide } = require('../native/engine/layout');
 const { validateSlide } = require('../native/engine/validation');
+const components = require('../native/components/text');
 
 test('unit conversion is explicit and deterministic', () => {
   assert.equal(toInches(72, 'pt'), 1);
