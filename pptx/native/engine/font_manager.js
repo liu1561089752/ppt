@@ -9,7 +9,7 @@ class FontManager {
     this.fallbackFont = options.fallbackFont || null;
     this.cache = new Map();
     this.fontkit = null;
-    try { this.fontkit = require('fontkit'); } catch (_) { /* optional until fontkit is installed */ }
+    try { this.fontkit = require('fontkit'); } catch (_) { /* font metrics remain optional */ }
   }
 
   loadFont(filePath) {
@@ -27,8 +27,7 @@ class FontManager {
   }
 
   fontForCodePoint(codePoint, requestedFace) {
-    const requestedPath = this.fontFiles[requestedFace];
-    const requested = this.loadFont(requestedPath);
+    const requested = this.loadFont(this.fontFiles[requestedFace]);
     if (requested && requested.glyphForCodePoint(codePoint).id !== 0) return requested;
     const fallback = this.loadFont(this.fallbackFont);
     if (fallback && fallback.glyphForCodePoint(codePoint).id !== 0) return fallback;
@@ -37,13 +36,20 @@ class FontManager {
 
   measure(text, fontSizePt, requestedFace) {
     if (!this.fontkit || !text) return null;
-    let width = 0;
+    const runs = [];
     for (const char of Array.from(String(text))) {
       const font = this.fontForCodePoint(char.codePointAt(0), requestedFace);
-      if (!font) return null;
-      const glyph = font.glyphForCodePoint(char.codePointAt(0));
-      if (!glyph || glyph.id === 0) return null;
-      width += (glyph.advanceWidth / font.unitsPerEm) * fontSizePt;
+      if (!font || font.glyphForCodePoint(char.codePointAt(0)).id === 0) return null;
+      const previous = runs[runs.length - 1];
+      if (previous && previous.font === font) previous.text += char;
+      else runs.push({ font, text: char });
+    }
+
+    let width = 0;
+    for (const run of runs) {
+      const shaped = run.font.layout(run.text);
+      const advance = shaped.positions.reduce((sum, position) => sum + position.xAdvance, 0);
+      width += (advance / run.font.unitsPerEm) * fontSizePt;
     }
     return width;
   }
