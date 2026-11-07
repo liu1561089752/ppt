@@ -15,6 +15,15 @@ function validateSlide(elements, pageSize, options = {}) {
     if (el.x < -tolerance || el.y < -tolerance || el.x + el.w > pageSize.width + tolerance || el.y + el.h > pageSize.height + tolerance) {
       warnings.push({ code: 'OUT_OF_BOUNDS', element: i, message: 'Element ' + i + ' exceeds slide bounds', bounds: { x: el.x, y: el.y, w: el.w, h: el.h } });
     }
+    if (el.type === 'text' && Number.isFinite(el._requiredTextHeight) && el._requiredTextHeight > el.h + tolerance) {
+      warnings.push({
+        code: 'TEXT_OVERFLOW_RISK',
+        element: i,
+        message: 'Estimated text height exceeds its text box height',
+        requiredHeight: el._requiredTextHeight,
+        actualHeight: el.h
+      });
+    }
   });
   const textItems = elements.map((el, i) => ({ el, i })).filter(({ el }) => el.type === 'text');
   for (let i = 0; i < textItems.length; i += 1) {
