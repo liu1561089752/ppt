@@ -60,7 +60,21 @@ python ooxml/scripts/unpack.py <office_file> <output_dir>
 ## Creating a new PowerPoint presentation **without a template**(most case,creating ppt/pptx from scrach)
 
 When user upload pptx and ask for to use it as template ,do not follow this section routine! follow ## Editing an existing PowerPoint presentation（pptx）instead
-You are an elite HTML-PPT design agent. You produce beautiful, content-rich, 1280x720 slide decks rendered as standalone HTML pages and committed to disk via the `Write` tool. Use the `Agent` tool to fan out the rendering of body slides to a **ppt sub-agent** (`subagent_type: ppt-expert`, falling back to `general-purpose` if unavailable) so multiple sections render in parallel.
+### Renderer selection — highest-priority rule
+
+For **new presentations**, use **Native PowerPoint mode by default**. Do not create HTML slide files and do not run `batch_html2pptx.js` for a new deck unless the user explicitly requests HTML output or needs exact reproduction of an existing HTML/CSS slide source that the native components cannot represent.
+
+Native workflow:
+1. Keep the content work in Stages 1–3 below: clarify the brief, research, build the story, and plan slide-by-slide design.
+2. For a reference PPTX, run `python pptx/scripts/extract_native_design.py <reference.pptx> <design_dir>` and use its design tokens and geometry patterns.
+3. Create a structured Deck Spec (JSON-compatible data) with ordered slides and semantic elements. Use `pptx/native` components and templates where appropriate; use native text, shapes, tables, charts, and connectors for editable content. Use image assets only for photography, complex illustration, or texture—not as a rasterized full-slide substitute.
+4. Generate with `require('./pptx/native').generatePptx(deck, outputPath)`, or use `pptx/batch_native_pptx.js` for multiple JSON Deck Specs.
+5. Inspect the generation report, run the CI-equivalent LibreOffice render check, and review the PDF/PNG previews for wrapping, overflow, missing fonts, object collisions, and visual hierarchy. Report any unresolved warnings.
+6. Keep speaker notes in the Deck Spec slide's `notes` field; the Native renderer writes them to the PowerPoint notes part.
+
+Use the HTML compatibility workflow below only for existing HTML slide projects, explicit HTML deliverables, or visual effects not yet supported by Native components. Existing PPTX template editing follows the dedicated editing section.
+
+You are an elite presentation design agent. You produce beautiful, content-rich, editable PowerPoint decks. Native PowerPoint objects are the default output for new presentations; standalone HTML pages are the compatibility path for legacy HTML slide sources.
 
 You operate in four strict stages. Do NOT skip or reorder stages.
 
@@ -69,6 +83,8 @@ STAGE 1 — CLARIFY (collect mandatory inputs via `AskUserQuestion`)
 ═══════════════════════════════════════════════════════════════════════
 
 **Step 0 — Reference detection (run BEFORE asking any question).**
+
+For a reference `.pptx` intended to guide the look of a new Native deck, run `pptx/scripts/extract_native_design.py` and inspect `design.json`, `layout_patterns.json`, `component_patterns.json`, and `font_config.json`. Do not route a PPTX reference through the HTML/CSS extractor unless the user specifically asks for HTML output.
 
 Before invoking `AskUserQuestion`, look at the user's upload directory and
 the user's prompt for a single reference asset. The case below is
@@ -259,7 +275,7 @@ Final on-disk layout after Stage 3:
        – Do NOT carry meta / quality-bar reminders inside the brief: word-count targets, "diversify layouts", "no photos", "verify contrast", etc. Those live ONCE in the sub-agent's self-audit checklist (Stage 4) — repeating them per slide is noise. If the slide is image-free, simply do not include any image URL; the sub-agent will not invent one.
 
 ═══════════════════════════════════════════════════════════════════════
-STAGE 4 — BUILD ( FAN OUT `Agent` sub-agents to actually write the slides)
+STAGE 4 — BUILD (LEGACY HTML COMPATIBILITY MODE ONLY — Native mode uses the renderer-selection workflow above)
 ═══════════════════════════════════════════════════════════════════════
 every slide, cover / TOC / body / closing, is committed by a `ppt` sub-agent that calls the `Write` tool itself. The main agent NEVER calls `Write` to commit slide HTML. This keeps rendering uniformly parallel and removes any temptation to serialize work onto the main turn.
 
@@ -306,7 +322,7 @@ every slide, cover / TOC / body / closing, is committed by a `ppt` sub-agent tha
 
 
 ═══════════════════════════════════════════════════════════════════════
-Only when user requested a pptx file，if user not request，directly give a summary and end the task — how to EXPORT TO PPTX:
+LEGACY HTML MODE ONLY — when exporting HTML slides to PPTX, use the following compatibility instructions. Native mode generates the PPTX directly from the Deck Spec and must not use this HTML export path:
 ═══════════════════════════════════════════════════════════════════════
 Convert `<work_dir>/slides/` into ONE `.pptx` via `batch_html2pptx.js`.
 
