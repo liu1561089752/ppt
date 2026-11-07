@@ -543,9 +543,9 @@ The repository now includes an initial editable-object generation engine in `ppt
 
 ### When to use it
 
-Use Native mode for decks where editable text, shapes, tables, and stable object coordinates are more important than exact reproduction of arbitrary CSS. Use HTML compatibility mode only for legacy HTML slide sources or highly art-directed compositions that are not yet represented by native components.
+Use Native mode by default for new presentations. It produces editable PowerPoint text, shapes, lines, images, tables, and charts with structured layout validation. Use HTML compatibility mode for existing HTML slide projects, explicit HTML deliverables, or browser-specific compositions that have not yet been translated into Native elements.
 
-Native mode is an opt-in preview in this first migration stage. Do not silently route existing HTML projects to it until visual regression coverage is in place.
+Do not silently migrate an existing HTML project: preserve its current renderer unless the user requests migration. Native is the default for new work, while the legacy HTML path remains supported and must retain its visual design language during any migration.
 
 ### Deck Spec
 
@@ -574,7 +574,7 @@ const deck = {
 await generatePptx(deck, 'strategy.pptx');
 ```
 
-All geometry is in inches. Supported element types in this first increment are `text`, `shape`, `line`, `image`, and `table`. Text can be a string or an array of rich-text runs. Images accept a local `path` or PptxGenJS-compatible `data`. Tables accept `rows` and optional PptxGenJS table options.
+All geometry is in inches. Supported element types are `text`, `shape`, `line`, `image`, `table`, and editable `chart`. Text can be a string or an array of rich-text runs. Images accept a local `path` or PptxGenJS-compatible `data`. Tables accept `rows` and optional PptxGenJS table options. Shapes support editable gradients, transparency, rounded-rectangle geometry, rotation, line styling, and shadows.
 
 ### API and example
 
@@ -589,13 +589,13 @@ All geometry is in inches. Supported element types in this first increment are `
 
 ### Layout and typography limitations
 
-The current text measurement is a conservative fallback estimator, not a full font-shaping engine. It distinguishes CJK glyphs, Latin glyphs, whitespace, and common narrow/wide characters, then adds a safety margin. It does not yet read installed font metrics, shape complex scripts, or guarantee identical wrapping in PowerPoint and LibreOffice. The renderer uses native text boxes and asks PptxGenJS to shrink text to fit; this is a safety net, not a substitute for review.
+The current text measurement is a conservative estimator with optional font-file glyph metrics. It distinguishes CJK glyphs, Latin glyphs, whitespace, and common narrow/wide characters, applies role-specific title/heading/body font sizes and shared line-spacing tokens, and adds a safety margin. It does not perform full OpenType shaping, support every complex script, or guarantee identical wrapping in PowerPoint and LibreOffice. The renderer uses native text boxes and asks PptxGenJS to shrink text to fit; this is a safety net, not a substitute for review.
 
 Always render generated decks in the target Office environment and inspect text wrapping, clipping, font fallback, and object overlap before delivery. The validation report currently checks explicit geometry and text-box intersections; it cannot detect every glyph-level overflow or visual collision.
 
 ### Migration status
 
-This is the first vertical slice, not a completed replacement for the HTML pipeline. It establishes the public API, Deck Spec validation, units, a basic layout pass, native object mapping, theme defaults, and unit tests. Follow-on work should add font-file metrics and CJK line breaking, semantic layout templates, reusable visual components, image crop handling, chart/diagram components, PowerPoint/LibreOffice render regression, and OOXML post-processing for East Asian font properties.
+The Native engine now includes Deck Spec validation, unit conversion, role-aware text measurement, optional font-file metrics, CJK wrapping and punctuation handling, shared design tokens, reusable templates/components, editable text/shapes/images/tables/charts, gradient/shadow/transparency OOXML support, East Asian font properties, batch generation, LibreOffice render checks, and pixel-regression tooling. It is the default for new presentations but is not a universal CSS renderer or a guarantee of pixel-identical output across Office renderers. Remaining release gates are human review of paired HTML/Native slides, approved Golden PNGs, and spot checks in Microsoft PowerPoint on supported platforms.
 
 Do not remove or change the legacy HTML engine as part of Native mode development. Both paths are intentionally kept side by side during migration.
 
@@ -632,7 +632,7 @@ Rich-text run arrays are kept editable and are currently measured as plain text;
 - `components.kpiCard(options)`, `components.infoCard(options)` return arrays of editable shape/text elements.
 - `templates.cover(options)`, `templates.content(options)`, and `templates.kpi(options)` return slide specifications ready to add to `deck.slides`.
 
-These are starter design primitives. Compose and adapt them to the content hierarchy instead of using every component as a repeated card; the design system should retain variation across slide types.
+These are starter design primitives. Additional templates include `templates.comparison(options)`, `templates.process(options)`, `templates.hero(options)`, and `templates.editorial(options)`. Compose and adapt them to the content hierarchy instead of using every component as a repeated card; the design system should retain variation across slide types.
 
 
 ### East Asian font properties and editable charts
@@ -691,3 +691,12 @@ The original `extract_pptx_style.py` remains available for the legacy HTML/CSS w
 ### Legacy HTML batch ordering fix
 
 The HTML compatibility batch converter now pre-creates slide slots in the sorted source-file order, then lets workers render into their assigned slide. Failed or severe-warning slides are removed after workers finish, in descending source order. This preserves the original HTML slide order even when concurrent render tasks finish out of order.
+
+
+### Current Native quality gates
+
+- The CI suite runs Node engine tests, creates editable sample decks, inspects DrawingML for gradients/shadows/alpha, renders through LibreOffice/Poppler, and uploads previews.
+- The visual comparator is active, but it only performs real deck comparisons when reviewed PNGs exist under `pptx/native/golden/<deck>/`. Its self-test is not a substitute for a real baseline.
+- Never add generated PNGs to Golden directories merely to make CI green. A human must review each paired HTML/Native slide and approve the baseline first.
+- LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.
+- CSS token extraction is best-effort. It supports a limited set of colors, font tokens, spacing, simple linear gradients, one simple box shadow, and explicit opacity. Complex CSS cascade, Grid/Flex composition, filters, masks, blend modes, pseudo-elements, and animation require deliberate manual translation.
