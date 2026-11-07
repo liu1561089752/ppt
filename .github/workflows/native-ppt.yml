@@ -56,10 +56,11 @@ jobs:
       - name: Extract design profile from generated deck
         working-directory: pptx/native
         run: python ../scripts/extract_native_design.py native-components-demo.pptx design-profile
-      - name: Compile Python validation scripts
+      - name: Compile and test design extraction scripts
         working-directory: pptx/native
         run: |
-          python -m py_compile ../scripts/extract_native_design.py scripts/render_check.py scripts/visual_regression.py
+          python -m py_compile ../scripts/extract_native_design.py ../scripts/extract_html_design_tokens.py scripts/render_check.py scripts/visual_regression.py
+          python ../scripts/extract_html_design_tokens.py --self-test
           python scripts/visual_regression.py --self-test
       - name: Render and verify demo decks
         working-directory: pptx/native
@@ -92,6 +93,6 @@ jobs:
             pptx/native/native-components-demo.pptx
             pptx/native/batch-dist/
             pptx/native/render-check/
-            pptx/native/design-profile/
+            pptx/native/design-profile/\n            pptx/native/themes/\n            pptx/scripts/extract_html_design_tokens.py
             pptx/native/visual-regression/
             pptx/native/scripts/visual_regression.py
