@@ -51,6 +51,7 @@ function validateDeck(deck) {
           }
         });
         if (element.rotate !== undefined && !Number.isFinite(element.rotate)) errors.push(p + '.rotate must be finite');
+        if (element.radius !== undefined && (!Number.isFinite(element.radius) || element.radius < 0)) errors.push(p + '.radius must be finite and non-negative');
         ['fill', 'lineColor'].forEach((key) => {
           if (typeof element[key] === 'string' && !/^#?[0-9a-f]{6}$/iu.test(element[key])) {
             errors.push(p + '.' + key + ' must be a six-digit hex color');

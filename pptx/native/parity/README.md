@@ -62,3 +62,6 @@ multiple or inset shadows, radial/conic gradients, gradients with image layers,
 filters/backdrop filters, blend modes, masks, pseudo-elements, transitions, and
 browser-specific typography. Preserve the original CSS and manually translate
 these cases into Native layout primitives or targeted vector assets.
+
+
+The paired HTML fixture uses an explicit 1280×720 (16:9) composition. Its pixel geometry is aligned to the Native 13.333×7.5 inch slide at 96 CSS pixels per inch, including the right-side panel, accent bar, title/subtitle boxes, card, and micro-label. The fixture is intended to make manual side-by-side review concrete rather than comparing theme tokens alone.
