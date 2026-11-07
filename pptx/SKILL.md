@@ -633,3 +633,15 @@ Charts remain editable PowerPoint chart objects. Chart-specific styling is passe
 ### Diagram components
 
 The component library also exports `components.processFlow(steps, options)` and `components.timeline(items, options)`. They return editable text, shape, and line elements. Starter templates include `templates.comparison(options)` and `templates.process(options)`.
+
+
+### Batch generation
+
+Use `pptx/batch_native_pptx.js` to convert one or more JSON Deck Specs into separate PPTX files. Each deck gets its own PptxGenJS instance; slides within one deck are added in source order, and concurrent workers only write independent output files.
+
+```bash
+node pptx/batch_native_pptx.js --input-dir pptx/examples/decks --output-dir dist --concurrency 2
+node pptx/batch_native_pptx.js --input pptx/examples/native_deck.json --output-dir dist
+```
+
+The input directory is scanned for `.json` files in alphabetical order. The concurrency setting is limited to 1–8 and defaults to 2. Input files must have unique base names to prevent output collisions. The script prints a JSON summary with each output path and its slide warnings.
