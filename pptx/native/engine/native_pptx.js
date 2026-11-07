@@ -1,11 +1,14 @@
 'use strict';
 
+const fs = require('node:fs');
+const JSZip = require('jszip');
 const pptxgen = require('pptxgenjs');
 const { normalizePageSize } = require('../core/units');
 const { validateDeck } = require('../core/schema');
 const { layoutSlide } = require('./layout');
 const { validateSlide } = require('./validation');
 const { FontManager } = require('./font_manager');
+const { patchEastAsianFonts } = require('./east_asian_font');
 const defaultTheme = require('../themes/default');
 
 function cleanColor(value, fallback) {
@@ -133,6 +136,20 @@ async function buildPresentation(deck, options = {}) {
   return { pptx, report, pageSize, fontReport: fontManager.inspect() };
 }
 
+async function applyEastAsianFontPatch(outputPath, fontFace) {
+  if (!fontFace) return;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  const targets = Object.keys(zip.files).filter((name) =>
+    /^ppt\/(slides|slideMasters|slideLayouts)\/.*\.xml$/u.test(name) || /^ppt\/theme\/theme\d+\.xml$/u.test(name)
+  );
+  for (const name of targets) {
+    const source = await zip.file(name).async('string');
+    zip.file(name, patchEastAsianFonts(source, fontFace));
+  }
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+}
+
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
@@ -145,4 +162,4 @@ async function generatePptx(deck, outputPath, options = {}) {
   };
 }
 
-module.exports = { buildPresentation, generatePptx };
+module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch };
