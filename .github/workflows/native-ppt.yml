@@ -5,6 +5,7 @@ on:
     branches: [main, native-ppt-engine]
     paths:
       - "pptx/native/**"
+      - "pptx/batch_native_pptx.js"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
