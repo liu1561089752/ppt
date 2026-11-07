@@ -1,6 +1,6 @@
 'use strict';
 
-const ELEMENT_TYPES = new Set(['text', 'shape', 'line', 'image', 'table']);
+const ELEMENT_TYPES = new Set(['text', 'shape', 'line', 'image', 'table', 'chart']);
 
 function validateDeck(deck) {
   const errors = [];
@@ -32,6 +32,7 @@ function validateDeck(deck) {
         errors.push(p + '.text rich-text runs must be strings or objects with a text field');
       }
       if (element.type === 'image' && !element.path && !element.data) errors.push(p + ' requires path or data');
+      if (element.type === 'chart' && (!Array.isArray(element.data) || element.data.length === 0)) errors.push(p + '.data must be a non-empty chart series array');
       ['x', 'y', 'w', 'h'].forEach((key) => {
         if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0)) {
           errors.push(p + '.' + key + ' must be a finite non-negative number');
