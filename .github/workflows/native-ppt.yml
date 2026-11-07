@@ -42,7 +42,7 @@ jobs:
           npm run demo
           npm run demo:components
           npm run batch:example
-      - name: Render and verify demo decks
+      - name: Extract design profile from generated deck\n        working-directory: pptx/native\n        run: python ../scripts/extract_native_design.py native-components-demo.pptx design-profile\n      - name: Compile Python validation scripts\n        working-directory: pptx/native\n        run: python -m py_compile ../scripts/extract_native_design.py scripts/render_check.py\n      - name: Render and verify demo decks
         working-directory: pptx/native
         run: |
           npm run render:demo
@@ -56,4 +56,4 @@ jobs:
             pptx/native/native-demo.pptx
             pptx/native/native-components-demo.pptx
             pptx/native/batch-dist/
-            pptx/native/render-check/
+            pptx/native/render-check/\n            pptx/native/design-profile/
