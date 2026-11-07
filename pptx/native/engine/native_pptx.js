@@ -5,6 +5,7 @@ const { normalizePageSize } = require('../core/units');
 const { validateDeck } = require('../core/schema');
 const { layoutSlide } = require('./layout');
 const { validateSlide } = require('./validation');
+const { FontManager } = require('./font_manager');
 const defaultTheme = require('../themes/default');
 
 function cleanColor(value, fallback) {
@@ -41,7 +42,7 @@ function addElement(slide, el, theme, pptx) {
         }) };
       });
       slide.addText(runs, opts);
-    } else slide.addText(el.text, opts);
+    } else slide.addText(el._renderText || el.text, opts);
   } else if (el.type === 'shape') {
     const shape = el.shape || pptx.ShapeType.rect;
     slide.addShape(shape, {
@@ -58,7 +59,7 @@ function addElement(slide, el, theme, pptx) {
     });
   } else if (el.type === 'image') {
     const source = el.path ? { path: el.path } : { data: el.data };
-    slide.addImage(Object.assign(source, { x: el.x, y: el.y, w: el.w, h: el.h, sizing: el.sizing }));
+    slide.addImage(Object.assign(source, { x: el.x, y: el.y, w: el.w, h: el.h }));
   } else if (el.type === 'table') {
     slide.addTable(el.rows || [], Object.assign({
       x: el.x, y: el.y, w: el.w, h: el.h,
@@ -81,7 +82,7 @@ async function buildPresentation(deck, options = {}) {
   const theme = Object.assign({}, defaultTheme, deck.theme || options.theme || {});
   theme.colors = Object.assign({}, defaultTheme.colors, (deck.theme && deck.theme.colors) || (options.theme && options.theme.colors) || {});
   theme.fonts = Object.assign({}, defaultTheme.fonts, (deck.theme && deck.theme.fonts) || (options.theme && options.theme.fonts) || {});
-  theme.sizes = Object.assign({}, defaultTheme.sizes, (deck.theme && deck.theme.sizes) || (options.theme && options.theme.sizes) || {});
+  theme.sizes = Object.assign({}, defaultTheme.sizes, (deck.theme && deck.theme.sizes) || (options.theme && options.theme.sizes) || {});\n  theme.fontFiles = Object.assign({}, (options.theme && options.theme.fontFiles) || {}, (deck.theme && deck.theme.fontFiles) || {});\n  const fontManager = new FontManager({ fontFiles: theme.fontFiles, fallbackFont: theme.fallbackFontFile || (deck.theme && deck.theme.fallbackFontFile) });
 
   pptx.defineLayout({ name: 'NATIVE_CUSTOM', width: pageSize.width, height: pageSize.height });
   pptx.layout = 'NATIVE_CUSTOM';
@@ -100,8 +101,8 @@ async function buildPresentation(deck, options = {}) {
   for (const [index, spec] of deck.slides.entries()) {
     const slide = pptx.addSlide();
     slide.background = { color: cleanColor(spec.background, theme.colors.background) };
-    const elements = layoutSlide(spec, pageSize, theme);
-    const warnings = validateSlide(elements, pageSize);
+    const elements = layoutSlide(spec, pageSize, theme, { fontManager });
+    const warnings = validateSlide(elements, pageSize);\n    elements.forEach((element, elementIndex) => {\n      (element._layoutWarnings || []).forEach((message) => warnings.push({ code: 'LAYOUT_WARNING', element: elementIndex, message }));\n    });
     elements.forEach((element) => addElement(slide, element, theme, pptx));
     if (spec.notes) slide.addNotes(spec.notes);
     report.push({ slide: index + 1, warnings });
