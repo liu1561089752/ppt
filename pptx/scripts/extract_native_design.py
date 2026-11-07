@@ -26,7 +26,7 @@ def tag_name(element: ET.Element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
 
-def read_color(element: ET.Element) -> str | None:
+def read_color(element: ET.Element, palette: dict[str, str] | None = None) -> str | None:
     for child in element.iter():
         name = tag_name(child)
         if name == "srgbClr" and child.get("val"):
@@ -35,6 +35,10 @@ def read_color(element: ET.Element) -> str | None:
             value = child.get("lastClr")
             if value:
                 return "#" + value.upper()
+        if name == "schemeClr" and palette:
+            value = palette.get(child.get("val", ""))
+            if value:
+                return value
     return None
 
 
@@ -91,7 +95,7 @@ def get_transform(element: ET.Element) -> tuple[float, float, float, float] | No
     return x, y, w, h
 
 
-def extract_slide(xml: bytes, slide_number: int, page_size: dict) -> dict:
+def extract_slide(xml: bytes, slide_number: int, page_size: dict, palette: dict[str, str] | None = None) -> dict:
     root = ET.fromstring(xml)
     colors = collections.Counter()
     fonts = collections.Counter()
@@ -108,7 +112,7 @@ def extract_slide(xml: bytes, slide_number: int, page_size: dict) -> dict:
         text = "".join(part.text or "" for part in node.findall(".//a:t", NS))
         preset = node.find(".//a:prstGeom", NS)
         shape_type = preset.get("prst") if preset is not None else kind
-        fill = read_color(node.find(".//a:solidFill", NS)) if node.find(".//a:solidFill", NS) is not None else None
+        fill = read_color(node.find(".//a:solidFill", NS), palette) if node.find(".//a:solidFill", NS) is not None else None
 
         run_sizes: list[float] = []
         for prop in list(node.iter()):
@@ -131,6 +135,8 @@ def extract_slide(xml: bytes, slide_number: int, page_size: dict) -> dict:
         for color_node in node.iter():
             if tag_name(color_node) == "srgbClr" and color_node.get("val"):
                 colors["#" + color_node.get("val").upper()] += 1
+            elif tag_name(color_node) == "schemeClr" and palette and color_node.get("val") in palette:
+                colors[palette[color_node.get("val")]] += 1
 
         shapes[shape_type] += 1
         record = {
@@ -188,7 +194,7 @@ def main() -> int:
             key=lambda name: int(re.search(r"slide(\d+)\.xml", name).group(1)),
         )
         slides = [
-            extract_slide(archive.read(name), int(re.search(r"slide(\d+)\.xml", name).group(1)), page_size)
+            extract_slide(archive.read(name), int(re.search(r"slide(\d+)\.xml", name).group(1)), page_size, theme["palette"])
             for name in slide_names
         ]
         master_count = len([name for name in names if re.fullmatch(r"ppt/slideMasters/slideMaster\d+\.xml", name)])
