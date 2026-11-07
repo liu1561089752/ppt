@@ -9,6 +9,7 @@ on:
       - "pptx/batch_html2pptx.js"
       - "pptx/slide_order.js"
       - "pptx/scripts/extract_native_design.py"
+      - "pptx/scripts/extract_html_design_tokens.py"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
@@ -102,6 +103,7 @@ jobs:
             pptx/native/batch-dist/
             pptx/native/render-check/
             pptx/native/visual-regression/
-            pptx/native/design-profile/\n            pptx/native/themes/\n            pptx/scripts/extract_html_design_tokens.py
-            pptx/native/visual-regression/
+            pptx/native/design-profile/
+            pptx/native/themes/
+            pptx/scripts/extract_html_design_tokens.py
             pptx/native/scripts/visual_regression.py
