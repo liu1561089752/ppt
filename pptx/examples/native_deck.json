@@ -1,0 +1,56 @@
+{
+  "title": "Native deck spec example",
+  "author": "PPT project",
+  "language": "zh-CN",
+  "pageSize": "wide",
+  "slides": [
+    {
+      "background": "F7F7F4",
+      "elements": [
+        {
+          "type": "text",
+          "text": "用 JSON 描述可编辑幻灯片",
+          "x": 0.8,
+          "y": 0.8,
+          "w": 11.6,
+          "h": 0.7,
+          "fontSize": 30,
+          "bold": true,
+          "color": "183B3A",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "批量入口会为每个 Deck Spec 创建独立 PPTX 文件。",
+          "x": 0.82,
+          "y": 1.8,
+          "w": 11.2,
+          "h": 0.6,
+          "fontSize": 18,
+          "color": "394541",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "shape",
+          "x": 0.82,
+          "y": 3.0,
+          "w": 5.2,
+          "h": 1.6,
+          "fill": "FFFFFF",
+          "lineColor": "DCE2DE"
+        },
+        {
+          "type": "text",
+          "text": "文字、形状、表格和图表保持原生可编辑",
+          "x": 1.05,
+          "y": 3.45,
+          "w": 4.75,
+          "h": 0.55,
+          "fontSize": 16,
+          "color": "183B3A",
+          "align": "center"
+        }
+      ]
+    }
+  ]
+}
