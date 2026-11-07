@@ -6,7 +6,10 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test ../tests/native_engine.test.js",
-    "demo": "node ../examples/native_demo.js native-demo.pptx"
+    "demo": "node ../examples/native_demo.js native-demo.pptx",
+    "demo:components": "node ../examples/native_components_demo.js native-components-demo.pptx",
+    "render:demo": "python scripts/render_check.py native-demo.pptx --output-dir render-check",
+    "render:components": "python scripts/render_check.py native-components-demo.pptx --output-dir render-check"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",
