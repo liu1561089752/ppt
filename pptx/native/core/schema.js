@@ -32,6 +32,30 @@ function validateDeck(deck) {
         errors.push(p + '.text rich-text runs must be strings or objects with a text field');
       }
       if (element.type === 'image' && !element.path && !element.data) errors.push(p + ' requires path or data');
+      if (element.type === 'shape') {
+        ['transparency', 'fillTransparency', 'lineTransparency'].forEach((key) => {
+          if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0 || element[key] > 100)) {
+            errors.push(p + '.' + key + ' must be between 0 and 100');
+          }
+        });
+        if (element.rotate !== undefined && !Number.isFinite(element.rotate)) errors.push(p + '.rotate must be finite');
+        ['fill', 'lineColor'].forEach((key) => {
+          if (typeof element[key] === 'string' && !/^#?[0-9a-f]{6}$/iu.test(element[key])) {
+            errors.push(p + '.' + key + ' must be a six-digit hex color');
+          }
+        });
+        if (element.shadow !== undefined && element.shadow !== false && typeof element.shadow === 'object') {
+          const shadow = element.shadow;
+          if (shadow.opacity !== undefined && (!Number.isFinite(shadow.opacity) || shadow.opacity < 0 || shadow.opacity > 1)) errors.push(p + '.shadow.opacity must be between 0 and 1');
+          ['blur', 'distance'].forEach((key) => {
+            if (shadow[key] !== undefined && (!Number.isFinite(shadow[key]) || shadow[key] < 0)) errors.push(p + '.shadow.' + key + ' must be finite and non-negative');
+          });
+          if (shadow.angle !== undefined && !Number.isFinite(shadow.angle)) errors.push(p + '.shadow.angle must be finite');
+          if (shadow.color !== undefined && (typeof shadow.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(shadow.color))) errors.push(p + '.shadow.color must be a six-digit hex color');
+        } else if (element.shadow !== undefined && element.shadow !== false && element.shadow !== true) {
+          errors.push(p + '.shadow must be a boolean or options object');
+        }
+      }
       if (element.gradient !== undefined) {
         if (element.type !== 'shape') errors.push(p + '.gradient is only supported on shapes');
         const stops = element.gradient && element.gradient.stops;

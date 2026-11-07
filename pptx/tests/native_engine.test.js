@@ -325,3 +325,18 @@ test('hero and editorial templates preserve asymmetric and editorial layout patt
   assert.equal(editorial.elements.filter((element) => element.type === 'shape').length, 3);
   assert.ok(editorial.elements.some((element) => element.type === 'text' && element.text === '观点与背景'));
 });
+
+
+test('deck schema rejects invalid native shape effects before serialization', () => {
+  const invalid = { slides: [{ elements: [
+    { type: 'shape', x: 0, y: 0, w: 2, h: 1, fill: 'not-a-color', transparency: 140 },
+    { type: 'shape', x: 3, y: 0, w: 2, h: 1, shadow: { opacity: 1.4, blur: -2, color: 'bad' } },
+    { type: 'shape', x: 6, y: 0, w: 2, h: 1, rotate: NaN }
+  ] }] };
+  const errors = validateDeck(invalid);
+  assert.ok(errors.some((message) => message.includes('fill must be a six-digit')));
+  assert.ok(errors.some((message) => message.includes('transparency must be between 0 and 100')));
+  assert.ok(errors.some((message) => message.includes('shadow.opacity')));
+  assert.ok(errors.some((message) => message.includes('shadow.blur')));
+  assert.ok(errors.some((message) => message.includes('rotate must be finite')));
+});
