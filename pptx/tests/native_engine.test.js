@@ -72,6 +72,11 @@ test('Chinese punctuation is not stranded at the start of a wrapped line', () =>
 });
 
 test('component factories return editable PowerPoint elements', () => {
+  const styledTitle = components.title('Styled', { italic: true, underline: true, charSpacing: 1.1 });
+  assert.equal(styledTitle.italic, true);
+  assert.equal(styledTitle.underline, true);
+  assert.equal(styledTitle.charSpacing, 1.1);
+
   const api = require('../native');
   const card = api.components.kpiCard({ label: '营收', value: '¥12.8M', x: 1, y: 1 });
   assert.equal(card[0].type, 'shape');

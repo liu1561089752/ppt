@@ -13,11 +13,17 @@ function title(text, options = {}) {
     fontFace: options.fontFace || theme.fonts.heading,
     fontSize: options.fontSize || theme.sizes.title,
     bold: options.bold === undefined ? true : options.bold,
+    italic: !!options.italic,
+    underline: !!options.underline,
+    strike: !!options.strike,
     color: options.color || theme.colors.primary,
     align: options.align || 'left',
     valign: 'mid',
     margin: 0,
-    charSpacing: options.charSpacing === undefined ? theme.typography.titleTracking : options.charSpacing
+    charSpacing: options.charSpacing === undefined ? theme.typography.titleTracking : options.charSpacing,
+    lineSpacingMultiple: options.lineSpacingMultiple,
+    paraSpaceAfterPt: options.paraSpaceAfterPt,
+    transparency: options.transparency
   };
 }
 
@@ -33,10 +39,16 @@ function paragraph(text, options = {}) {
     fontSize: options.fontSize || theme.sizes.body,
     color: options.color || theme.colors.foreground,
     bold: options.bold === undefined ? ['bold', '600', '700', '800', '900'].includes(String(theme.typography.bodyWeight).toLowerCase()) : !!options.bold,
+    italic: !!options.italic,
+    underline: !!options.underline,
+    strike: !!options.strike,
     align: options.align || 'left',
     valign: options.valign || 'top',
     margin: options.margin === undefined ? 0.02 : options.margin,
-    charSpacing: options.charSpacing === undefined ? theme.typography.bodyTracking : options.charSpacing
+    charSpacing: options.charSpacing === undefined ? theme.typography.bodyTracking : options.charSpacing,
+    lineSpacingMultiple: options.lineSpacingMultiple,
+    paraSpaceAfterPt: options.paraSpaceAfterPt,
+    transparency: options.transparency
   };
 }
 
