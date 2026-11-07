@@ -510,3 +510,68 @@ Required dependencies (should already be installed):
 - **LibreOffice**: `sudo apt-get install libreoffice` (PDF conversion)
 - **Poppler**: `sudo apt-get install poppler-utils` (pdftoppm)
 - **defusedxml**: `pip install defusedxml` (secure XML parsing)
+
+
+---
+
+## Native PowerPoint generation (new engine)
+
+The repository now includes an initial editable-object generation engine in `pptx/native/`. It uses PptxGenJS directly and does not render a slide through HTML or a browser. The existing `html2pptx1.js` and `batch_html2pptx.js` remain the compatibility path.
+
+### When to use it
+
+Use Native mode for decks where editable text, shapes, tables, and stable object coordinates are more important than exact reproduction of arbitrary CSS. Use HTML compatibility mode only for legacy HTML slide sources or highly art-directed compositions that are not yet represented by native components.
+
+Native mode is an opt-in preview in this first migration stage. Do not silently route existing HTML projects to it until visual regression coverage is in place.
+
+### Deck Spec
+
+A deck is described as structured JavaScript data (JSON-compatible):
+
+```js
+const { generatePptx } = require('./native');
+
+const deck = {
+  title: 'Quarterly strategy',
+  language: 'zh-CN',
+  pageSize: 'wide', // wide (16:9), standard (4:3), or { width, height } in inches
+  slides: [{
+    background: 'F7F7F4',
+    margin: 0.6,
+    gap: 0.2,
+    elements: [
+      { type: 'text', text: '战略重点', x: 0.8, y: 0.7, w: 11.7, h: 0.7,
+        fontSize: 30, bold: true, fontFace: 'Microsoft YaHei', color: '183B3A' },
+      { type: 'shape', x: 0.8, y: 2, w: 4, h: 1.5, fill: 'FFFFFF' },
+      { type: 'line', x: 0.8, y: 4, w: 11.7, h: 0, color: 'D36B45' }
+    ]
+  }]
+};
+
+await generatePptx(deck, 'strategy.pptx');
+```
+
+All geometry is in inches. Supported element types in this first increment are `text`, `shape`, `line`, `image`, and `table`. Text can be a string or an array of rich-text runs. Images accept a local `path` or PptxGenJS-compatible `data`. Tables accept `rows` and optional PptxGenJS table options.
+
+### API and example
+
+- Public API: `require('./native')`
+- `buildPresentation(deck, options)`: build in memory and return the PptxGenJS instance plus layout warnings.
+- `generatePptx(deck, outputPath, options)`: write a .pptx file.
+- `validateDeck(deck)`: validate the basic Deck Spec structure.
+- `layoutSlide(slide, pageSize, theme)`: assign default positions and estimate text heights.
+- `validateSlide(elements, pageSize)`: report slide-boundary violations and text-to-text overlaps.
+- Example: `node pptx/examples/native_demo.js output.pptx`
+- Tests: `node --test pptx/tests/native_engine.test.js`
+
+### Layout and typography limitations
+
+The current text measurement is a conservative fallback estimator, not a full font-shaping engine. It distinguishes CJK glyphs, Latin glyphs, whitespace, and common narrow/wide characters, then adds a safety margin. It does not yet read installed font metrics, shape complex scripts, or guarantee identical wrapping in PowerPoint and LibreOffice. The renderer uses native text boxes and asks PptxGenJS to shrink text to fit; this is a safety net, not a substitute for review.
+
+Always render generated decks in the target Office environment and inspect text wrapping, clipping, font fallback, and object overlap before delivery. The validation report currently checks explicit geometry and text-box intersections; it cannot detect every glyph-level overflow or visual collision.
+
+### Migration status
+
+This is the first vertical slice, not a completed replacement for the HTML pipeline. It establishes the public API, Deck Spec validation, units, a basic layout pass, native object mapping, theme defaults, and unit tests. Follow-on work should add font-file metrics and CJK line breaking, semantic layout templates, reusable visual components, image crop handling, chart/diagram components, PowerPoint/LibreOffice render regression, and OOXML post-processing for East Asian font properties.
+
+Do not remove or change the legacy HTML engine as part of Native mode development. Both paths are intentionally kept side by side during migration.
