@@ -40,3 +40,25 @@ Review the HTML reference and Native render side by side at the same 16:9 viewpo
 3. Keep the HTML source and its paired Deck Spec/example together so later engine changes can be compared against the same design intent.
 4. A pixel metric is a regression signal, not an aesthetic judge. Typography rasterization and font substitution can create noise; composition and hierarchy still require human review.
 5. Track unsupported CSS effects explicitly. Prefer native PowerPoint shapes, lines, transparency, gradients, and editable charts; use targeted SVG/image assets only for details that cannot be expressed cleanly as native objects.
+
+
+## Supported CSS migration subset
+
+The extractor and migration demo intentionally support a narrow, reviewable subset:
+
+| CSS source | Extracted token | Native translation |
+|---|---|---|
+| Simple `linear-gradient()` with 2+ solid-color stops | `theme.backgrounds.gradient` | Editable DrawingML gradient on a shape |
+| One simple `box-shadow` | `theme.effects.shadow` | Editable PowerPoint outer shadow |
+| Explicit opacity token | `theme.effects.opacity` | Applied to gradient stop alpha and shadow opacity in the migration fixture |
+| Colors, font families, sizes, spacing, radii | Existing theme token groups | Shared Native design tokens |
+
+The migration demo and CI additionally inspect the generated PPTX XML for gradient,
+shadow, and alpha nodes. This proves the effects were serialized as editable DrawingML;
+it does not prove visual equivalence to a browser renderer.
+
+Not automatically translated: CSS Grid/Flex sizing, arbitrary cascade/specificity,
+multiple or inset shadows, radial/conic gradients, gradients with image layers,
+filters/backdrop filters, blend modes, masks, pseudo-elements, transitions, and
+browser-specific typography. Preserve the original CSS and manually translate
+these cases into Native layout primitives or targeted vector assets.

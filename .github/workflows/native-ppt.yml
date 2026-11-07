@@ -63,13 +63,17 @@ jobs:
           npm run demo
           npm run demo:components
           npm run batch:example
+      - name: Verify editable OOXML visual effects
+        working-directory: pptx/native
+        run: |
+          python scripts/verify_native_ooxml.py native-design-migration-demo.pptx --require-gradient --require-shadow --require-alpha
       - name: Extract design profile from generated deck
         working-directory: pptx/native
         run: python ../scripts/extract_native_design.py native-components-demo.pptx design-profile
       - name: Compile and test design extraction scripts
         working-directory: pptx/native
         run: |
-          python -m py_compile ../scripts/extract_native_design.py ../scripts/extract_html_design_tokens.py scripts/render_check.py scripts/visual_regression.py
+          python -m py_compile ../scripts/extract_native_design.py ../scripts/extract_html_design_tokens.py scripts/render_check.py scripts/visual_regression.py scripts/verify_native_ooxml.py
           python ../scripts/extract_html_design_tokens.py --self-test
           python scripts/visual_regression.py --self-test
       - name: Render and verify demo decks
