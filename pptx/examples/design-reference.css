@@ -1,0 +1,29 @@
+/* Reference visual language used to test HTML/CSS -> Native theme migration. */
+:root {
+  --color-background: #101820;
+  --color-foreground: #F5F7F8;
+  --color-primary: #F2AA4C;
+  --color-accent: #00A6A6;
+  --color-muted: #AAB7C4;
+  --color-surface: #1B2836;
+  --color-border: #344657;
+  --font-heading: "Aptos Display", sans-serif;
+  --font-body: "Aptos", sans-serif;
+  --font-cjk: "Microsoft YaHei", sans-serif;
+  --font-size-title: 38px;
+  --font-size-heading: 26px;
+  --font-size-body: 18px;
+  --font-size-caption: 12px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 20px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+  --radius-card: 14px;
+}
+body {
+  color: #F5F7F8;
+  background: #101820;
+  font-family: "Aptos", sans-serif;
+  font-size: 18px;
+}
