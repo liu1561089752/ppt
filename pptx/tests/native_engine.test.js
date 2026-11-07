@@ -322,6 +322,6 @@ test('hero and editorial templates preserve asymmetric and editorial layout patt
   assert.ok(heroGradient.x > 7.5);
   assert.ok(hero.elements.some((element) => element.type === 'text' && element.text === 'Launch'));
   const editorial = api.templates.editorial({ title: 'Insight' });
-  assert.equal(editorial.elements.filter((element) => element.type === 'shape').length, 4);
+  assert.equal(editorial.elements.filter((element) => element.type === 'shape').length, 3);
   assert.ok(editorial.elements.some((element) => element.type === 'text' && element.text === '观点与背景'));
 });

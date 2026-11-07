@@ -113,7 +113,7 @@ function hero(options = {}) {
     elements: [
       panel,
       { type: 'shape', x: 8.78, y: 1.25, w: 3.35, h: 4.95, fill: false,
-        line: { color: theme.colors.foreground, transparency: 82, width: 1 } },
+        lineColor: theme.colors.foreground, lineTransparency: 82, lineWidth: 1 },
       { type: 'shape', x: margin, y: 0.98, w: 0.12, h: 0.48, fill: theme.colors.accent, line: false },
       { type: 'text', text: options.kicker || 'PRESENTATION / OVERVIEW',
         x: margin + 0.28, y: 1.02, w: 6.8, h: 0.3,

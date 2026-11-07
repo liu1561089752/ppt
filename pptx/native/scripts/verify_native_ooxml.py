@@ -32,7 +32,7 @@ def inspect(path: Path) -> dict[str, int]:
             counts["gradients"] += len(root.findall(".//a:gradFill", NS))
             counts["shadows"] += len(root.findall(".//a:outerShdw", NS))
             counts["alpha_nodes"] += len(root.findall(".//a:alpha", NS))
-            counts["charts"] += len(root.findall(".//a:graphicFrame", NS))
+            counts["charts"] += len(root.findall(".//p:graphicFrame", NS))
             counts["pictures"] += len(root.findall(".//p:pic", NS))
     return counts
 

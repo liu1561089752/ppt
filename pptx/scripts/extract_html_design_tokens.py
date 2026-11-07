@@ -305,7 +305,7 @@ def extract(css: str) -> dict:
         "cssSelectors": selectors,
         "notes": [
             "CSS tokens are best-effort mappings; review before production use.",
-            "Simple linear-gradient() and single box-shadow declarations are extracted as migration hints; review CSS angle, shadow units, opacity scope and renderer differences before applying."
+            "Simple linear-gradient() and single box-shadow declarations are extracted as migration hints; review CSS angle, shadow units, opacity scope and renderer differences before applying.",
             "Complex selectors, multiple shadows, filters, pseudo-elements, blend modes and browser-only effects are not recreated automatically."
         ]
     }
