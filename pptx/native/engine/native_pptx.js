@@ -185,6 +185,47 @@ async function buildPresentation(deck, options = {}) {
   return { pptx, report, pageSize, fontReport: fontManager.inspect() };
 }
 
+function gradientFillXml(gradient) {
+  const stops = gradient && gradient.stops;
+  if (!Array.isArray(stops) || stops.length < 2) throw new Error('Gradient fill requires at least two color stops');
+  const normalized = stops.map((stop) => {
+    const position = Math.max(0, Math.min(100000, Math.round(Number(stop.position) * (Number(stop.position) <= 1 ? 100000 : 1))));
+    if (!Number.isFinite(position)) throw new Error('Gradient stop position must be finite');
+    return { position, color: cleanColor(stop.color, '000000'), transparency: Math.max(0, Math.min(100, Number(stop.transparency) || 0)) };
+  }).sort((a, b) => a.position - b.position);
+  const angle = Math.round((((Number(gradient.angle) || 0) % 360 + 360) % 360) * 60000);
+  const stopXml = normalized.map((stop) =>
+    '<a:gs pos="' + stop.position + '"><a:srgbClr val="' + stop.color + '">' +
+    (stop.transparency ? '<a:alpha val="' + Math.round((100 - stop.transparency) * 1000) + '"/>' : '') +
+    '</a:srgbClr></a:gs>'
+  ).join('');
+  return '<a:gradFill rotWithShape="1"><a:gsLst>' + stopXml +
+    '</a:gsLst><a:lin ang="' + angle + '" scaled="1"/></a:gradFill>';
+}
+
+async function patchGradientFills(outputPath, deck) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  for (let slideIndex = 0; slideIndex < deck.slides.length; slideIndex++) {
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    let shapeIndex = 0;
+    const shapeElements = deck.slides[slideIndex].elements.filter((element) => element.type === 'text' || element.type === 'shape');
+    let xml = await file.async('string');
+    xml = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapeElements[shapeIndex++];
+      if (!element || element.type !== 'shape' || !element.gradient) return whole;
+      const fillXml = gradientFillXml(element.gradient);
+      const patched = inner.replace(/<a:solidFill>[\s\S]*?<\/a:solidFill>/u, fillXml);
+      if (patched === inner) throw new Error('Unable to locate solid shape fill for gradient on slide ' + (slideIndex + 1));
+      return '<p:sp>' + patched + '</p:sp>';
+    });
+    zip.file(name, xml);
+  }
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+}
+
 async function applyEastAsianFontPatch(outputPath, fontFace) {
   if (!fontFace) return;
   const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
@@ -203,6 +244,7 @@ async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
   await result.pptx.writeFile({ fileName: outputPath });
+  if (deck.slides.some((slide) => slide.elements.some((element) => element.type === 'shape' && element.gradient))) await patchGradientFills(outputPath, deck);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
   return {
@@ -213,4 +255,4 @@ async function generatePptx(deck, outputPath, options = {}) {
   };
 }
 
-module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch, shapeStyle };
+module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml, shapeStyle };
