@@ -10,8 +10,8 @@ function addEastAsianFontToProperties(xml, tagName, fontFace) {
   xml = xml.replace(selfClosing, '<a:' + tagName + '$1><a:ea typeface="' + face + '"/></a:' + tagName + '>');
   const paired = new RegExp('<a:' + tagName + '\\b([^>]*)>([\\s\\S]*?)</a:' + tagName + '>', 'g');
   return xml.replace(paired, (match, attributes, inner) => {
-    const cleaned = inner.replace(/<a:ea\\b[^>]*\\/>/g, '');
-    const latin = /<a:latin\\b[^>]*\\/>/.exec(cleaned);
+    const cleaned = inner.replace(new RegExp('<a:ea\\b[^>]*\\/>', 'g'), '');
+    const latin = new RegExp('<a:latin\\b[^>]*\\/>').exec(cleaned);
     const next = latin
       ? cleaned.slice(0, latin.index + latin[0].length) + '<a:ea typeface="' + face + '"/>' + cleaned.slice(latin.index + latin[0].length)
       : cleaned + '<a:ea typeface="' + face + '"/>';
@@ -24,7 +24,7 @@ function patchEastAsianFonts(xml, fontFace) {
   for (const tag of ['rPr', 'defRPr', 'endParaRPr']) {
     output = addEastAsianFontToProperties(output, tag, fontFace);
   }
-  return output.replace(/<a:ea\\b[^>]*\\/>/g, '<a:ea typeface="' + escapeXml(fontFace) + '"/>');
+  return output.replace(new RegExp('<a:ea\\b[^>]*\\/>', 'g'), '<a:ea typeface="' + escapeXml(fontFace) + '"/>');
 }
 
 module.exports = { patchEastAsianFonts };
