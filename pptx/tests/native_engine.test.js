@@ -169,3 +169,44 @@ test('legacy concurrent HTML conversion reserves and removes slide slots in sour
   assert.deepEqual(removed, [4, 2]);
   assert.deepEqual(slides.map((slide) => slide._slideNum), [1, 2]);
 });
+
+
+test('shared design system resolves legacy and expanded visual tokens', () => {
+  const api = require('../native');
+  const theme = api.resolveTheme({
+    colors: { primary: '123456', accent: 'E56A42' },
+    fonts: { heading: 'Aptos Display', body: 'Arial' },
+    sizes: { title: 36 },
+    spacing: { lg: 0.42 },
+    radii: { medium: 0.18 },
+    typography: { titleTracking: 1.2 },
+    effects: { softShadow: true }
+  });
+  assert.equal(theme.colors.primary, '123456');
+  assert.equal(theme.colors.background, api.defaultTheme.colors.background);
+  assert.equal(theme.fonts.heading, 'Aptos Display');
+  assert.equal(theme.sizes.title, 36);
+  assert.equal(theme.spacing.lg, 0.42);
+  assert.equal(theme.radii.medium, 0.18);
+  assert.equal(theme.typography.titleTracking, 1.2);
+  assert.equal(theme.effects.softShadow, true);
+});
+
+test('native templates propagate custom design tokens into editable elements', () => {
+  const api = require('../native');
+  const slide = api.templates.cover({
+    title: 'Custom theme',
+    theme: {
+      colors: { background: '101820', primary: 'F2AA4C', accent: '00A6A6', muted: 'CCD6DD' },
+      fonts: { heading: 'Arial', body: 'Arial' },
+      sizes: { title: 38 }
+    }
+  });
+  assert.equal(slide.background, '101820');
+  const title = slide.elements.find((element) => element.type === 'text' && element.text === 'Custom theme');
+  assert.equal(title.color, 'F2AA4C');
+  assert.equal(title.fontFace, 'Arial');
+  assert.equal(title.fontSize, 34);
+  const rule = slide.elements.find((element) => element.type === 'line');
+  assert.equal(rule.color, '00A6A6');
+});
