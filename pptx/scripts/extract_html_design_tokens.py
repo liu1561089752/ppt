@@ -62,7 +62,7 @@ def length_to_inches(value: str) -> float | None:
 
 
 def font_family(value: str) -> str:
-    return value.strip().split(",")[0].strip().strip("\\"'") or "Aptos"
+    return value.strip().split(",")[0].strip().strip("\"'") or "Aptos"
 
 
 def extract(css: str) -> dict:
