@@ -5,14 +5,14 @@ const { resolveTheme } = require('../themes/design_system');
 function title(text, options = {}) {
   const theme = resolveTheme(options.theme);
   return {
-    type: 'text', text,
+    type: 'text', role: 'title', text,
     x: options.x === undefined ? theme.layouts.pageMarginX : options.x,
     y: options.y === undefined ? 0.62 : options.y,
     w: options.w === undefined ? 11.9 : options.w,
     h: options.h === undefined ? 0.62 : options.h,
     fontFace: options.fontFace || theme.fonts.heading,
     fontSize: options.fontSize || theme.sizes.title,
-    bold: options.bold === undefined ? true : options.bold,
+    bold: options.bold === undefined ? ['bold', 'bolder', '600', '700', '800', '900'].includes(String(theme.typography.titleWeight).toLowerCase()) || Number(theme.typography.titleWeight) >= 600 : options.bold,
     italic: !!options.italic,
     underline: !!options.underline,
     strike: !!options.strike,
@@ -30,7 +30,7 @@ function title(text, options = {}) {
 function paragraph(text, options = {}) {
   const theme = resolveTheme(options.theme);
   return {
-    type: 'text', text,
+    type: 'text', role: 'body', text,
     x: options.x === undefined ? theme.layouts.pageMarginX : options.x,
     y: options.y === undefined ? 1.55 : options.y,
     w: options.w === undefined ? 11.85 : options.w,

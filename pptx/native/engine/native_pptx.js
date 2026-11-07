@@ -16,13 +16,26 @@ function cleanColor(value, fallback) {
   return String(value || fallback || '000000').replace(/^#/, '').toUpperCase();
 }
 
+function isBoldWeight(weight, fallback = false) {
+  if (weight === undefined || weight === null || weight === '') return fallback;
+  const normalized = String(weight).trim().toLowerCase();
+  if (['normal', 'regular', '400', '300', '200', '100'].includes(normalized)) return false;
+  if (['bold', 'bolder', '600', '700', '800', '900'].includes(normalized)) return true;
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? numeric >= 600 : fallback;
+}
+
 function textOptions(el, theme) {
+  const isTitle = el.role === 'title' || el.role === 'heading';
+  const weight = isTitle
+    ? (el.role === 'title' ? theme.typography.titleWeight : theme.typography.headingWeight)
+    : theme.typography.bodyWeight;
   return {
     x: el.x, y: el.y, w: el.w, h: el.h,
-    fontFace: el.fontFace || theme.fonts.body,
-    fontSize: el.fontSize || theme.sizes.body,
+    fontFace: el.fontFace || (isTitle ? theme.fonts.heading : theme.fonts.body),
+    fontSize: el.fontSize || (isTitle ? theme.sizes[el.role] || theme.sizes.title : theme.sizes.body),
     color: cleanColor(el.color, theme.colors.foreground),
-    bold: !!el.bold,
+    bold: el.bold === undefined ? isBoldWeight(weight, false) : !!el.bold,
     italic: !!el.italic,
     underline: !!el.underline,
     strike: !!el.strike,
@@ -288,4 +301,4 @@ async function generatePptx(deck, outputPath, options = {}) {
   };
 }
 
-module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml, shapeStyle };
+module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml, shapeStyle, isBoldWeight };

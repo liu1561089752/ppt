@@ -404,3 +404,35 @@ test('native text styling preserves italic underline strike and character spacin
     if (fs.existsSync(output)) fs.unlinkSync(output);
   }
 });
+
+
+test('typography tokens control title and body weights in editable text components', () => {
+  const api = require('../native');
+  const theme = {
+    typography: { titleWeight: '500', headingWeight: '700', bodyWeight: 'normal' },
+    fonts: { heading: 'Aptos Display', body: 'Aptos' }
+  };
+  const title = api.components.title('Title', { theme });
+  const paragraph = api.components.paragraph('Body', { theme });
+  assert.equal(title.bold, false);
+  assert.equal(title.role, 'title');
+  assert.equal(paragraph.bold, false);
+  const { isBoldWeight } = require('../native/engine/native_pptx');
+  assert.equal(isBoldWeight('600'), true);
+  assert.equal(isBoldWeight('400'), false);
+  assert.equal(isBoldWeight('semibold'), false);
+});
+
+test('raw title and body elements inherit shared theme font weights', async () => {
+  const { buildPresentation } = require('../native');
+  const result = await buildPresentation({
+    theme: { typography: { titleWeight: '400', bodyWeight: '700' } },
+    slides: [{ elements: [
+      { type: 'text', role: 'title', text: 'Title', x: 1, y: 1, w: 4, h: 1 },
+      { type: 'text', role: 'body', text: 'Body', x: 1, y: 2, w: 4, h: 1 }
+    ] }]
+  });
+  const shapes = result.pptx._slides[0]._slideObjects.filter((object) => object._type === 'text');
+  assert.equal(shapes[0].options.bold, false);
+  assert.equal(shapes[1].options.bold, true);
+});
