@@ -12,9 +12,17 @@ function addEastAsianFontToProperties(xml, tagName, fontFace) {
   return xml.replace(paired, (match, attributes, inner) => {
     const cleaned = inner.replace(new RegExp('<a:ea\\b[^>]*\\/>', 'g'), '');
     const latin = new RegExp('<a:latin\\b[^>]*\\/>').exec(cleaned);
-    const next = latin
-      ? cleaned.slice(0, latin.index + latin[0].length) + '<a:ea typeface="' + face + '"/>' + cleaned.slice(latin.index + latin[0].length)
-      : cleaned + '<a:ea typeface="' + face + '"/>';
+    const fallback = new RegExp('<a:(?:cs|sym|hlinkClick|hlinkMouseOver|rtl|extLst)\\b').exec(cleaned);
+    const insertion = '<a:ea typeface="' + face + '"/>';
+    let next;
+    if (latin) {
+      const position = latin.index + latin[0].length;
+      next = cleaned.slice(0, position) + insertion + cleaned.slice(position);
+    } else if (fallback) {
+      next = cleaned.slice(0, fallback.index) + insertion + cleaned.slice(fallback.index);
+    } else {
+      next = cleaned + insertion;
+    }
     return '<a:' + tagName + attributes + '>' + next + '</a:' + tagName + '>';
   });
 }
