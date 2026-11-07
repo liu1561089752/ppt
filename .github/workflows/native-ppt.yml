@@ -47,6 +47,11 @@ jobs:
       - name: Run native engine tests
         working-directory: pptx/native
         run: npm test
+      - name: Extract CSS design tokens and generate migration demo
+        working-directory: pptx/native
+        run: |
+          python ../scripts/extract_html_design_tokens.py ../examples/design-reference.css native-theme-profile
+          npm run demo:theme
       - name: Generate editable demo decks
         working-directory: pptx/native
         run: |
@@ -68,11 +73,12 @@ jobs:
           npm run render:demo
           npm run render:components
           npm run render:batch
+          npm run render:theme
       - name: Compare against reviewed golden slide images
         working-directory: pptx/native
         run: |
           set -e
-          for deck in native-demo native-components-demo; do
+          for deck in native-demo native-components-demo native-design-migration-demo; do
             golden="golden/$deck"
             if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
               python scripts/visual_regression.py \
@@ -91,8 +97,11 @@ jobs:
           path: |
             pptx/native/native-demo.pptx
             pptx/native/native-components-demo.pptx
+            pptx/native/native-design-migration-demo.pptx
+            pptx/native/native-theme-profile/
             pptx/native/batch-dist/
             pptx/native/render-check/
+            pptx/native/visual-regression/
             pptx/native/design-profile/\n            pptx/native/themes/\n            pptx/scripts/extract_html_design_tokens.py
             pptx/native/visual-regression/
             pptx/native/scripts/visual_regression.py
