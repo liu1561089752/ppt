@@ -645,3 +645,21 @@ node pptx/batch_native_pptx.js --input pptx/examples/native_deck.json --output-d
 ```
 
 The input directory is scanned for `.json` files in alphabetical order. The concurrency setting is limited to 1–8 and defaults to 2. Input files must have unique base names to prevent output collisions. The script prints a JSON summary with each output path and its slide warnings.
+
+
+### Native design-system extraction from reference PPTX
+
+Use `pptx/scripts/extract_native_design.py` when a user supplies a reference presentation whose visual system should be reused:
+
+```bash
+python pptx/scripts/extract_native_design.py reference.pptx extracted-design/
+```
+
+The extractor samples every slide and writes:
+
+- `design.json`: page size, theme tokens, master/layout counts, and observed palette/font/shape usage.
+- `layout_patterns.json`: per-slide editable object geometry in inches and normalized page ratios.
+- `component_patterns.json`: repeated shape/geometry signatures, common font sizes, and fill colors.
+- `font_config.json`: theme and observed Latin/East Asian font usage.
+
+The original `extract_pptx_style.py` remains available for the legacy HTML/CSS workflow. The native extractor does not infer semantic roles perfectly; treat its frequency-based patterns as evidence for human/AI design planning, not as an automatic clone of every master or custom drawing.
