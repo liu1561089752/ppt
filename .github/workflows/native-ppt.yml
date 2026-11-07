@@ -36,7 +36,7 @@ jobs:
       - name: Install rendering tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y libreoffice-impress poppler-utils fonts-noto-cjk
+          sudo apt-get install -y libreoffice-impress poppler-utils fonts-noto-cjk python3-pil
       - name: Install native engine dependencies
         working-directory: pptx/native
         run: npm install --no-audit --no-fund
@@ -58,13 +58,30 @@ jobs:
         run: python ../scripts/extract_native_design.py native-components-demo.pptx design-profile
       - name: Compile Python validation scripts
         working-directory: pptx/native
-        run: python -m py_compile ../scripts/extract_native_design.py scripts/render_check.py
+        run: python -m py_compile ../scripts/extract_native_design.py scripts/render_check.py scripts/visual_regression.py
+          python scripts/visual_regression.py --self-test
       - name: Render and verify demo decks
         working-directory: pptx/native
         run: |
           npm run render:demo
           npm run render:components
           npm run render:batch
+      - name: Compare against reviewed golden slide images
+        working-directory: pptx/native
+        run: |
+          set -e
+          for deck in native-demo native-components-demo; do
+            golden="golden/$deck"
+            if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
+              python scripts/visual_regression.py \
+                --baseline-dir "$golden" \
+                --current-dir render-check \
+                --output-dir "visual-regression/$deck" \
+                --max-mae 0.015 --min-ssim 0.97
+            else
+              echo "No reviewed golden images for $deck; comparator self-test remains enabled."
+            fi
+          done
       - name: Upload PPTX and rendered previews
         uses: actions/upload-artifact@v4
         with:
@@ -75,3 +92,5 @@ jobs:
             pptx/native/batch-dist/
             pptx/native/render-check/
             pptx/native/design-profile/
+            pptx/native/visual-regression/
+            pptx/native/scripts/visual_regression.py
