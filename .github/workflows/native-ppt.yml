@@ -6,6 +6,7 @@ on:
     paths:
       - "pptx/native/**"
       - "pptx/batch_native_pptx.js"
+      - "pptx/scripts/extract_native_design.py"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
