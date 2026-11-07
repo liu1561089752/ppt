@@ -21,8 +21,8 @@ function infoCard(options = {}) {
   const h = options.h === undefined ? 2.0 : options.h;
   return [
     { type: 'shape', x, y, w, h, fill: options.fill || 'FFFFFF', lineColor: options.border || 'DCE2DE', lineWidth: 0.8 },
-    { type: 'text', text: options.title || '', x: x + 0.2, y: y + 0.18, w: w - 0.4, h: 0.38, fontSize: options.titleSize || 18, bold: true, color: options.titleColor || '183B3A' },
-    { type: 'text', text: options.body || '', x: x + 0.2, y: y + 0.68, w: w - 0.4, h: h - 0.86, fontSize: options.bodySize || 13, color: options.bodyColor || '394541', valign: 'top' }
+    { type: 'text', text: options.title || '', x: x + 0.2, y: y + 0.18, w: w - 0.4, h: 0.42, fontSize: options.titleSize || 18, bold: true, color: options.titleColor || '183B3A' },
+    { type: 'text', text: options.body || '', x: x + 0.2, y: y + 0.72, w: w - 0.4, h: h - 0.9, fontSize: options.bodySize || 13, color: options.bodyColor || '394541', valign: 'top' }
   ];
 }
 
