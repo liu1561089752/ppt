@@ -32,6 +32,17 @@ function validateDeck(deck) {
         errors.push(p + '.text rich-text runs must be strings or objects with a text field');
       }
       if (element.type === 'image' && !element.path && !element.data) errors.push(p + ' requires path or data');
+      if (element.gradient !== undefined) {
+        if (element.type !== 'shape') errors.push(p + '.gradient is only supported on shapes');
+        const stops = element.gradient && element.gradient.stops;
+        if (!Array.isArray(stops) || stops.length < 2) errors.push(p + '.gradient.stops must contain at least two stops');
+        else stops.forEach((stop, stopIndex) => {
+          if (!stop || typeof stop.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(stop.color)) errors.push(p + '.gradient.stops[' + stopIndex + '].color must be a six-digit hex color');
+          if (!Number.isFinite(stop.position) || stop.position < 0 || stop.position > 1) errors.push(p + '.gradient.stops[' + stopIndex + '].position must be between 0 and 1');
+          if (stop.transparency !== undefined && (!Number.isFinite(stop.transparency) || stop.transparency < 0 || stop.transparency > 100)) errors.push(p + '.gradient.stops[' + stopIndex + '].transparency must be between 0 and 100');
+        });
+        if (element.gradient && element.gradient.angle !== undefined && !Number.isFinite(element.gradient.angle)) errors.push(p + '.gradient.angle must be finite');
+      }
       if (element.type === 'chart') {
         const chartTypes = new Set(['bar', 'line', 'pie', 'doughnut', 'area']);
         if (element.chartType !== undefined && !chartTypes.has(element.chartType)) errors.push(p + '.chartType is not supported');
