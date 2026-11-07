@@ -308,3 +308,20 @@ test('gradient patch keeps text, lines, and multiple shapes aligned in source or
     if (fs.existsSync(output)) fs.unlinkSync(output);
   }
 });
+
+
+test('hero and editorial templates preserve asymmetric and editorial layout patterns', () => {
+  const api = require('../native');
+  const hero = api.templates.hero({ title: 'Launch', theme: {
+    colors: { background: '101820', primary: 'F2AA4C', accent: '00A6A6', surface: '1B2836' },
+    backgrounds: { gradient: { angle: 135, stops: [{ position: 0, color: '112233' }, { position: 1, color: '445566' }] } },
+    effects: { shadow: { color: '000000', opacity: 0.2, blur: 5, angle: 45, distance: 2 } }
+  } });
+  const heroGradient = hero.elements.find((element) => element.type === 'shape' && element.gradient);
+  assert.ok(heroGradient);
+  assert.ok(heroGradient.x > 7.5);
+  assert.ok(hero.elements.some((element) => element.type === 'text' && element.text === 'Launch'));
+  const editorial = api.templates.editorial({ title: 'Insight' });
+  assert.equal(editorial.elements.filter((element) => element.type === 'shape').length, 4);
+  assert.ok(editorial.elements.some((element) => element.type === 'text' && element.text === '观点与背景'));
+});

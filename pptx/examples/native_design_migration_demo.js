@@ -9,30 +9,13 @@ if (!fs.existsSync(themePath)) {
   throw new Error('Theme JSON not found: ' + themePath + '. Run extract_html_design_tokens.py first.');
 }
 const theme = JSON.parse(fs.readFileSync(themePath, 'utf8'));
-const cover = templates.cover({
+const hero = templates.hero({
   theme,
+  kicker: 'DESIGN SYSTEM / MIGRATION',
   title: '保留设计语言，而不是退回默认模板',
-  subtitle: 'HTML/CSS 视觉 Tokens → Native PowerPoint 原生对象'
+  subtitle: '将 HTML/CSS 的视觉 Tokens 转换为可编辑的 PowerPoint 原生对象。',
+  footer: 'EDITABLE OBJECTS  ·  SHARED DESIGN TOKENS'
 });
-const extractedGradient = theme.backgrounds && theme.backgrounds.gradient;
-const extractedShadow = theme.effects && theme.effects.shadow;
-if (extractedGradient && extractedGradient.stops && extractedGradient.stops.length >= 2) {
-  cover.elements.push({
-    type: 'shape', x: 9.0, y: 1.15, w: 3.2, h: 4.8,
-    fill: extractedGradient.stops[0].color, line: false,
-    gradient: {
-      angle: extractedGradient.angle,
-      // CSS opacity is applied to each gradient stop so the vector remains editable.
-      stops: extractedGradient.stops.map((stop) => Object.assign({}, stop, {
-        transparency: 100 - (100 - (stop.transparency || 0)) * (theme.effects && theme.effects.opacity !== undefined ? theme.effects.opacity : 1)
-      }))
-    },
-    shadow: extractedShadow ? Object.assign({}, extractedShadow, {
-      opacity: extractedShadow.opacity * (theme.effects && theme.effects.opacity !== undefined ? theme.effects.opacity : 1)
-    }) : undefined,
-    rotate: 2
-  });
-}
 
 const deck = {
   title: 'HTML/CSS design migration preview',
@@ -41,7 +24,7 @@ const deck = {
   pageSize: 'wide',
   theme,
   slides: [
-    cover,
+    hero,
     templates.kpi({
       theme,
       title: '统一视觉规范驱动组件',

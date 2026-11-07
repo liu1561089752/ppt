@@ -87,4 +87,80 @@ function process(options = {}) {
   };
 }
 
-module.exports = { cover, content, kpi, comparison, process };
+
+function hero(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const margin = theme.layouts.pageMarginX;
+  const gradient = theme.backgrounds && theme.backgrounds.gradient;
+  const shadow = theme.effects && theme.effects.shadow;
+  const opacity = theme.effects && Number.isFinite(theme.effects.opacity) ? theme.effects.opacity : 1;
+  const panelStops = gradient && Array.isArray(gradient.stops)
+    ? gradient.stops.map((stop) => Object.assign({}, stop, {
+        transparency: 100 - (100 - (stop.transparency || 0)) * opacity
+      }))
+    : null;
+  const panel = {
+    type: 'shape', x: 8.25, y: 0.68, w: 4.45, h: 6.12,
+    fill: panelStops && panelStops.length ? panelStops[0].color : theme.colors.surface,
+    line: false, rotate: 1.5,
+    shadow: shadow ? Object.assign({}, shadow, { opacity: shadow.opacity * opacity }) : undefined
+  };
+  if (panelStops && panelStops.length >= 2) {
+    panel.gradient = { angle: gradient.angle, stops: panelStops };
+  }
+  return {
+    background: options.background || theme.colors.background,
+    elements: [
+      panel,
+      { type: 'shape', x: 8.78, y: 1.25, w: 3.35, h: 4.95, fill: false,
+        line: { color: theme.colors.foreground, transparency: 82, width: 1 } },
+      { type: 'shape', x: margin, y: 0.98, w: 0.12, h: 0.48, fill: theme.colors.accent, line: false },
+      { type: 'text', text: options.kicker || 'PRESENTATION / OVERVIEW',
+        x: margin + 0.28, y: 1.02, w: 6.8, h: 0.3,
+        fontFace: theme.fonts.body, fontSize: theme.sizes.caption, bold: true, color: theme.colors.muted },
+      components.title(options.title || '一个有视觉重心的标题',
+        { theme, x: margin, y: 1.72, w: 6.75, h: 1.55, fontSize: options.titleSize || theme.sizes.title, color: options.titleColor || theme.colors.primary }),
+      components.paragraph(options.subtitle || '用清晰的叙事、克制的装饰和有层次的留白建立页面气质。',
+        { theme, x: margin + 0.04, y: 3.62, w: 6.35, h: 1.05, fontSize: options.subtitleSize || theme.sizes.body, color: theme.colors.foreground }),
+      { type: 'shape', x: margin + 0.04, y: 5.18, w: 1.15, h: 0.07, fill: theme.colors.accent, line: false },
+      { type: 'text', text: options.footer || 'STRATEGY  ·  DESIGN  ·  DELIVERY',
+        x: margin + 0.04, y: 5.58, w: 5.8, h: 0.26,
+        fontFace: theme.fonts.body, fontSize: theme.sizes.caption, color: theme.colors.muted }
+    ]
+  };
+}
+
+function editorial(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const margin = theme.layouts.pageMarginX;
+  const gap = theme.layouts.columnGap * 1.4;
+  const columnW = (13.333 - margin * 2 - gap) / 2;
+  const leftX = margin;
+  const rightX = margin + columnW + gap;
+  const elements = [
+    { type: 'text', text: options.kicker || 'INSIGHT / ANALYSIS',
+      x: margin, y: 0.48, w: 5.5, h: 0.25, fontSize: theme.sizes.caption, bold: true, color: theme.colors.accent },
+    components.title(options.title || '用编辑式版面组织复杂信息',
+      { theme, x: margin, y: 0.9, w: 11.8, h: 0.72, fontSize: theme.sizes.title }),
+    { type: 'shape', x: margin, y: 1.82, w: 0.82, h: 0.06, fill: theme.colors.accent, line: false },
+    components.paragraph(options.lead || '先给出能够独立成立的核心判断，再用证据和解释展开。',
+      { theme, x: margin, y: 2.18, w: 11.3, h: 0.76, fontSize: theme.sizes.heading, color: theme.colors.primary }),
+    { type: 'shape', x: leftX, y: 3.22, w: columnW, h: 2.72, fill: theme.colors.surface,
+      lineColor: theme.colors.border, lineWidth: 0.7, radius: theme.radii.medium },
+    { type: 'shape', x: rightX, y: 3.22, w: columnW, h: 2.72, fill: theme.colors.surface,
+      lineColor: theme.colors.border, lineWidth: 0.7, radius: theme.radii.medium },
+    { type: 'text', text: options.leftHeading || '观点与背景',
+      x: leftX + 0.28, y: 3.52, w: columnW - 0.56, h: 0.4,
+      fontSize: theme.sizes.heading, bold: true, color: theme.colors.primary },
+    components.paragraph(options.leftBody || '说明问题背景、关键事实和上下文。用简短段落保留阅读节奏。',
+      { theme, x: leftX + 0.28, y: 4.12, w: columnW - 0.56, h: 1.42, fontSize: theme.sizes.body, color: theme.colors.foreground }),
+    { type: 'text', text: options.rightHeading || '证据与行动',
+      x: rightX + 0.28, y: 3.52, w: columnW - 0.56, h: 0.4,
+      fontSize: theme.sizes.heading, bold: true, color: theme.colors.primary },
+    components.paragraph(options.rightBody || '用数据、案例或行动建议支撑结论，并明确下一步的优先顺序。',
+      { theme, x: rightX + 0.28, y: 4.12, w: columnW - 0.56, h: 1.42, fontSize: theme.sizes.body, color: theme.colors.foreground })
+  ];
+  return { background: options.background || theme.colors.background, elements };
+}
+
+module.exports = { cover, content, kpi, comparison, process, hero, editorial };

@@ -62,6 +62,7 @@ jobs:
         run: |
           npm run demo
           npm run demo:components
+          npm run demo:layouts
           npm run batch:example
       - name: Verify editable OOXML visual effects
         working-directory: pptx/native
@@ -81,6 +82,7 @@ jobs:
         run: |
           npm run render:demo
           npm run render:components
+          npm run render:layouts
           npm run render:batch
           npm run render:theme
           npm run render:parity
@@ -107,6 +109,7 @@ jobs:
           path: |
             pptx/native/native-demo.pptx
             pptx/native/native-components-demo.pptx
+            pptx/native/native-layouts-demo.pptx
             pptx/native/native-design-migration-demo.pptx
             pptx/native/native-design-parity-demo.pptx
             pptx/native/native-theme-profile/\n            pptx/native/parity/

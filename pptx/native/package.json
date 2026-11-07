@@ -15,7 +15,9 @@
     "demo:theme": "node ../examples/native_design_migration_demo.js native-theme-profile/theme.json native-design-migration-demo.pptx",
     "render:theme": "python scripts/render_check.py native-design-migration-demo.pptx --output-dir render-check/native-design-migration-demo",
     "demo:parity": "node ../examples/native_design_parity_demo.js native-theme-profile/theme.json native-design-parity-demo.pptx",
-    "render:parity": "python scripts/render_check.py native-design-parity-demo.pptx --output-dir render-check/native-design-parity-demo"
+    "render:parity": "python scripts/render_check.py native-design-parity-demo.pptx --output-dir render-check/native-design-parity-demo",
+    "demo:layouts": "node ../examples/native_layouts_demo.js native-layouts-demo.pptx",
+    "render:layouts": "python scripts/render_check.py native-layouts-demo.pptx --output-dir render-check/native-layouts-demo"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",
