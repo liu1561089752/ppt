@@ -25,6 +25,27 @@ function measureTextPt(text, fontSizePt, options = {}) {
   return graphemes(String(text)).reduce((sum, char) => sum + glyphWidthFactor(char) * fontSizePt, 0);
 }
 
+function normalizeCjkLineBreaks(lines) {
+  const leadingPunctuation = new Set(Array.from('，。！？：；、）》】」』〕〉〗〙〛,.!?;:%)]}'));
+  const trailingOpening = new Set(Array.from('（【「『〔〈〖〘〚([{'));
+  for (let i = 1; i < lines.length; i += 1) {
+    const current = graphemes(lines[i]);
+    const previous = graphemes(lines[i - 1]);
+    if (current.length && leadingPunctuation.has(current[0]) && previous.length > 1) {
+      current.unshift(previous.pop());
+      lines[i - 1] = previous.join('');
+      lines[i] = current.join('');
+    }
+    const adjustedPrevious = graphemes(lines[i - 1]);
+    if (adjustedPrevious.length && trailingOpening.has(adjustedPrevious[adjustedPrevious.length - 1]) && current.length > 1) {
+      current.unshift(adjustedPrevious.pop());
+      lines[i - 1] = adjustedPrevious.join('');
+      lines[i] = current.join('');
+    }
+  }
+  return lines;
+}
+
 function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
   if (!paragraph) return [''];
   const tokens = paragraph.match(/\s+|[^\s]+/gu) || [paragraph];
