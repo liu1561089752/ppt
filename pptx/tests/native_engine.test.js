@@ -112,3 +112,9 @@ test('East Asian font patch updates an existing typeface rather than duplicating
   assert.equal((patched.match(/<a:ea /g) || []).length, 1);
   assert.ok(patched.includes('typeface="New CJK Font"'));
 });
+
+
+test('deck schema accepts horizontal and vertical native lines', () => {
+  assert.deepEqual(validateDeck({ slides: [{ elements: [{ type: 'line', x: 1, y: 1, w: 4, h: 0 }, { type: 'line', x: 1, y: 1, w: 0, h: 2 }] }] }), []);
+  assert.ok(validateDeck({ slides: [{ elements: [{ type: 'line', x: 1, y: 1, w: 0, h: 0 }] }] }).length > 0);
+});
