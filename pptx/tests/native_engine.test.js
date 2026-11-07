@@ -132,3 +132,14 @@ test('native renderer accepts a valid editable bar chart', async () => {
   });
   assert.equal(result.pptx._slides.length, 1);
 });
+
+
+test('batch CLI parses inputs and limits concurrency', () => {
+  const { parseArgs } = require('../batch_native_pptx');
+  const options = parseArgs(['--input', 'a.json', '--input-dir', 'decks', '--output-dir', 'out', '--concurrency', '3']);
+  assert.deepEqual(options.inputs, ['a.json']);
+  assert.equal(options.inputDir, 'decks');
+  assert.equal(options.outputDir, 'out');
+  assert.equal(options.concurrency, 3);
+  assert.throws(() => parseArgs(['--concurrency', '20']));
+});
