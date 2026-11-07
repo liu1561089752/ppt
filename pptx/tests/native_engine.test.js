@@ -374,3 +374,27 @@ test('native radius tokens serialize as editable rounded-rectangle geometry', as
     if (fs.existsSync(output)) fs.unlinkSync(output);
   }
 });
+
+
+test('native text styling preserves italic underline strike and character spacing', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const output = path.join(os.tmpdir(), 'native-text-style-' + process.pid + '.pptx');
+  try {
+    await generatePptx({ slides: [{ elements: [
+      { type: 'text', text: 'Styled text', x: 1, y: 1, w: 4, h: 1, bold: true, italic: true,
+        underline: true, strike: true, charSpacing: 1.2, paraSpaceAfterPt: 4, lineSpacingMultiple: 1.1 }
+    ] }] }, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.match(xml, /\bi="1"/);
+    assert.match(xml, /\bu="sng"/);
+    assert.match(xml, /strike="sng"/);
+    assert.match(xml, /spc="120"/);
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});

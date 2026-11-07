@@ -40,6 +40,21 @@ function validateDeck(deck) {
           (!Number.isFinite(element.fontSize) || element.fontSize <= 0)) {
         errors.push(p + '.fontSize must be finite and greater than zero');
       }
+      if (element.type === 'text') {
+        ['charSpacing', 'paraSpaceBeforePt', 'paraSpaceAfterPt'].forEach((key) => {
+          if (element[key] !== undefined && (!Number.isFinite(element[key]) || (key !== 'charSpacing' && element[key] < 0))) {
+            errors.push(p + '.' + key + ' must be finite' + (key === 'charSpacing' ? '' : ' and non-negative'));
+          }
+        });
+        if (element.lineSpacingMultiple !== undefined &&
+            (!Number.isFinite(element.lineSpacingMultiple) || element.lineSpacingMultiple <= 0)) {
+          errors.push(p + '.lineSpacingMultiple must be finite and greater than zero');
+        }
+        if (element.bullet !== undefined && typeof element.bullet !== 'boolean' &&
+            (typeof element.bullet !== 'object' || element.bullet === null || Array.isArray(element.bullet))) {
+          errors.push(p + '.bullet must be a boolean or options object');
+        }
+      }
       if (element.type === 'line' && element.transparency !== undefined &&
           (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
         errors.push(p + '.transparency must be between 0 and 100');
