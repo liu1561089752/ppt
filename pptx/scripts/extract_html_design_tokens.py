@@ -13,17 +13,17 @@ import re
 import sys
 from pathlib import Path
 
-STYLE_RE = re.compile(r"<style\\b[^>]*>(.*?)</style>", re.I | re.S)
-VAR_RE = re.compile(r"--([\\w-]+)\\s*:\\s*([^;{}]+)")
-RULE_RE = re.compile(r"([^{}]+)\\{([^{}]*)\\}", re.S)
-DECL_RE = re.compile(r"([\\w-]+)\\s*:\\s*([^;]+)")
-COLOR_RE = re.compile(r"^(?:#([0-9a-f]{3,8})|rgba?\\([^)]*\\)|hsla?\\([^)]*\\))$", re.I)
+STYLE_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.I | re.S)
+VAR_RE = re.compile(r"--([\w-]+)\s*:\s*([^;{}]+)")
+RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}", re.S)
+DECL_RE = re.compile(r"([\w-]+)\s*:\s*([^;]+)")
+COLOR_RE = re.compile(r"^(?:#([0-9a-f]{3,8})|rgba?\([^)]*\)|hsla?\([^)]*\))$", re.I)
 
 
 def read_css(path: Path) -> str:
     source = path.read_text(encoding="utf-8", errors="replace")
     blocks = STYLE_RE.findall(source)
-    return "\\n\\n".join(blocks) if blocks else source
+    return "\n\n".join(blocks) if blocks else source
 
 
 def normalize_color(value: str) -> str | None:
@@ -41,7 +41,7 @@ def normalize_color(value: str) -> str | None:
 
 
 def length_to_inches(value: str) -> float | None:
-    match = re.match(r"^(-?\\d+(?:\\.\\d+)?)(px|pt|in|rem|em)?$", value.strip(), re.I)
+    match = re.match(r"^(-?\d+(?:\.\d+)?)(px|pt|in|rem|em)?$", value.strip(), re.I)
     if not match:
         return None
     number = float(match.group(1))
@@ -51,7 +51,7 @@ def length_to_inches(value: str) -> float | None:
 
 
 def font_family(value: str) -> str:
-    return value.strip().split(",")[0].strip().strip("\\\"'") or "Aptos"
+    return value.strip().split(",")[0].strip().strip("\\"'") or "Aptos"
 
 
 def extract(css: str) -> dict:
@@ -174,8 +174,8 @@ def main() -> int:
     result = extract(css)
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "design-tokens.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
-    (out / "theme.json").write_text(json.dumps(result["theme"], ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    (out / "design-tokens.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (out / "theme.json").write_text(json.dumps(result["theme"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (out / "source.css").write_text(css, encoding="utf-8")
     print(f"wrote {out / 'design-tokens.json'}, theme.json, and source.css")
     return 0
