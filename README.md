@@ -25,3 +25,18 @@ Native output now sets East Asian font properties in OOXML, supports editable Po
 Batch conversion is available through `node pptx/batch_native_pptx.js --input-dir <deck-spec-directory> --output-dir <output-directory>`. Each JSON Deck Spec is rendered to a separate editable PPTX; see `pptx/SKILL.md` for options.
 Reference PPTX analysis for Native mode is available with `python pptx/scripts/extract_native_design.py reference.pptx extracted-design/`; it samples all slides and exports design tokens, layout geometry, repeated component signatures, and font usage.
 The legacy HTML batch converter also now preserves source slide order under concurrent rendering by assigning each job a pre-created slide slot.
+
+## Visual design continuity
+
+Native mode is not intended to downgrade or simplify the design language of the HTML workflow. A shared design-token resolver now supports palette, typography, spacing, radii, layout rhythm, and effect preferences across Native templates and text/card components.
+
+For an HTML or CSS reference, extract a first-pass Native theme:
+
+```bash
+python pptx/scripts/extract_html_design_tokens.py reference.html extracted-design/
+# or pass a standalone .css file
+```
+
+Review `theme.json` and `design-tokens.json`, then apply the theme to the Deck Spec's `theme` field. The original CSS is retained as `source.css` for design review. Extraction is best-effort: complex selectors, gradients, filters, animations, and browser-specific layout still need deliberate translation into native PowerPoint elements or vector assets. Do not replace distinctive layouts with generic templates merely because the renderer changed.
+
+Visual regression tooling and golden baseline guidance are documented in `pptx/native/golden/README.md`.
