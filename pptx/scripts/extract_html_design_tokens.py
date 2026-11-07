@@ -83,6 +83,35 @@ def split_css_args(value: str) -> list[str]:
     return [part for part in parts if part]
 
 
+
+
+def parse_color_with_alpha(value: str) -> tuple[str, float] | None:
+    """Return an RGB hex color and PowerPoint transparency (0 opaque, 100 clear)."""
+    raw = value.strip()
+    if raw.lower() == "transparent":
+        return "FFFFFF", 100.0
+    hex_match = re.fullmatch(r"#([0-9a-f]{4}|[0-9a-f]{8})", raw, re.I)
+    if hex_match:
+        digits = hex_match.group(1)
+        if len(digits) == 4:
+            rgb = "".join(ch * 2 for ch in digits[:3])
+            alpha = int(digits[3] * 2, 16)
+        else:
+            rgb = digits[:6]
+            alpha = int(digits[6:8], 16)
+        return rgb.upper(), round((255 - alpha) / 255 * 100, 2)
+    rgba = re.fullmatch(r"rgba\(\s*([\d.]+)%?\s*,\s*([\d.]+)%?\s*,\s*([\d.]+)%?\s*,\s*([\d.]+)\s*\)", raw, re.I)
+    if rgba:
+        channels = [float(rgba.group(index)) for index in (1, 2, 3)]
+        if "%" in raw:
+            channels = [channel * 2.55 for channel in channels]
+        channels = [max(0, min(255, round(channel))) for channel in channels]
+        alpha = max(0.0, min(1.0, float(rgba.group(4))))
+        return "".join(f"{channel:02X}" for channel in channels), round((1 - alpha) * 100, 2)
+    color = normalize_color(raw)
+    return (color, 0.0) if color else None
+
+
 def parse_linear_gradient(value: str) -> dict | None:
     """Parse a conservative subset of CSS linear-gradient into editable PPT stops."""
     match = re.match(r"^linear-gradient\((.*)\)$", value.strip(), re.I | re.S)
@@ -112,11 +141,12 @@ def parse_linear_gradient(value: str) -> dict | None:
         if not stop_match:
             return None
         color_text = stop_match.group(1).strip()
-        color = normalize_color(color_text)
-        if not color:
+        parsed_color = parse_color_with_alpha(color_text)
+        if not parsed_color:
             return None
+        color, transparency = parsed_color
         position = float(stop_match.group(2)) / 100 if stop_match.group(2) is not None else index / (len(parts) - 1)
-        stops.append({"position": max(0.0, min(1.0, position)), "color": color})
+        stops.append({"position": max(0.0, min(1.0, position)), "color": color, "transparency": transparency})
     return {"angle": round(angle % 360, 3), "stops": stops, "source": "css-linear-gradient"}
 
 
@@ -330,6 +360,9 @@ def self_test() -> None:
     visual = extract(":root { --hero-gradient: linear-gradient(135deg, #112233 0%, #e56a42 100%); --card-shadow: 0 8px 24px rgba(0,0,0,0.2); --surface-opacity: 0.85; }")["theme"]
     assert visual["backgrounds"]["gradient"]["stops"][0]["color"] == "112233", visual
     assert visual["backgrounds"]["gradient"]["angle"] == 315.0, visual
+    alpha_gradient = parse_linear_gradient("linear-gradient(90deg, rgba(10, 20, 30, 0.5) 0%, #ffffff 100%)")
+    assert alpha_gradient["stops"][0]["color"] == "0A141E", alpha_gradient
+    assert alpha_gradient["stops"][0]["transparency"] == 50.0, alpha_gradient
     assert visual["effects"]["shadow"]["opacity"] == 0.2, visual
     assert visual["effects"]["opacity"] == 0.85, visual
     assert theme["typography"] == {}, theme
