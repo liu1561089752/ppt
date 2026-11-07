@@ -47,8 +47,8 @@ test('validator reports out-of-bounds and overlapping text', () => {
 
 test('text wrapping inserts explicit line breaks for long CJK content', () => {
   const wrapped = wrapText('这是一个用于测试中文文本自动换行的较长句子', 1.5, 18);
-  assert.ok(wrapped.includes('\\n'));
-  assert.ok(wrapped.split('\\n').length > 1);
+  assert.ok(wrapped.includes('\n'));
+  assert.ok(wrapped.split('\n').length > 1);
 });
 
 test('font manager safely falls back when no font files are configured', () => {
