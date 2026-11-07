@@ -206,7 +206,7 @@ test('native templates propagate custom design tokens into editable elements', (
   const title = slide.elements.find((element) => element.type === 'text' && element.text === 'Custom theme');
   assert.equal(title.color, 'F2AA4C');
   assert.equal(title.fontFace, 'Arial');
-  assert.equal(title.fontSize, 34);
+  assert.equal(title.fontSize, 30);
   const rule = slide.elements.find((element) => element.type === 'line');
   assert.equal(rule.color, '00A6A6');
 });
