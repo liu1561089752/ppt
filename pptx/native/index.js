@@ -8,9 +8,11 @@ const { validateSlide } = require('./engine/validation');
 const { FontManager } = require('./engine/font_manager');
 const { wrapText, estimateTextHeight, estimateLineCount, measureTextPt } = require('./engine/text_measure');
 const defaultTheme = require('./themes/default');
+const components = require('./components');
+const templates = require('./templates');
 
 module.exports = {
   buildPresentation, generatePptx, validateDeck, normalizePageSize, toInches,
   layoutSlide, validateSlide, FontManager, wrapText, estimateTextHeight,
-  estimateLineCount, measureTextPt, defaultTheme
+  estimateLineCount, measureTextPt, defaultTheme, components, templates
 };
