@@ -221,7 +221,10 @@ async function patchGradientFills(outputPath, deck) {
     if (!file) continue;
     let shapeIndex = 0;
     let patchedGradientCount = 0;
-    const shapeElements = deck.slides[slideIndex].elements.filter((element) => element.type === 'text' || element.type === 'shape');
+    // PptxGenJS serializes text, shapes, and lines as p:sp; images and graphic frames use other OOXML nodes.
+    const shapeElements = deck.slides[slideIndex].elements.filter((element) =>
+      element.type === 'text' || element.type === 'shape' || element.type === 'line'
+    );
     let xml = await file.async('string');
     const serializedShapeCount = (xml.match(/<p:sp>/gu) || []).length;
     if (serializedShapeCount !== shapeElements.length) {
