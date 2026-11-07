@@ -27,7 +27,7 @@ function layoutSlide(slide, pageSize, theme = {}, options = {}) {
         if (height === undefined) height = estimateTextHeight(element._renderText, width, fontSize, measureOptions);
       } else if (height === undefined) {
         const plainText = element.text.map((run) => typeof run === 'string' ? run : (run.text || '')).join('');
-        height = estimateTextHeight(plainText, width, fontSize, measureOptions);
+        element._requiredTextHeight = estimateTextHeight(plainText, width, fontSize, measureOptions);\n        height = height === undefined ? element._requiredTextHeight : height;
         element._layoutWarnings = ['Rich-text runs are measured as plain text; explicit line breaks are recommended.'];
       }
     } else if (height === undefined) {
@@ -38,7 +38,7 @@ function layoutSlide(slide, pageSize, theme = {}, options = {}) {
     element.y = element.y === undefined ? cursorY : element.y;
     element.w = width;
     element.h = height;
-    if (!explicitPosition && source.y === undefined) cursorY = element.y + height + gap;
+    if (!explicitPosition) cursorY = Math.max(cursorY, element.y + height + gap);
     element._layoutIndex = index;
     return element;
   });
