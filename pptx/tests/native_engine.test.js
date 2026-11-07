@@ -436,3 +436,17 @@ test('raw title and body elements inherit shared theme font weights', async () =
   assert.equal(shapes[0].options.bold, false);
   assert.equal(shapes[1].options.bold, true);
 });
+
+
+test('deck schema validates image opacity, exclusive sources, and rich-text run options', () => {
+  const errors = validateDeck({ slides: [{ elements: [
+    { type: 'image', path: 'photo.png', data: 'data:image/png;base64,AA==', x: 0, y: 0, w: 2, h: 2, transparency: 120 },
+    { type: 'text', text: [{ text: 'bad', options: { fontSize: 0, transparency: -1 } }], x: 0, y: 3, w: 2, h: 1 },
+    { type: 'line', x: 0, y: 5, w: 2, h: 0, width: 0 }
+  ] }] });
+  assert.ok(errors.some((message) => message.includes('either path or data')));
+  assert.ok(errors.some((message) => message.includes('image') && message.includes('transparency')));
+  assert.ok(errors.some((message) => message.includes('options.fontSize')));
+  assert.ok(errors.some((message) => message.includes('options.transparency')));
+  assert.ok(errors.some((message) => message.includes('width must be finite')));
+});

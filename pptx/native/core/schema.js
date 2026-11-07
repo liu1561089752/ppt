@@ -28,10 +28,35 @@ function validateDeck(deck) {
       if (element.type === 'text' && typeof element.text !== 'string' && !Array.isArray(element.text)) {
         errors.push(p + '.text must be a string or rich-text run array');
       }
-      if (element.type === 'text' && Array.isArray(element.text) && element.text.some((run) => typeof run !== 'string' && (!run || typeof run !== 'object' || typeof run.text !== 'string'))) {
+      if (element.type === 'text' && Array.isArray(element.text) && element.text.some((run) => typeof run !== 'string' && (!run || typeof run !== 'object' || Array.isArray(run) || typeof run.text !== 'string'))) {
         errors.push(p + '.text rich-text runs must be strings or objects with a text field');
       }
+      if (element.type === 'text' && Array.isArray(element.text)) {
+        element.text.forEach((run, runIndex) => {
+          if (typeof run === 'string' || !run || typeof run !== 'object') return;
+          if (run.options !== undefined && (!run.options || typeof run.options !== 'object' || Array.isArray(run.options))) {
+            errors.push(p + '.text[' + runIndex + '].options must be an object');
+          }
+          if (run.options && run.options.fontSize !== undefined &&
+              (!Number.isFinite(run.options.fontSize) || run.options.fontSize <= 0)) {
+            errors.push(p + '.text[' + runIndex + '].options.fontSize must be finite and greater than zero');
+          }
+          if (run.options && run.options.transparency !== undefined &&
+              (!Number.isFinite(run.options.transparency) || run.options.transparency < 0 || run.options.transparency > 100)) {
+            errors.push(p + '.text[' + runIndex + '].options.transparency must be between 0 and 100');
+          }
+        });
+      }
       if (element.type === 'image' && !element.path && !element.data) errors.push(p + ' requires path or data');
+      if (element.type === 'image' && element.path && element.data) errors.push(p + ' must specify either path or data, not both');
+      if (element.type === 'image' && element.transparency !== undefined &&
+          (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
+        errors.push(p + '.transparency must be between 0 and 100');
+      }
+      if (element.type === 'line' && element.width !== undefined &&
+          (!Number.isFinite(element.width) || element.width <= 0)) {
+        errors.push(p + '.width must be finite and greater than zero');
+      }
       if (element.type === 'text' && element.transparency !== undefined &&
           (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
         errors.push(p + '.transparency must be between 0 and 100');
