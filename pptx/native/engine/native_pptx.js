@@ -33,6 +33,43 @@ function textOptions(el, theme) {
   };
 }
 
+function shapeStyle(el, theme) {
+  const fill = el.fill === false
+    ? { color: 'FFFFFF', transparency: 100 }
+    : {
+        color: cleanColor(el.fill, theme.colors.surface),
+        transparency: el.fillTransparency === undefined ? 0 : el.fillTransparency
+      };
+  const line = el.line === false
+    ? { color: 'FFFFFF', transparency: 100 }
+    : {
+        color: cleanColor(el.lineColor, theme.colors.border),
+        width: el.lineWidth === undefined ? 0.8 : el.lineWidth,
+        transparency: el.lineTransparency === undefined ? 0 : el.lineTransparency,
+        dash: el.lineDash || el.dash
+      };
+  const options = {
+    x: el.x, y: el.y, w: el.w, h: el.h,
+    rectRadius: el.radius,
+    rotate: el.rotate || 0,
+    transparency: el.transparency === undefined ? 0 : el.transparency,
+    fill,
+    line
+  };
+  if (el.shadow) {
+    const shadow = typeof el.shadow === 'object' ? el.shadow : {};
+    options.shadow = {
+      type: shadow.type || 'outer',
+      color: cleanColor(shadow.color, '000000'),
+      opacity: shadow.opacity === undefined ? 0.18 : shadow.opacity,
+      blur: shadow.blur === undefined ? 4 : shadow.blur,
+      angle: shadow.angle === undefined ? 45 : shadow.angle,
+      distance: shadow.distance === undefined ? 2 : shadow.distance
+    };
+  }
+  return options;
+}
+
 function addElement(slide, el, theme, pptx) {
   if (el.type === 'text') {
     const opts = textOptions(el, theme);
@@ -52,16 +89,7 @@ function addElement(slide, el, theme, pptx) {
     }
   } else if (el.type === 'shape') {
     const shape = el.shape || pptx.ShapeType.rect;
-    slide.addShape(shape, {
-      x: el.x, y: el.y, w: el.w, h: el.h,
-      rectRadius: el.radius,
-      fill: el.fill === false
-        ? { color: 'FFFFFF', transparency: 100 }
-        : { color: cleanColor(el.fill, theme.colors.surface), transparency: el.fillTransparency || 0 },
-      line: el.line === false
-        ? { color: 'FFFFFF', transparency: 100 }
-        : { color: cleanColor(el.lineColor, theme.colors.border), width: el.lineWidth === undefined ? 0.8 : el.lineWidth, transparency: el.lineTransparency || 0 }
-    });
+    slide.addShape(shape, shapeStyle(el, theme));
   } else if (el.type === 'line') {
     slide.addShape(pptx.ShapeType.line, {
       x: el.x, y: el.y, w: el.w, h: el.h,
@@ -70,7 +98,8 @@ function addElement(slide, el, theme, pptx) {
         width: el.width || 1.5,
         beginArrowType: el.beginArrowType,
         endArrowType: el.endArrowType,
-        dash: el.dash
+        dash: el.dash,
+        transparency: el.transparency === undefined ? 0 : el.transparency
       }
     });
   } else if (el.type === 'image') {
@@ -184,4 +213,4 @@ async function generatePptx(deck, outputPath, options = {}) {
   };
 }
 
-module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch };
+module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch, shapeStyle };
