@@ -40,11 +40,13 @@ jobs:
         run: |
           npm run demo
           npm run demo:components
+          npm run batch:example
       - name: Render and verify demo decks
         working-directory: pptx/native
         run: |
           npm run render:demo
           npm run render:components
+          npm run render:batch
       - name: Upload PPTX and rendered previews
         uses: actions/upload-artifact@v4
         with:
@@ -52,4 +54,5 @@ jobs:
           path: |
             pptx/native/native-demo.pptx
             pptx/native/native-components-demo.pptx
+            pptx/native/batch-dist/
             pptx/native/render-check/
