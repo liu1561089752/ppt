@@ -10,11 +10,11 @@ function cover(options = {}) {
     elements: [
       components.title(options.title || '演示文稿标题', {
         theme, x: theme.layouts.pageMarginX, y: 1.6, w: 11.6, h: 1.0,
-        fontSize: options.titleSize || 34, color: options.titleColor || theme.colors.primary
+        fontSize: options.titleSize || theme.sizes.title, color: options.titleColor || theme.colors.primary
       }),
       components.paragraph(options.subtitle || '副标题 / 日期 / 汇报对象', {
         theme, x: theme.layouts.pageMarginX + 0.05, y: 2.85, w: 10.8, h: 0.7,
-        fontSize: options.subtitleSize || 18, color: options.subtitleColor || theme.colors.muted
+        fontSize: options.subtitleSize || theme.sizes.body, color: options.subtitleColor || theme.colors.muted
       }),
       components.divider({ theme, x: theme.layouts.pageMarginX + 0.05, y: 4.0, w: 2.0, color: options.accent || theme.colors.accent, width: 2.4 })
     ]
