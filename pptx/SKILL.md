@@ -679,3 +679,8 @@ The extractor samples every slide and writes:
 - `font_config.json`: theme and observed Latin/East Asian font usage.
 
 The original `extract_pptx_style.py` remains available for the legacy HTML/CSS workflow. The native extractor does not infer semantic roles perfectly; treat its frequency-based patterns as evidence for human/AI design planning, not as an automatic clone of every master or custom drawing.
+
+
+### Legacy HTML batch ordering fix
+
+The HTML compatibility batch converter now pre-creates slide slots in the sorted source-file order, then lets workers render into their assigned slide. Failed or severe-warning slides are removed after workers finish, in descending source order. This preserves the original HTML slide order even when concurrent render tasks finish out of order.
