@@ -40,3 +40,7 @@ python pptx/scripts/extract_html_design_tokens.py reference.html extracted-desig
 Review `theme.json` and `design-tokens.json`, then apply the theme to the Deck Spec's `theme` field. The original CSS is retained as `source.css` for design review. Extraction is best-effort: complex selectors, gradients, filters, animations, and browser-specific layout still need deliberate translation into native PowerPoint elements or vector assets. Do not replace distinctive layouts with generic templates merely because the renderer changed.
 
 Visual regression tooling and golden baseline guidance are documented in `pptx/native/golden/README.md`.
+
+## HTML / Native visual parity fixtures
+
+A paired reference now lives at `pptx/examples/design-reference.html` and `pptx/examples/native_design_parity_demo.js`. CI extracts the HTML's embedded CSS, applies the resulting theme to an editable Native slide, and renders the result. The review checklist and baseline acceptance policy are in `pptx/native/parity/README.md`. This fixture checks a representative composition and shared design tokens; it is not a claim of automatic pixel-perfect conversion for arbitrary CSS.
