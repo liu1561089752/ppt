@@ -79,7 +79,7 @@ function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
     }
   }
   if (line || lines.length === 0) lines.push(line.replace(/\s+$/u, ''));
-  return lines;
+  return normalizeCjkLineBreaks(lines);
 }
 
 function wrapText(text, widthIn, fontSizePt, options = {}) {
