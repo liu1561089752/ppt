@@ -19,12 +19,10 @@ function textOptions(el, theme) {
     fontSize: el.fontSize || theme.sizes.body,
     color: cleanColor(el.color, theme.colors.foreground),
     bold: !!el.bold,
-    breakLine: false,
     margin: el.margin === undefined ? 0 : el.margin,
     valign: el.valign || 'mid',
     align: el.align || 'left',
     paraSpaceAfterPt: el.paraSpaceAfterPt || 0,
-    lineSpacingMultiple: el.lineSpacingMultiple || theme.lineSpacingMultiple,
     fit: 'shrink',
     transparency: el.transparency || 0,
     isTextBox: true
@@ -37,29 +35,43 @@ function addElement(slide, el, theme, pptx) {
     if (Array.isArray(el.text)) {
       const runs = el.text.map((run) => {
         if (typeof run === 'string') return { text: run, options: {} };
-        return { text: run.text || '', options: Object.assign({}, run.options || {}, {
-          fontFace: (run.options && run.options.fontFace) || el.fontFace || theme.fonts.body
-        }) };
+        return {
+          text: run.text || '',
+          options: Object.assign({}, run.options || {}, {
+            fontFace: (run.options && run.options.fontFace) || el.fontFace || theme.fonts.body
+          })
+        };
       });
       slide.addText(runs, opts);
-    } else slide.addText(el._renderText || el.text, opts);
+    } else {
+      slide.addText(el._renderText || el.text, opts);
+    }
   } else if (el.type === 'shape') {
     const shape = el.shape || pptx.ShapeType.rect;
     slide.addShape(shape, {
       x: el.x, y: el.y, w: el.w, h: el.h,
       rectRadius: el.radius,
-      fill: el.fill === false ? { color: 'FFFFFF', transparency: 100 } : { color: cleanColor(el.fill, theme.colors.surface), transparency: el.fillTransparency || 0 },
-      line: el.line === false ? { color: 'FFFFFF', transparency: 100 } : { color: cleanColor(el.lineColor, theme.colors.border), width: el.lineWidth === undefined ? 0.8 : el.lineWidth, transparency: el.lineTransparency || 0 },
-      radius: el.radius
+      fill: el.fill === false
+        ? { color: 'FFFFFF', transparency: 100 }
+        : { color: cleanColor(el.fill, theme.colors.surface), transparency: el.fillTransparency || 0 },
+      line: el.line === false
+        ? { color: 'FFFFFF', transparency: 100 }
+        : { color: cleanColor(el.lineColor, theme.colors.border), width: el.lineWidth === undefined ? 0.8 : el.lineWidth, transparency: el.lineTransparency || 0 }
     });
   } else if (el.type === 'line') {
     slide.addShape(pptx.ShapeType.line, {
       x: el.x, y: el.y, w: el.w, h: el.h,
-      line: { color: cleanColor(el.color, theme.colors.accent), width: el.width || 1.5, beginArrowType: el.beginArrowType, endArrowType: el.endArrowType, dash: el.dash }
+      line: {
+        color: cleanColor(el.color, theme.colors.accent),
+        width: el.width || 1.5,
+        beginArrowType: el.beginArrowType,
+        endArrowType: el.endArrowType,
+        dash: el.dash
+      }
     });
   } else if (el.type === 'image') {
     const source = el.path ? { path: el.path } : { data: el.data };
-    slide.addImage(Object.assign(source, { x: el.x, y: el.y, w: el.w, h: el.h }));
+    slide.addImage(Object.assign(source, { x: el.x, y: el.y, w: el.w, h: el.h, transparency: el.transparency || 0 }));
   } else if (el.type === 'table') {
     slide.addTable(el.rows || [], Object.assign({
       x: el.x, y: el.y, w: el.w, h: el.h,
@@ -79,10 +91,16 @@ async function buildPresentation(deck, options = {}) {
 
   const pptx = new pptxgen();
   const pageSize = normalizePageSize(deck.pageSize || options.pageSize || 'wide');
-  const theme = Object.assign({}, defaultTheme, deck.theme || options.theme || {});
-  theme.colors = Object.assign({}, defaultTheme.colors, (deck.theme && deck.theme.colors) || (options.theme && options.theme.colors) || {});
-  theme.fonts = Object.assign({}, defaultTheme.fonts, (deck.theme && deck.theme.fonts) || (options.theme && options.theme.fonts) || {});
-  theme.sizes = Object.assign({}, defaultTheme.sizes, (deck.theme && deck.theme.sizes) || (options.theme && options.theme.sizes) || {});\n  theme.fontFiles = Object.assign({}, (options.theme && options.theme.fontFiles) || {}, (deck.theme && deck.theme.fontFiles) || {});\n  const fontManager = new FontManager({ fontFiles: theme.fontFiles, fallbackFont: theme.fallbackFontFile || (deck.theme && deck.theme.fallbackFontFile) });
+  const selectedTheme = deck.theme || options.theme || {};
+  const theme = Object.assign({}, defaultTheme, selectedTheme);
+  theme.colors = Object.assign({}, defaultTheme.colors, selectedTheme.colors || {});
+  theme.fonts = Object.assign({}, defaultTheme.fonts, selectedTheme.fonts || {});
+  theme.sizes = Object.assign({}, defaultTheme.sizes, selectedTheme.sizes || {});
+  theme.fontFiles = Object.assign({}, (options.theme && options.theme.fontFiles) || {}, (deck.theme && deck.theme.fontFiles) || {});
+  const fontManager = new FontManager({
+    fontFiles: theme.fontFiles,
+    fallbackFont: theme.fallbackFontFile || null
+  });
 
   pptx.defineLayout({ name: 'NATIVE_CUSTOM', width: pageSize.width, height: pageSize.height });
   pptx.layout = 'NATIVE_CUSTOM';
@@ -102,19 +120,29 @@ async function buildPresentation(deck, options = {}) {
     const slide = pptx.addSlide();
     slide.background = { color: cleanColor(spec.background, theme.colors.background) };
     const elements = layoutSlide(spec, pageSize, theme, { fontManager });
-    const warnings = validateSlide(elements, pageSize);\n    elements.forEach((element, elementIndex) => {\n      (element._layoutWarnings || []).forEach((message) => warnings.push({ code: 'LAYOUT_WARNING', element: elementIndex, message }));\n    });
+    const warnings = validateSlide(elements, pageSize);
+    elements.forEach((element, elementIndex) => {
+      (element._layoutWarnings || []).forEach((message) => {
+        warnings.push({ code: 'LAYOUT_WARNING', element: elementIndex, message });
+      });
+    });
     elements.forEach((element) => addElement(slide, element, theme, pptx));
     if (spec.notes) slide.addNotes(spec.notes);
     report.push({ slide: index + 1, warnings });
   }
-  return { pptx, report, pageSize };
+  return { pptx, report, pageSize, fontReport: fontManager.inspect() };
 }
 
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
   await result.pptx.writeFile({ fileName: outputPath });
-  return { outputPath, report: result.report, pageSize: result.pageSize };
+  return {
+    outputPath,
+    report: result.report,
+    pageSize: result.pageSize,
+    fontReport: result.fontReport
+  };
 }
 
 module.exports = { buildPresentation, generatePptx };
