@@ -253,3 +253,31 @@ test('gradient fills serialize editable DrawingML gradient stops and transparenc
   assert.ok(xml.includes('<a:alpha val="75000"/>'));
   assert.throws(() => gradientFillXml({ stops: [{ position: 0, color: 'FFFFFF' }] }), /at least two/);
 });
+
+
+test('deck schema validates gradient stop definitions', () => {
+  assert.deepEqual(validateDeck({ slides: [{ elements: [{ type: 'shape', x: 0, y: 0, w: 4, h: 2, gradient: { angle: 45, stops: [{ position: 0, color: '112233' }, { position: 1, color: '#E56A42' }] } }] }] }), []);
+  assert.ok(validateDeck({ slides: [{ elements: [{ type: 'shape', gradient: { stops: [{ position: 1.5, color: 'bad' }] } }] }] }).some((message) => message.includes('gradient')));
+});
+
+test('generated PPTX contains editable DrawingML gradient fill', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require('jszip');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const output = path.join(os.tmpdir(), 'native-gradient-' + process.pid + '.pptx');
+  try {
+    await generatePptx({ slides: [{ elements: [
+      { type: 'shape', x: 1, y: 1, w: 5, h: 2, fill: 'FFFFFF', gradient: { angle: 90, stops: [{ position: 0, color: '112233' }, { position: 1, color: 'E56A42', transparency: 20 }] } }
+    ] }] }, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(xml.includes('<a:gradFill'));
+    assert.ok(xml.includes('<a:gsLst>'));
+    assert.ok(xml.includes('<a:alpha val="80000"/>'));
+    assert.ok(!xml.includes('<a:solidFill><a:srgbClr val="FFFFFF"/>'));
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
