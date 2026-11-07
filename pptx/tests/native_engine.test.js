@@ -450,3 +450,34 @@ test('deck schema validates image opacity, exclusive sources, and rich-text run 
   assert.ok(errors.some((message) => message.includes('options.transparency')));
   assert.ok(errors.some((message) => message.includes('width must be finite')));
 });
+
+
+test('layout measures title and heading text with role-specific typography tokens', () => {
+  const { layoutSlide } = require('../native/engine/layout');
+  const { resolveTheme } = require('../native/themes/design_system');
+  const theme = resolveTheme({
+    sizes: { title: 40, heading: 28, body: 14 },
+    fonts: { heading: 'Display Face', body: 'Body Face' },
+    typography: { lineSpacingMultiple: 1.35 }
+  });
+  const result = layoutSlide({ elements: [
+    { type: 'text', role: 'title', text: 'A title without explicit font size', x: 1, y: 1, w: 5 },
+    { type: 'text', role: 'heading', text: 'A heading', x: 1, y: 2, w: 5 },
+    { type: 'text', role: 'body', text: 'Body copy', x: 1, y: 3, w: 5 }
+  ] }, { width: 13.333, height: 7.5 }, theme);
+  assert.ok(result[0]._requiredTextHeight > result[1]._requiredTextHeight);
+  assert.ok(result[1]._requiredTextHeight > result[2]._requiredTextHeight);
+  assert.ok(result.every((element) => element.h > 0));
+});
+
+test('native text boxes inherit shared theme line spacing when not overridden', async () => {
+  const { buildPresentation } = require('../native');
+  const result = await buildPresentation({
+    theme: { typography: { lineSpacingMultiple: 1.42 } },
+    slides: [{ elements: [
+      { type: 'text', text: 'Theme line spacing', x: 1, y: 1, w: 5, h: 1 }
+    ] }]
+  });
+  const textObject = result.pptx._slides[0]._slideObjects.find((object) => object._type === 'text');
+  assert.equal(textObject.options.lineSpacingMultiple, 1.42);
+});

@@ -40,7 +40,7 @@ function textOptions(el, theme) {
     underline: !!el.underline,
     strike: !!el.strike,
     charSpacing: el.charSpacing,
-    lineSpacingMultiple: el.lineSpacingMultiple,
+    lineSpacingMultiple: el.lineSpacingMultiple || theme.typography.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22,
     paraSpaceBeforePt: el.paraSpaceBeforePt,
     bullet: el.bullet,
     margin: el.margin === undefined ? 0 : el.margin,

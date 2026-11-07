@@ -21,7 +21,7 @@ function title(text, options = {}) {
     valign: 'mid',
     margin: 0,
     charSpacing: options.charSpacing === undefined ? theme.typography.titleTracking : options.charSpacing,
-    lineSpacingMultiple: options.lineSpacingMultiple,
+    lineSpacingMultiple: options.lineSpacingMultiple === undefined ? theme.typography.lineSpacingMultiple : options.lineSpacingMultiple,
     paraSpaceAfterPt: options.paraSpaceAfterPt,
     transparency: options.transparency
   };

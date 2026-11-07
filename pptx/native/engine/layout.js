@@ -15,11 +15,13 @@ function layoutSlide(slide, pageSize, theme = {}, options = {}) {
     let height = element.h;
 
     if (element.type === 'text') {
-      const fontSize = element.fontSize || theme.sizes?.body || 16;
+      const textRole = element.role === 'title' || element.role === 'heading' ? element.role : 'body';
+      const fontSize = element.fontSize || theme.sizes?.[textRole] || theme.sizes?.body || 16;
+      const defaultFontFace = textRole === 'body' ? theme.fonts?.body : theme.fonts?.heading;
       const measureOptions = {
         fontManager: options.fontManager,
-        fontFace: element.fontFace || theme.fonts?.body,
-        lineHeight: element.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22,
+        fontFace: element.fontFace || defaultFontFace || theme.fonts?.body,
+        lineHeight: element.lineSpacingMultiple || theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22,
         safetyFactor: options.safetyFactor || 0.9
       };
       if (typeof element.text === 'string') {
