@@ -75,6 +75,28 @@ function addElement(slide, el, theme, pptx) {
   } else if (el.type === 'image') {
     const source = el.path ? { path: el.path } : { data: el.data };
     slide.addImage(Object.assign(source, { x: el.x, y: el.y, w: el.w, h: el.h, transparency: el.transparency || 0 }));
+  } else if (el.type === 'chart') {
+    const chartTypes = {
+      bar: pptx.ChartType.bar,
+      line: pptx.ChartType.line,
+      pie: pptx.ChartType.pie,
+      doughnut: pptx.ChartType.doughnut,
+      area: pptx.ChartType.area
+    };
+    const chartType = chartTypes[el.chartType || 'bar'];
+    if (!chartType) throw new Error('Unsupported chart type: ' + el.chartType);
+    slide.addChart(chartType, el.data, Object.assign({
+      x: el.x, y: el.y, w: el.w, h: el.h,
+      showTitle: false,
+      showLegend: false,
+      showValue: false,
+      chartColors: [theme.colors.primary, theme.colors.accent, '6B8F87', 'D8A17C'],
+      catAxisLabelFontFace: theme.fonts.body,
+      valAxisLabelFontFace: theme.fonts.body,
+      catAxisLabelColor: theme.colors.muted,
+      valAxisLabelColor: theme.colors.muted,
+      valGridLine: { color: theme.colors.border, width: 0.6 }
+    }, el.options || {}));
   } else if (el.type === 'table') {
     slide.addTable(el.rows || [], Object.assign({
       x: el.x, y: el.y, w: el.w, h: el.h,
