@@ -397,7 +397,7 @@ test('native text styling preserves italic underline strike and character spacin
     const xml = await zip.file('ppt/slides/slide1.xml').async('string');
     assert.match(xml, /\bi="1"/);
     assert.match(xml, /\bu="sng"/);
-    assert.match(xml, /strike="sng"/);
+    assert.match(xml, /strike="sngStrike"/);
     assert.match(xml, /spc="120"/);
   } finally {
     if (fs.existsSync(output)) fs.unlinkSync(output);
