@@ -12,7 +12,7 @@ const theme = JSON.parse(fs.readFileSync(themePath, 'utf8'));
 const hero = templates.hero({
   theme,
   kicker: 'DESIGN SYSTEM / MIGRATION',
-  title: '保留设计语言，而不是退回默认模板',
+  title: '保留原有视觉设计与品质',
   subtitle: '将 HTML/CSS 的视觉 Tokens 转换为可编辑的 PowerPoint 原生对象。',
   footer: 'EDITABLE OBJECTS  ·  SHARED DESIGN TOKENS'
 });
