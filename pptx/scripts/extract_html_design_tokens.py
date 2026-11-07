@@ -81,11 +81,11 @@ def extract(css: str) -> dict:
                 if any(key in name for key in keys) and token not in colors:
                     colors[token] = color
             continue
-        if "font" in name and ("heading" in name or "title" in name or "display" in name):
+        if "font" in name and "size" not in name and ("heading" in name or "title" in name or "display" in name):
             fonts.setdefault("heading", font_family(value))
-        elif "font" in name and ("cjk" in name or "east-asian" in name or "chinese" in name):
+        elif "font" in name and "size" not in name and ("cjk" in name or "east-asian" in name or "chinese" in name):
             fonts.setdefault("cjk", font_family(value))
-        elif "font" in name and ("body" in name or "text" in name or "family" in name):
+        elif "font" in name and "size" not in name and ("body" in name or "text" in name or "family" in name):
             fonts.setdefault("body", font_family(value))
         length = length_to_inches(value)
         if length is not None:
