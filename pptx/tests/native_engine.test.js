@@ -506,3 +506,18 @@ test('rich text runs inherit the enclosing title font face', async () => {
   assert.equal(textObject.options.text[0].options.fontFace, 'Display Face');
   assert.equal(textObject.options.text[1].options.fontFace, 'Display Face');
 });
+
+
+test('gradient fill combines stop alpha with shape-level transparency', () => {
+  const { gradientFillXml } = require('../native/engine/native_pptx');
+  const xml = gradientFillXml({
+    angle: 90,
+    stops: [
+      { position: 0, color: '112233', transparency: 20 },
+      { position: 1, color: '445566', transparency: 0 }
+    ]
+  }, 50);
+  assert.match(xml, /<a:alpha val="40000"\/>/);
+  assert.match(xml, /<a:alpha val="50000"\/>/);
+  assert.throws(() => gradientFillXml({ stops: [{ position: 0, color: '112233' }, { position: 1, color: '445566' }] }, 101), /base transparency/);
+});

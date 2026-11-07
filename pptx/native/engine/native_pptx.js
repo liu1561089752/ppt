@@ -208,7 +208,10 @@ async function buildPresentation(deck, options = {}) {
   return { pptx, report, pageSize, fontReport: fontManager.inspect() };
 }
 
-function gradientFillXml(gradient) {
+function gradientFillXml(gradient, baseTransparency = 0) {
+  if (!Number.isFinite(baseTransparency) || baseTransparency < 0 || baseTransparency > 100) {
+    throw new Error('Gradient base transparency must be between 0 and 100');
+  }
   const stops = gradient && gradient.stops;
   if (!Array.isArray(stops) || stops.length < 2) throw new Error('Gradient fill requires at least two color stops');
   const rawAngle = gradient.angle === undefined ? 0 : Number(gradient.angle);
@@ -220,10 +223,11 @@ function gradientFillXml(gradient) {
     if (typeof stop.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(stop.color)) {
       throw new Error('Gradient stop ' + index + ' color must be a six-digit hex color');
     }
-    const transparency = stop.transparency === undefined ? 0 : Number(stop.transparency);
-    if (!Number.isFinite(transparency) || transparency < 0 || transparency > 100) {
+    const stopTransparency = stop.transparency === undefined ? 0 : Number(stop.transparency);
+    if (!Number.isFinite(stopTransparency) || stopTransparency < 0 || stopTransparency > 100) {
       throw new Error('Gradient stop ' + index + ' transparency must be between 0 and 100');
     }
+    const transparency = 100 - ((100 - stopTransparency) * (100 - baseTransparency) / 100);
     return { position: Math.round(Number(stop.position) * 100000), color: cleanColor(stop.color, '000000'), transparency };
   }).sort((a, b) => a.position - b.position);
   const angle = Math.round((((rawAngle % 360) + 360) % 360) * 60000);
@@ -257,7 +261,10 @@ async function patchGradientFills(outputPath, deck) {
     xml = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
       const element = shapeElements[shapeIndex++];
       if (!element || element.type !== 'shape' || !element.gradient) return whole;
-      const fillXml = gradientFillXml(element.gradient);
+      const baseTransparency = element.fillTransparency === undefined
+        ? (element.transparency === undefined ? 0 : element.transparency)
+        : element.fillTransparency;
+      const fillXml = gradientFillXml(element.gradient, baseTransparency);
       const patched = inner.replace(/<a:solidFill>[\s\S]*?<\/a:solidFill>/u, fillXml);
       if (patched === inner) throw new Error('Unable to locate solid shape fill for gradient on slide ' + (slideIndex + 1) + ', element ' + (shapeIndex - 1));
       patchedGradientCount += 1;
