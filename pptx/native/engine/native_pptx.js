@@ -10,6 +10,7 @@ const { validateSlide } = require('./validation');
 const { FontManager } = require('./font_manager');
 const { patchEastAsianFonts } = require('./east_asian_font');
 const defaultTheme = require('../themes/default');
+const { resolveTheme } = require('../themes/design_system');
 
 function cleanColor(value, fallback) {
   return String(value || fallback || '000000').replace(/^#/, '').toUpperCase();
@@ -117,10 +118,7 @@ async function buildPresentation(deck, options = {}) {
   const pptx = new pptxgen();
   const pageSize = normalizePageSize(deck.pageSize || options.pageSize || 'wide');
   const selectedTheme = deck.theme || options.theme || {};
-  const theme = Object.assign({}, defaultTheme, selectedTheme);
-  theme.colors = Object.assign({}, defaultTheme.colors, selectedTheme.colors || {});
-  theme.fonts = Object.assign({}, defaultTheme.fonts, selectedTheme.fonts || {});
-  theme.sizes = Object.assign({}, defaultTheme.sizes, selectedTheme.sizes || {});
+  const theme = resolveTheme(selectedTheme);
   theme.fontFiles = Object.assign({}, (options.theme && options.theme.fontFiles) || {}, (deck.theme && deck.theme.fontFiles) || {});
   const fontManager = new FontManager({
     fontFiles: theme.fontFiles,
