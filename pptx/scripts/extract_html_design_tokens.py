@@ -75,6 +75,8 @@ def extract(css: str) -> dict:
     sizes: dict[str, float] = {}
     spacing: dict[str, float] = {}
     radii: dict[str, float] = {}
+    typography: dict[str, object] = {}
+    layouts: dict[str, float] = {}
     aliases = {
         "background": ("background", "bg", "canvas"),
         "foreground": ("foreground", "text", "ink", "body-text"),
@@ -108,12 +110,34 @@ def extract(css: str) -> dict:
             elif "font-size" in name or "text-size" in name:
                 key = "title" if ("title" in name or "h1" in name) else "heading" if ("heading" in name or "h2" in name) else "caption" if ("caption" in name or "small" in name) else "body"
                 sizes.setdefault(key, round(length * 72, 2))
+            elif "page-margin-x" in name or "page-gutter" in name:
+                layouts.setdefault("pageMarginX", max(0, length))
+            elif "page-margin-y" in name:
+                layouts.setdefault("pageMarginY", max(0, length))
+            elif "column-gap" in name:
+                layouts.setdefault("columnGap", max(0, length))
+            elif "section-gap" in name:
+                layouts.setdefault("sectionGap", max(0, length))
+        if "line-height" in name:
+            try:
+                typography.setdefault("lineSpacingMultiple", float(value))
+            except ValueError:
+                pass
+        if "letter-spacing" in name:
+            letter = length_to_inches(value)
+            if letter is not None:
+                typography.setdefault("bodyTracking", round(letter * 72, 2))
+        if "font-weight" in name:
+            if "heading" in name or "title" in name:
+                typography.setdefault("titleWeight", value)
+            else:
+                typography.setdefault("bodyWeight", value)
 
     selectors: dict[str, dict[str, str]] = {}
     for selector_text, body in RULE_RE.findall(css):
         declarations = {k.lower(): v.strip() for k, v in DECL_RE.findall(body)}
         selector = selector_text.strip().lower()
-        if selector in ("body", "html", ":root", "*"):
+        if selector in ("body", "html", ":root", "*", "h1", "h2", "h3", "p", ".card", ".slide-title"):
             selectors[selector] = declarations
     body = selectors.get("body", {})
     root = selectors.get(":root", {})
@@ -133,12 +157,39 @@ def extract(css: str) -> dict:
             if color:
                 colors.setdefault("foreground", color)
 
+    for selector_name, token_name in (("h1", "title"), ("h2", "heading"), (".slide-title", "title"), ("p", "body")):
+        rule = selectors.get(selector_name, {})
+        if "font-family" in rule:
+            fonts.setdefault("heading" if token_name != "body" else "body", font_family(rule["font-family"]))
+        if "font-size" in rule:
+            value = length_to_inches(rule["font-size"])
+            if value:
+                sizes.setdefault(token_name, round(value * 72, 2))
+        if "color" in rule:
+            color = normalize_color(rule["color"])
+            if color:
+                colors.setdefault("primary" if token_name in ("title", "heading") else "foreground", color)
+    card = selectors.get(".card", {})
+    if "background" in card or "background-color" in card:
+        color = normalize_color(card.get("background-color", card.get("background", "")))
+        if color:
+            colors.setdefault("surface", color)
+    if "border-color" in card:
+        color = normalize_color(card["border-color"])
+        if color:
+            colors.setdefault("border", color)
+    if "border-radius" in card:
+        value = length_to_inches(card["border-radius"])
+        if value is not None:
+            radii.setdefault("medium", value)
+
     return {
         "source": "html-css",
         "rawCssVariables": raw_vars,
         "theme": {
             "colors": colors, "fonts": fonts, "sizes": sizes,
-            "spacing": spacing, "radii": radii
+            "spacing": spacing, "radii": radii,
+            "typography": typography, "layouts": layouts
         },
         "cssSelectors": selectors,
         "notes": [
@@ -163,6 +214,8 @@ def self_test() -> None:
     assert theme["sizes"]["title"] == 27.0, theme
     assert theme["spacing"]["lg"] == round(32 / 96, 4), theme
     assert theme["radii"]["medium"] == round(12 / 96, 4), theme
+    assert normalize_color("rgb(18, 52, 86)") == "123456"
+    assert theme["typography"] == {}, theme
     print("HTML/CSS design token extraction self-test passed.")
 
 
