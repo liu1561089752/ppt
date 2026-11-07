@@ -503,8 +503,8 @@ test('rich text runs inherit the enclosing title font face', async () => {
   });
   const textObject = result.pptx._slides[0]._slideObjects.find((object) => object._type === 'text');
   assert.equal(textObject.options.fontFace, 'Display Face');
-  assert.equal(textObject.options.text[0].options.fontFace, 'Display Face');
-  assert.equal(textObject.options.text[1].options.fontFace, 'Display Face');
+  assert.equal(textObject.text[0].options.fontFace, 'Display Face');
+  assert.equal(textObject.text[1].options.fontFace, 'Display Face');
 });
 
 
