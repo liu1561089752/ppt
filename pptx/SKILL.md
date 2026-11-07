@@ -610,3 +610,26 @@ Rich-text run arrays are kept editable and are currently measured as plain text;
 - `templates.cover(options)`, `templates.content(options)`, and `templates.kpi(options)` return slide specifications ready to add to `deck.slides`.
 
 These are starter design primitives. Compose and adapt them to the content hierarchy instead of using every component as a repeated card; the design system should retain variation across slide types.
+
+
+### East Asian font properties and editable charts
+
+When writing a PPTX file, the renderer post-processes the OOXML package and sets the configured CJK font in run-level East Asian font properties (`a:ea`) in slide, layout, master, and theme XML. The default CJK face is `Microsoft YaHei`; override it with `theme.fonts.cjk`. The font still needs to be installed on the target machine. This patch sets the font reference; it does not embed font files or bypass font licensing.
+
+Native chart elements are supported with `type: 'chart'`, `chartType: 'bar' | 'line' | 'pie' | 'doughnut' | 'area'`, and PptxGenJS series data:
+
+```js
+{
+  type: 'chart',
+  chartType: 'bar',
+  x: 0.9, y: 1.7, w: 11.4, h: 4.8,
+  data: [{ name: 'Revenue', labels: ['2023', '2024', '2025'], values: [7.8, 10.1, 12.8] }],
+  options: { showLegend: false, showValue: true }
+}
+```
+
+Charts remain editable PowerPoint chart objects. Chart-specific styling is passed through `options` to PptxGenJS.
+
+### Diagram components
+
+The component library also exports `components.processFlow(steps, options)` and `components.timeline(items, options)`. They return editable text, shape, and line elements. Starter templates include `templates.comparison(options)` and `templates.process(options)`.
