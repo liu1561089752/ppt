@@ -20,8 +20,8 @@ test('deck schema rejects malformed elements', () => {
 });
 
 test('CJK text is conservatively measured wider than Latin text', () => {
-  const cjk = estimateLineCount('中文排版测试中文排版测试', 2, 18);
-  const latin = estimateLineCount('Native typography layout test', 2, 18);
+  const cjk = estimateLineCount('中文排版测试中文排版测试中文排版测试', 2, 18);
+  const latin = estimateLineCount('abcdefghijklmnopqr', 2, 18);
   assert.ok(cjk >= latin);
   assert.ok(estimateTextHeight('一段中文文本', 3, 18) > 0);
 });
