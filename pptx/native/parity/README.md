@@ -65,3 +65,8 @@ these cases into Native layout primitives or targeted vector assets.
 
 
 The paired HTML fixture uses an explicit 1280×720 (16:9) composition. Its pixel geometry is aligned to the Native 13.333×7.5 inch slide at 96 CSS pixels per inch, including the right-side panel, accent bar, title/subtitle boxes, card, and micro-label. The fixture is intended to make manual side-by-side review concrete rather than comparing theme tokens alone.
+
+
+## Current visual review note
+
+A local 1280×720 HTML reference render was compared with the LibreOffice-rendered Native parity slide at the same dimensions. The large-scale composition, panel split, accent placement, card geometry, palette, and text-box alignment are close. The title glyph width differs between the browser/WeasyPrint fallback font and LibreOffice's substituted font because no Aptos font files are configured in the CI environment. This is a useful layout check, not approval for a Golden baseline or proof of identical typography in Microsoft PowerPoint.

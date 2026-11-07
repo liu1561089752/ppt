@@ -25,3 +25,8 @@ Then inspect and commit the PNGs. CI compares a deck only when its reviewed base
 ## Thresholds
 
 The initial CI thresholds are MAE <= 0.015 and global SSIM >= 0.97. They are conservative starting points, not universal quality guarantees. Rendering should use the same LibreOffice and font environment for baseline capture and CI. Every failure produces JSON metrics, an HTML summary, and per-slide difference heatmaps.
+
+
+## Current gate
+
+The latest fixture review improves geometry coverage, but no Golden PNG is approved yet. The local HTML/LibreOffice comparison shows the composition and surfaces are aligned; font substitution remains visible. Before adding baseline images, review the current HTML source and Native PPTX in the intended Microsoft PowerPoint environment and record the font availability and any remaining visual differences.
