@@ -143,3 +143,29 @@ test('batch CLI parses inputs and limits concurrency', () => {
   assert.equal(options.concurrency, 3);
   assert.throws(() => parseArgs(['--concurrency', '20']));
 });
+
+
+test('legacy concurrent HTML conversion reserves and removes slide slots in source order', () => {
+  const { createOrderedSlideTasks, removeFailedSlideTasks } = require('../slide_order');
+  const slides = [];
+  const removed = [];
+  const pptx = {
+    addSlide() {
+      const slide = { _slideNum: slides.length + 1 };
+      slides.push(slide);
+      return slide;
+    },
+    removeSlide(slideNumber) {
+      removed.push(slideNumber);
+      slides.splice(slideNumber - 1, 1);
+      slides.forEach((slide, index) => { slide._slideNum = index + 1; });
+    }
+  };
+  const tasks = createOrderedSlideTasks(pptx, ['slide_01.html', 'slide_02.html', 'slide_03.html', 'slide_04.html']);
+  tasks[1].failed = true;
+  tasks[3].failed = true;
+  const failed = removeFailedSlideTasks(pptx, tasks);
+  assert.deepEqual(failed.map((task) => task.htmlFile), ['slide_04.html', 'slide_02.html']);
+  assert.deepEqual(removed, [4, 2]);
+  assert.deepEqual(slides.map((slide) => slide._slideNum), [1, 2]);
+});
