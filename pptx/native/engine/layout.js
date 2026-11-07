@@ -1,12 +1,12 @@
 'use strict';
 
-const { estimateTextHeight } = require('./text_measure');
+const { estimateTextHeight, wrapText } = require('./text_measure');
 
-function layoutSlide(slide, pageSize, theme = {}) {
-  const margin = slide.margin === undefined ? 0.58 : slide.margin;
+function layoutSlide(slide, pageSize, theme = {}, options = {}) {
+  const margin = slide.margin === undefined ? (theme.margins?.x || 0.58) : slide.margin;
   const gap = slide.gap === undefined ? 0.22 : slide.gap;
   const contentWidth = pageSize.width - margin * 2;
-  let cursorY = margin;
+  let cursorY = slide.startY === undefined ? (theme.margins?.y || margin) : slide.startY;
 
   return (slide.elements || []).map((source, index) => {
     const element = Object.assign({}, source);
@@ -16,12 +16,20 @@ function layoutSlide(slide, pageSize, theme = {}) {
 
     if (element.type === 'text') {
       const fontSize = element.fontSize || theme.sizes?.body || 16;
-      const plainText = Array.isArray(element.text)
-        ? element.text.map((run) => typeof run === 'string' ? run : (run.text || '')).join('')
-        : element.text;
-      if (height === undefined) height = estimateTextHeight(plainText, width, fontSize, {
-        lineHeight: element.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22
-      });
+      const measureOptions = {
+        fontManager: options.fontManager,
+        fontFace: element.fontFace || theme.fonts?.body,
+        lineHeight: element.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22,
+        safetyFactor: options.safetyFactor || 0.9
+      };
+      if (typeof element.text === 'string') {
+        element._renderText = wrapText(element.text, width, fontSize, measureOptions);
+        if (height === undefined) height = estimateTextHeight(element._renderText, width, fontSize, measureOptions);
+      } else if (height === undefined) {
+        const plainText = element.text.map((run) => typeof run === 'string' ? run : (run.text || '')).join('');
+        height = estimateTextHeight(plainText, width, fontSize, measureOptions);
+        element._layoutWarnings = ['Rich-text runs are measured as plain text; explicit line breaks are recommended.'];
+      }
     } else if (height === undefined) {
       height = element.type === 'line' ? 0.01 : 1.0;
     }
