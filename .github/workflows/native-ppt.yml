@@ -10,6 +10,7 @@ on:
       - "pptx/slide_order.js"
       - "pptx/scripts/extract_native_design.py"
       - "pptx/scripts/extract_html_design_tokens.py"
+      - "pptx/native/parity/**"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
@@ -21,6 +22,8 @@ on:
       - "pptx/batch_html2pptx.js"
       - "pptx/slide_order.js"
       - "pptx/scripts/extract_native_design.py"
+      - "pptx/scripts/extract_html_design_tokens.py"
+      - "pptx/native/parity/**"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
@@ -51,8 +54,9 @@ jobs:
       - name: Extract CSS design tokens and generate migration demo
         working-directory: pptx/native
         run: |
-          python ../scripts/extract_html_design_tokens.py ../examples/design-reference.css native-theme-profile
+          python ../scripts/extract_html_design_tokens.py ../examples/design-reference.html native-theme-profile
           npm run demo:theme
+          npm run demo:parity
       - name: Generate editable demo decks
         working-directory: pptx/native
         run: |
@@ -75,11 +79,12 @@ jobs:
           npm run render:components
           npm run render:batch
           npm run render:theme
+          npm run render:parity
       - name: Compare against reviewed golden slide images
         working-directory: pptx/native
         run: |
           set -e
-          for deck in native-demo native-components-demo native-design-migration-demo; do
+          for deck in native-demo native-components-demo native-design-migration-demo native-design-parity-demo; do
             golden="golden/$deck"
             if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
               python scripts/visual_regression.py \
@@ -99,7 +104,8 @@ jobs:
             pptx/native/native-demo.pptx
             pptx/native/native-components-demo.pptx
             pptx/native/native-design-migration-demo.pptx
-            pptx/native/native-theme-profile/
+            pptx/native/native-design-parity-demo.pptx
+            pptx/native/native-theme-profile/\n            pptx/native/parity/
             pptx/native/batch-dist/
             pptx/native/render-check/
             pptx/native/visual-regression/
