@@ -39,7 +39,7 @@ def metrics(reference: Image.Image, actual: Image.Image) -> dict:
     mean_a, mean_b = a.mean[0], b.mean[0]
     var_a, var_b = a.var[0], b.var[0]
     mean_product = ImageStat.Stat(ImageChops.multiply(gray_ref, gray_cur)).mean[0]
-    covariance = mean_product - mean_a * mean_b
+    covariance = mean_product * 255 - mean_a * mean_b
     c1, c2 = 6.5025, 58.5225
     ssim = ((2 * mean_a * mean_b + c1) * (2 * covariance + c2)) / (
         (mean_a * mean_a + mean_b * mean_b + c1) * (var_a + var_b + c2)
