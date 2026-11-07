@@ -575,3 +575,38 @@ Always render generated decks in the target Office environment and inspect text 
 This is the first vertical slice, not a completed replacement for the HTML pipeline. It establishes the public API, Deck Spec validation, units, a basic layout pass, native object mapping, theme defaults, and unit tests. Follow-on work should add font-file metrics and CJK line breaking, semantic layout templates, reusable visual components, image crop handling, chart/diagram components, PowerPoint/LibreOffice render regression, and OOXML post-processing for East Asian font properties.
 
 Do not remove or change the legacy HTML engine as part of Native mode development. Both paths are intentionally kept side by side during migration.
+
+
+### Typography upgrade: explicit wrapping and font metrics
+
+The Native renderer now performs a pre-layout text pass for plain strings. It inserts explicit line breaks using a conservative width budget, supports grapheme-aware fallback wrapping, and avoids common Chinese punctuation at the beginning of a line. Estimated text height is recorded and the slide validator reports `TEXT_OVERFLOW_RISK` when a fixed-height text box is too short.
+
+For closer measurement, install/configure font files and map the PowerPoint face names to actual font files:
+
+```js
+const deck = {
+  theme: {
+    fontFiles: {
+      'Aptos': '/absolute/path/to/Aptos.ttf',
+      'Aptos Display': '/absolute/path/to/Aptos-Display.ttf',
+      'Microsoft YaHei': '/absolute/path/to/msyh.ttf'
+    },
+    fallbackFontFile: '/absolute/path/to/msyh.ttf'
+  },
+  slides: [/* ... */]
+};
+```
+
+The optional metrics layer uses `fontkit` glyph advance widths when a configured font file is available. If a font is missing or a glyph is unavailable, the estimator falls back to conservative CJK/Latin width classes. The metrics layer does not yet perform full OpenType shaping, kerning, variable-font axis selection, or exact PowerPoint line breaking. It improves measurement but does not eliminate the need for rendering checks.
+
+Rich-text run arrays are kept editable and are currently measured as plain text; add explicit line breaks to rich-text content when precise wrapping is required.
+
+### Reusable native components and templates
+
+`require('./native')` now exports `components` and `templates`:
+
+- `components.title(text, options)`, `components.paragraph(text, options)`, `components.divider(options)`
+- `components.kpiCard(options)`, `components.infoCard(options)` return arrays of editable shape/text elements.
+- `templates.cover(options)`, `templates.content(options)`, and `templates.kpi(options)` return slide specifications ready to add to `deck.slides`.
+
+These are starter design primitives. Compose and adapt them to the content hierarchy instead of using every component as a repeated card; the design system should retain variation across slide types.
