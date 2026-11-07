@@ -11,7 +11,9 @@
     "render:demo": "python scripts/render_check.py native-demo.pptx --output-dir render-check/native-demo",
     "render:components": "python scripts/render_check.py native-components-demo.pptx --output-dir render-check/native-components-demo",
     "batch:example": "node ../batch_native_pptx.js --input ../examples/native_deck.json --output-dir batch-dist",
-    "render:batch": "python scripts/render_check.py batch-dist/native_deck.pptx --output-dir render-check/batch"
+    "render:batch": "python scripts/render_check.py batch-dist/native_deck.pptx --output-dir render-check/batch",
+    "demo:theme": "node ../examples/native_design_migration_demo.js native-theme-profile/theme.json native-design-migration-demo.pptx",
+    "render:theme": "python scripts/render_check.py native-design-migration-demo.pptx --output-dir render-check/native-design-migration-demo"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",
