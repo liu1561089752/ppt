@@ -837,13 +837,14 @@ Scope discipline: the pipeline covers absolute positioning (and `position: fixed
 
 ### Current Native quality gates
 
-- The CI suite runs Node engine tests (133 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
+- The CI suite runs Node engine tests (134 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
 - The visual comparator is active, but it only performs real deck comparisons when reviewed PNGs exist under `pptx/native/golden/<deck>/`. Its self-test is not a substitute for a real baseline.
 - Never add generated PNGs to Golden directories merely to make CI green. A human must review each paired HTML/Native slide and approve the baseline first.
 - LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.
 - Image `cover`/`contain`/`crop`, rounded corners, picture outlines and picture shadows are asserted at the OOXML level, not only visually.
 - The editability audit (`scripts/audit_deck.js`) is the machine check for "content stays editable". It cannot judge aesthetics.
 - The layout audit (`pptx/native/pipeline/collide.js`) is the machine check for "the page fits": it reports sibling boxes that collide, content taller or wider than its own box, and flow content past the slide edge. The pipeline CLI fails on any of them (`--allow-layout-issues` opts out), so a measurement error cannot ship silently.
+- `writing-mode: vertical-rl` is native vertical text (`bodyPr vert="eaVert"`, upright CJK, columns right to left) and `sideways-rl` is `vert`; the box height is the line length, so the fit test counts columns instead of shrinking the font. `vertical-lr`/`sideways-lr` are reported because DrawingML has no matching direction.
 - `overflow: hidden` is reported only when the content really is larger than the box; with content that fits the declaration changes no pixel and stays silent. There is no clipping, so a bleeding decoration is drawn past the edge.
 - A single declared border side (`border-top: 3px solid ...`) is translated into a thin filled shape on that edge - a real editable object - instead of a rejected asymmetric outline. Two or more differing sides are still reported, because a native outline is uniform.
 - CSS token extraction is best-effort. It supports a limited set of colors, font tokens, spacing, simple linear gradients, one simple box shadow, and explicit opacity. Complex CSS cascade, Grid/Flex composition, filters, masks, blend modes, pseudo-elements, and animation require deliberate manual translation.

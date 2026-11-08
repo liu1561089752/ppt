@@ -65,6 +65,13 @@ function textOptions(el, theme) {
     options.wrap = false;
     options.fit = 'none';
   }
+  // `writing-mode: vertical-rl` is `bodyPr vert="eaVert"`. The box comes from the
+  // author (height = line length), so autofit stays off: `normAutofit` would shrink
+  // the glyphs to fit instead of adding the column the CSS would add.
+  if (el.vert) {
+    options.vert = el.vert;
+    options.fit = 'none';
+  }
   return options;
 }
 

@@ -89,6 +89,7 @@ jobs:
           npm run pipeline:indent
           npm run pipeline:wrap
           npm run pipeline:stress
+          npm run pipeline:vertical
           npm run audit:pipeline
           # The converted table must keep its declared column proportions.
           python scripts/verify_native_ooxml.py pipeline-converted/pipeline-converted.pptx --require-table --require-uneven-columns
@@ -133,6 +134,7 @@ jobs:
           npm run render:indent
           npm run render:wrap
           npm run render:pipeline-stress
+          npm run render:pipeline-vertical
           npm run render:batch
           npm run render:theme
           npm run render:parity
@@ -149,13 +151,14 @@ jobs:
           python scripts/preview_deck.py pipeline-converted/pipeline-indent.pptx --output-dir preview/indent --sheet preview/indent-sheet.png
           python scripts/preview_deck.py pipeline-converted/pipeline-wrap.pptx --output-dir preview/wrap --sheet preview/wrap-sheet.png
           python scripts/preview_deck.py pipeline-converted/pipeline-stress.pptx --output-dir preview/pipeline-stress --sheet preview/pipeline-stress-sheet.png
+          python scripts/preview_deck.py pipeline-converted/pipeline-vertical.pptx --output-dir preview/pipeline-vertical --sheet preview/pipeline-vertical-sheet.png
       - name: Compare against reviewed golden slide images
         working-directory: pptx/native
         run: |
           set -e
           for deck in native-demo native-components-demo native-design-migration-demo \
                       native-design-parity-demo native-layouts-demo native-images-demo \
-                      native-stress-deck pipeline-converted pipeline-chart pipeline-decorations pipeline-grid pipeline-structural pipeline-indent pipeline-wrap pipeline-stress; do
+                      native-stress-deck pipeline-converted pipeline-chart pipeline-decorations pipeline-grid pipeline-structural pipeline-indent pipeline-wrap pipeline-stress pipeline-vertical; do
             golden="golden/$deck"
             if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
               python scripts/visual_regression.py \

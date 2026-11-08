@@ -3115,3 +3115,72 @@ test('overflow: hidden is reported only when the box really clips something', ()
   assert.ok(/cannot clip/u.test(clips[0].reason), clips[0].reason);
 });
 
+
+test('writing-mode: vertical-rl becomes native vertical text, not a rotation', async () => {
+  const build = (extra) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .label { width: 44px; height: 320px; font-size: 20px; ' + extra + ' }',
+    '</style></head><body><main class="slide">',
+    '  <div class="label">竖排标题文字</div>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const vertical = build('writing-mode: vertical-rl;');
+  assert.deepEqual(vertical.report.unsupportedDetails, []);
+  const label = vertical.deck.slides[0].elements.find((element) => element.type === 'text');
+  assert.equal(label.vert, 'eaVert');
+  assert.equal(label.rotate, undefined, 'vertical text is not a rotation');
+
+  // An advance is measured down the box height, so the box is not re-wrapped by width.
+  assert.equal(String(label.text).includes('\n'), false, JSON.stringify(label.text));
+
+  const sideways = build('writing-mode: sideways-rl;');
+  assert.deepEqual(sideways.report.unsupportedDetails, []);
+  assert.equal(sideways.deck.slides[0].elements.find((element) => element.type === 'text').vert, 'vert');
+
+  // Directions with no native equivalent must be reported, not rotated silently.
+  const lr = build('writing-mode: vertical-lr;');
+  assert.equal(lr.report.unsupportedDetails.filter((entry) => entry.property === 'writingMode').length, 1);
+  assert.equal(lr.deck.slides[0].elements.find((element) => element.type === 'text').vert, undefined);
+
+  // The box height is the line length, so it cannot be derived from the text.
+  const autoHeight = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .label { width: 44px; writing-mode: vertical-rl; font-size: 20px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="label">竖排</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(autoHeight.report.unsupportedDetails.filter((entry) => entry.property === 'writingMode').length, 1);
+  assert.ok(/declared height/u.test(autoHeight.report.unsupportedDetails[0].reason),
+    autoHeight.report.unsupportedDetails[0].reason);
+
+  // Too narrow for the columns the text needs: reported with the count, not drawn over.
+  const narrow = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .label { width: 20px; height: 60px; writing-mode: vertical-rl; font-size: 16px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="label">这一句很长很长很长</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const narrowReport = narrow.report.unsupportedDetails.filter((entry) => entry.property === 'writingMode');
+  assert.equal(narrowReport.length, 1);
+  assert.ok(/column\(s\)/u.test(narrowReport[0].reason), narrowReport[0].reason);
+
+  // Writer: bodyPr vert on the vertical box, none on a horizontal one, and no autofit.
+  await withTempDir('native-vertical-', async (directory) => {
+    const output = pathSync.join(directory, 'vertical.pptx');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    await generatePptx({ slides: [{ elements: [
+      { type: 'text', text: 'horizontal', x: 0.5, y: 0.5, w: 3, h: 0.5, fontSize: 12 },
+      { type: 'text', text: '竖排标题', x: 4.5, y: 0.5, w: 0.5, h: 3, fontSize: 18, vert: 'eaVert' }
+    ] }] }, output);
+    const xml = await readSlideXml(output);
+    assert.equal((xml.match(/vert="eaVert"/gu) || []).length, 1);
+    assert.equal((xml.match(/<a:normAutofit/gu) || []).length, 1);
+  });
+});
+

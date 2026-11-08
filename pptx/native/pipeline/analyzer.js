@@ -60,6 +60,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
+  'writingMode',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
@@ -69,7 +70,8 @@ const POST_LAYOUT_PROPERTIES = new Set(['overflow']);
 
 const UNSUPPORTED_ALWAYS = new Set([
   'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
-  'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
+  // writing-mode is translated (see applyWritingMode) or reported there.
+  'animation', 'transition', 'float', 'columns', 'columnCount',
   'backgroundClip', 'textShadow',
   'textOverflow', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
   'justifySelf'
@@ -555,6 +557,54 @@ function clipsContent(node) {
   return Number.isFinite(node.textHeight) && node.textHeight > node.h + tolerance;
 }
 
+/**
+ * `writing-mode` decides the direction the glyphs run. DrawingML has native values
+ * for two of them, so those are translated and the rest are reported:
+ *
+ *   vertical-rl   → `eaVert`  (East Asian vertical: upright CJK, columns run right
+ *                              to left, Latin runs rotated a quarter turn)
+ *   sideways-rl   → `vert`    (the whole line rotated clockwise)
+ *   vertical-lr / sideways-lr → reported: `verter`/`mongolianVert` means something
+ *                              different from either CSS value.
+ *
+ * The trade the CSS makes is that a vertical box runs the text down its *height*:
+ * the box height is the line length and extra text becomes another column, one
+ * line-height to the left. So the fit test counts columns, and a box that cannot
+ * hold them is reported instead of being drawn on top of its neighbour.
+ */
+function applyWritingMode(node, domNode, style, measured, explicitHeight, ctx) {
+  const value = String(style.writingMode || 'horizontal-tb').toLowerCase();
+  if (value === 'horizontal-tb') return;
+  const vertical = { 'vertical-rl': 'eaVert', 'sideways-rl': 'vert' }[value];
+  if (!vertical) {
+    recordUnsupported(ctx, domNode, 'writingMode', value,
+      'Only vertical-rl and sideways-rl have a native equivalent; this direction would be upside down');
+    return;
+  }
+  if (explicitHeight === null) {
+    recordUnsupported(ctx, domNode, 'writingMode', value,
+      'Vertical text needs a declared height: the box height is the line length, so it cannot be derived from the text');
+    return;
+  }
+  node.vert = vertical;
+  // The advance is measured once, then divided by the line length the box offers.
+  const lengthPt = measureTextPt(String(node.text || ''), measured.fontSizePt);
+  const length = Math.max(0.02, lengthPt / 72);
+  const lineStep = Math.max(0.02, (measured.fontSizePt * (measured.lineSpacingMultiple || 1.25)) / 72);
+  // Padding is not text room, so the length is the content height, not the border box.
+  const padding = node.padding || { top: 0, bottom: 0, left: 0, right: 0 };
+  const usableHeight = Math.max(0.02, node.h - padding.top - padding.bottom);
+  const columns = Math.max(1, Math.ceil(length / usableHeight - 0.02));
+  const requiredWidth = columns * lineStep;
+  const usableWidth = Number.isFinite(node.contentWidth) ? node.contentWidth : node.w;
+  node.textHeight = length;
+  if (requiredWidth > usableWidth + 0.01) {
+    recordUnsupported(ctx, domNode, 'writingMode', value,
+      'Vertical text needs ' + columns + ' column(s) (' + requiredWidth.toFixed(2) + 'in) but the box is '
+      + usableWidth.toFixed(2) + 'in wide; widen it or give the text more height');
+  }
+}
+
 function analyzeNode(domNode, slot, inherited, ctx) {
   const node = analyzeNodeTree(domNode, slot, inherited, ctx);
   if (!node) return null;
@@ -886,6 +936,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     // padded card shorter than it renders, so a wrapped row put the next line on top
     // of it. The text itself still measures at the content width.
     node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : explicitHeight;
+    applyWritingMode(node, domNode, style, measured, explicitHeight, ctx);
     return node;
   }
 

@@ -209,6 +209,9 @@ function textElementFromNode(node, theme, resolvedTheme) {
   }
   // `white-space: nowrap` becomes `bodyPr wrap="none"` in the writer.
   if (node.noWrap) element.nowrap = true;
+  // `writing-mode: vertical-rl` becomes `bodyPr vert="eaVert"`; the box is the
+  // author's, because in vertical text the height is the line length.
+  if (node.vert) element.vert = node.vert;
   return element;
 }
 

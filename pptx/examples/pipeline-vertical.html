@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>writing-mode · 竖排</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+  .slide {
+    position: relative; width: 1280px; height: 720px;
+    padding: 56px 64px; background: #F4F1EA; color: #1D2A2E;
+  }
+  .kicker { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: #D98A4B; }
+  h1 { margin: 12px 0 8px; font-size: 30px; line-height: 1.3; font-weight: 600; width: 860px; }
+  .lede { margin: 0; font-size: 13px; line-height: 1.9; color: #6B7B7F; width: 820px; }
+
+  /* 竖排：盒子高度就是行内长度，放不下会往左长出新的一列 */
+  .vtitle {
+    position: absolute; right: 64px; top: 56px;
+    width: 56px; height: 532px;
+    writing-mode: vertical-rl;
+    font-size: 34px; line-height: 1.35; font-weight: 600; color: #1D2A2E;
+  }
+  .vyear {
+    position: absolute; right: 150px; top: 56px;
+    width: 24px; height: 168px;
+    writing-mode: vertical-rl;
+    font-size: 12px; letter-spacing: 1px; color: #A99A86;
+  }
+  .sideways {
+    position: absolute; right: 150px; bottom: 88px;
+    width: 24px; height: 196px;
+    writing-mode: sideways-rl;
+    font-size: 11px; letter-spacing: 2px; color: #8A9A9E;
+  }
+
+  .cards { display: flex; flex-direction: row; gap: 16px; width: 940px; margin-top: 28px; }
+  .card { flex: 1; padding: 18px; background: #FFFFFF; border-radius: 10px; border-top: 3px solid #D98A4B; }
+  .card h2 { margin: 0 0 8px; font-size: 15px; }
+  .card p { margin: 0; font-size: 12px; line-height: 1.85; color: #566; }
+
+  .strip {
+    margin-top: 22px; width: 940px; padding: 14px 16px;
+    background: #E7EFEC; border-radius: 10px;
+    font-size: 12px; line-height: 1.8; color: #2C444A;
+  }
+
+  .stats { display: flex; flex-direction: row; gap: 16px; width: 940px; margin-top: 22px; }
+  .stat { flex: 1; padding: 14px 16px; background: #FFFFFF; border-radius: 10px; }
+  .stat .value { font-size: 24px; font-weight: 600; color: #1D2A2E; }
+  .stat .label { margin-top: 4px; font-size: 11px; letter-spacing: 1px; color: #8A9A9E; }
+
+  .foot { position: absolute; left: 64px; bottom: 40px; font-size: 11px; color: #8A9A9E; }
+</style>
+</head>
+<body>
+<main class="slide">
+  <div class="vtitle">竖排标题由高度决定</div>
+  <div class="vyear">2026 / 05</div>
+  <div class="sideways">VERTICAL TEXT</div>
+
+  <div class="kicker">writing-mode</div>
+  <h1>竖排不是旋转的文本框，而是真正的竖排文字</h1>
+  <p class="lede">右侧标题的每一个字都是正立的，换行变成往左长出一列 —— 这正是 <code>writing-mode: vertical-rl</code> 在浏览器里的行为，落进 PowerPoint 是文本框的竖排属性，而不是把整段文字转 90 度。</p>
+
+  <div class="cards">
+    <div class="card">
+      <h2>正立字形</h2>
+      <p>汉字保持正立，西文与数字按竖排规则旋转四分之一圈，与中文排版习惯一致。</p>
+    </div>
+    <div class="card">
+      <h2>盒子即行宽</h2>
+      <p>竖排时盒子的高度就是行内长度，宽度是列宽；放不下就多一列，而不是压小字号。</p>
+    </div>
+    <div class="card">
+      <h2>放不下就说</h2>
+      <p>列数超过盒子宽度时会上报，而不是画到邻居身上；能装下就完全静默。</p>
+    </div>
+  </div>
+
+  <div class="strip">横排与竖排可以同页共存：正文、卡片、标签仍是普通横排文本，只有声明了 <code>writing-mode</code> 的盒子竖过来，两者都是可编辑的原生文本。</div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="value">2</div>
+      <div class="label">原生竖排方向</div>
+    </div>
+    <div class="stat">
+      <div class="value">0</div>
+      <div class="label">整页栅格化</div>
+    </div>
+    <div class="stat">
+      <div class="value">100%</div>
+      <div class="label">可编辑文本</div>
+    </div>
+  </div>
+
+  <div class="foot">竖排 · vertical-rl → bodyPr vert="eaVert" · sideways-rl → vert</div>
+</main>
+</body>
+</html>

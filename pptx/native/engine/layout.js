@@ -157,6 +157,10 @@ function prepareElement(source, availableWidth, theme = {}, options = {}) {
     // `white-space: nowrap` never wraps, so the box keeps one line and the text
     // overflows instead - which is what `bodyPr wrap="none"` does natively.
     if (element.nowrap) measureOptions.noWrap = true;
+    // Vertical text runs down the box height and wraps into columns, so wrapping it
+    // at the box *width* would invent line breaks that never render. The analyzer
+    // already decided the box; here we only need a height that does not shrink it.
+    if (element.vert) measureOptions.noWrap = true;
     // The first-line indent narrows the first line, so the wrap sees it; the height
     // measures the already wrapped text and must not apply it a second time.
     const wrapOptions = Object.assign({}, measureOptions);
@@ -164,7 +168,9 @@ function prepareElement(source, availableWidth, theme = {}, options = {}) {
       wrapOptions.firstLineIndentPt = element.textIndent * 72;
     }
     if (typeof element.text === 'string') {
-      element._renderText = wrapText(element.text, width, fontSize, wrapOptions);
+      element._renderText = element.vert
+        ? element.text
+        : wrapText(element.text, width, fontSize, wrapOptions);
       element._requiredTextHeight = estimateTextHeight(element._renderText, width, fontSize, measureOptions);
     } else {
       // Runs keep their own sizes editable; only the height estimate is derived here.
