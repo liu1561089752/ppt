@@ -374,6 +374,7 @@ function emptyCounters() {
     tables: 0,
     lines: 0,
     charts: 0,
+    rotatedGroups: 0,
     declarativeContainers: 0,
     absoluteGroups: 0,
     containerFallbacks: [],
@@ -445,6 +446,8 @@ function containerPadding(node) {
 /** Build the declarative container descriptor for a group. */
 function containerElement(node, plan, resolvedTheme, report) {
   const style = node.style || {};
+  // A rotated group would need every child rotated about the group centre.
+  if (node.rotate !== undefined) report.rotatedGroups += 1;
   const spec = { type: 'container', w: round4(node.w), h: round4(node.h) };
   if (Number.isFinite(node.x)) spec.x = round4(node.x);
   if (Number.isFinite(node.y)) spec.y = round4(node.y);
@@ -525,11 +528,40 @@ function textWithSurface(node, resolvedTheme, report) {
     background: surface,
     children: [text]
   };
+  if (node.rotate !== undefined) {
+    // The wrapper is layout-only, so the rotation goes on the surface (emitted
+    // from `background` as a leading shape of the container's own box) and on the
+    // text box inside it. Both share the container centre, which is the axis CSS
+    // rotates about.
+    surface.rotate = node.rotate;
+    text.rotate = node.rotate;
+  }
   return spec;
 }
 
 /** Leaf element (text / image / table / line) for a node, with counters bumped. */
 function leafElement(node, resolvedTheme, report) {
+  const element = leafElementRotationFree(node, resolvedTheme, report);
+  if (!element || node.rotate === undefined) return element;
+  if (element.type === 'container') {
+    // A surface + text wrapper: rotate every leaf inside it, since the wrapper
+    // itself is layout-only and cannot carry a rotation.
+    rotateLeaves(element, node.rotate);
+    return element;
+  }
+  // Rotation is native on any leaf object; tables and charts accept it too.
+  element.rotate = node.rotate;
+  return element;
+}
+
+function rotateLeaves(element, degrees) {
+  (element.children || []).forEach((child) => {
+    if (child.type === 'container') rotateLeaves(child, degrees);
+    else child.rotate = degrees;
+  });
+}
+
+function leafElementRotationFree(node, resolvedTheme, report) {
   if (node.kind === 'text' || node.kind === 'list') {
     if (!node.text && !node.runs) return null;
     report.textElements += 1;
@@ -824,7 +856,7 @@ function buildDeckSpec(analysis, options = {}) {
 
     [
       'textElements', 'richTextElements', 'shapes', 'images', 'backgroundImages',
-      'tables', 'lines', 'charts', 'declarativeContainers', 'absoluteGroups'
+      'tables', 'lines', 'charts', 'rotatedGroups', 'declarativeContainers', 'absoluteGroups'
     ].forEach((key) => { report[key] += attemptReport[key]; });
     attemptReport.containerFallbacks.forEach((entry) => noteFallback(report, entry.reason));
     report.layoutAttempts = Math.max(report.layoutAttempts, attemptReport.layoutAttempts);

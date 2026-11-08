@@ -42,7 +42,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
   'flexWrap', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'alignItems',
-  'justifyContent', 'alignSelf', 'order', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
@@ -53,7 +53,7 @@ const SUPPORTED_PROPERTIES = new Set([
 ]);
 
 const UNSUPPORTED_ALWAYS = new Set([
-  'overflow', 'borderCollapse', 'transform', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
+  'overflow', 'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
@@ -70,6 +70,49 @@ const ALIGN_SELF_NATIVE = {
   'flex-end': 'end',
   end: 'end'
 };
+
+const ROTATE_FUNCTIONS = new Set(['rotate', 'rotatez']);
+
+/** Every transform function in a declaration, in source order. */
+function transformFunctions(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  if (!text || text === 'none') return [];
+  const functions = [];
+  const pattern = /([a-zA-Z0-9]+)\s*\(([^)]*)\)/gu;
+  let match = pattern.exec(text);
+  while (match) {
+    functions.push({ name: match[1].toLowerCase(), args: match[2] });
+    match = pattern.exec(text);
+  }
+  return functions;
+}
+
+function angleDegrees(argument) {
+  const match = /^(-?[\d.]+)\s*(deg|rad|grad|turn)?$/u.exec(String(argument || '').trim());
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return null;
+  const unit = match[2] || 'deg';
+  if (unit === 'rad') return (value * 180) / Math.PI;
+  if (unit === 'grad') return value * 0.9;
+  if (unit === 'turn') return value * 360;
+  return value;
+}
+
+/** `transform: rotate(-4deg)` → degrees, clockwise positive like DrawingML. */
+function rotationFromTransform(value) {
+  const functions = transformFunctions(value);
+  if (!functions.length) return undefined;
+  if (!functions.every((entry) => ROTATE_FUNCTIONS.has(entry.name))) return undefined;
+  let total = 0;
+  for (const entry of functions) {
+    const degrees = angleDegrees(entry.args);
+    if (degrees === null) return undefined;
+    total += degrees;
+  }
+  if (Math.abs(total) < 0.01) return undefined;
+  return Number(total.toFixed(2));
+}
 
 /** CSS `order`; 0 when absent, and DOM order is the stable tiebreak. */
 function sortByOrder(kids, ctx) {
@@ -250,6 +293,16 @@ function checkUnsupported(ctx, domNode, style) {
   });
   if (style.display === 'inline' || style.display === 'inline-block') {
     recordUnsupported(ctx, domNode, 'display', style.display, 'Inline flow is approximated as a block box');
+  }
+  const transform = style.transform;
+  if (transform && !isNoopValue('transform', transform)) {
+    const unsupported = transformFunctions(transform)
+      .filter((entry) => !ROTATE_FUNCTIONS.has(entry.name))
+      .map((entry) => entry.name + '()');
+    if (unsupported.length) {
+      recordUnsupported(ctx, domNode, 'transform', unsupported.join(', '),
+        'Only rotate() has a native shape rotation');
+    }
   }
   if (style.flexWrap === 'wrap' && style.display === 'flex') {
     recordUnsupported(ctx, domNode, 'flexWrap', 'wrap', 'Wrapping flex rows are laid out as a single line');
@@ -528,6 +581,9 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     recordUnsupported(ctx, domNode, 'element', domNode.tag, 'Element type has no native translation');
     return null;
   }
+
+  const rotate = rotationFromTransform(style.transform);
+  if (rotate !== undefined) node.rotate = rotate;
 
   const chart = readChart(domNode, ctx);
   if (chart) {

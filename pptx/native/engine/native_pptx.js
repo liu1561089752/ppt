@@ -55,6 +55,7 @@ function textOptions(el, theme) {
     paraSpaceAfterPt: el.paraSpaceAfterPt || 0,
     fit: 'shrink',
     transparency: el.transparency || 0,
+    rotate: el.rotate || 0,
     isTextBox: true
   };
 }

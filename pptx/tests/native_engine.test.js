@@ -1725,3 +1725,53 @@ test('html pipeline applies CSS order inside flex and grid', () => {
   assert.equal(result.report.containerFallbacks.length, 0);
 });
 
+
+test('html pipeline maps transform: rotate() to native shape rotation', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; background: #F4F6F6; }',
+    '.watermark { position: absolute; left: 300px; top: 300px; width: 400px; height: 60px;',
+    '  font-size: 28px; color: #B0B8B8; transform: rotate(-12deg); }',
+    '.quarter { position: absolute; left: 600px; top: 500px; width: 100px; height: 40px;',
+    '  background: #CCCCCC; transform: rotate(0.25turn); }',
+    '.scaled { position: absolute; left: 100px; top: 100px; width: 100px; height: 40px;',
+    '  background: #DDDDDD; transform: scale(1.5) rotate(10deg); }',
+    '.flat { position: absolute; left: 100px; top: 600px; width: 100px; height: 40px;',
+    '  background: #EEEEEE; transform: rotate(0deg); }',
+    '.group { position: absolute; left: 100px; top: 400px; width: 300px; height: 120px;',
+    '  background: #FFFFFF; padding: 16px; transform: rotate(4deg); }',
+    '</style></head><body><main class="slide">',
+    '<div class="watermark">内部评审稿</div>',
+    '<div class="quarter"></div>',
+    '<div class="scaled"></div>',
+    '<div class="flat"></div>',
+    '<div class="group"><p>卡片组旋转</p></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const elements = result.deck.slides[0].elements;
+  const rotated = elements.filter((element) => element.rotate !== undefined);
+  const watermark = rotated.find((element) => typeof element.text === 'string');
+  assert.ok(watermark, 'the rotated text must carry a rotation');
+  assert.equal(watermark.rotate, -12);
+  // Grads/turns are converted to degrees; 0.25turn is a quarter turn.
+  const quarter = rotated.find((element) => element.rotate === 90);
+  assert.ok(quarter, 'rotate(0.25turn) must become 90 degrees');
+
+  // A transform that also scales has no native equivalent, so it is reported and
+  // must not be silently half-applied.
+  const transformReports = result.report.unsupportedDetails.filter((entry) => entry.property === 'transform');
+  assert.equal(transformReports.length, 1);
+  assert.equal(transformReports[0].value, 'scale()');
+  assert.equal(elements.filter((element) => element.rotate === 10).length, 0);
+
+  // rotate(0deg) is a no-op, not a rotation.
+  const flat = elements.filter((element) => element.rotate === 0);
+  assert.equal(flat.length, 0, 'a zero rotation must not be emitted');
+
+  // A container cannot carry a rotation: it is counted and reported, not dropped.
+  assert.equal(result.report.rotatedGroups, 1);
+});
+

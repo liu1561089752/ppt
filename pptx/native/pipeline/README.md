@@ -52,6 +52,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
 | Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), block flow, `display: flex` (row/column, `gap`, `flex`, `align-items`, `align-self`, `justify-content`, `order`), `display: grid` with equal tracks (`order` too) |
 | Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring) |
+| Transforms | `transform: rotate(<deg|rad|grad|turn>)` on a text box, shape or picture → native shape rotation (clockwise, about the centre). A rotation combined with `scale`/`skew`/`translate` is reported rather than half-applied; a rotated *group* is reported because a native container cannot carry a rotation |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
 | Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
 | Data | `<table>` → native table with real column widths (`<colgroup>/<col>`, then declared first-row cell widths, then equal columns) and merged cells (`colspan`/`rowspan`), `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
@@ -64,7 +65,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 - **Not a browser.** There is no UA default stylesheet, no inline formatting
   context (text and `<span>` do not share a line box), no floats, no margin
   collapsing, no writing modes, no `flex-wrap`, no `position: fixed`
-  stacking contexts.
+  stacking contexts. `transform` supports rotation only: a rotated container
+  keeps its children unrotated and is reported.
 - **Cascade is simplified.** `@media`, pseudo-elements, attribute selectors,
   `:not()`, sibling combinators and `!important` are ignored. Custom properties
   are resolved globally rather than per-subtree.

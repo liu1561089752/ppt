@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -530,50 +531,98 @@ def render_slide(slide, width: int, height: int, warnings: list[str]) -> Image.I
                emu_to_px(shape.left) + emu_to_px(shape.width),
                emu_to_px(shape.top) + emu_to_px(shape.height))
         try:
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                picture_radius = radius_px_from_geometry(shape, box[2] - box[0], box[3] - box[1])
-                picture_outline, picture_outline_width = line_of(shape)
-                if not draw_picture(canvas, shape, box, picture_radius,
-                                    picture_outline, picture_outline_width):
-                    draw.rectangle(box, outline=(200, 120, 120), width=1)
-                continue
-            if getattr(shape, "has_table", False) and shape.has_table:
-                draw_table(draw, shape, box, warnings)
-                continue
-            if getattr(shape, "has_chart", False) and shape.has_chart:
-                draw_chart_placeholder(draw, shape, box, canvas)
-                continue
-            shape_box = (box[2] - box[0], box[3] - box[1])
-            gradient = gradient_of(shape)
-            fill = None if gradient else fill_color_of(shape)
-            fill_alpha = 1.0 if gradient else fill_alpha_of(shape)
-            outline, outline_width = line_of(shape)
-            radius = corner_radius(shape, shape_box[0], shape_box[1])
-            if gradient and shape_box[0] > 0 and shape_box[1] > 0:
-                layer = linear_gradient(shape_box, *gradient).convert("RGBA")
-                if radius:
-                    mask = Image.new("L", shape_box, 0)
-                    ImageDraw.Draw(mask).rounded_rectangle(
-                        (0, 0, shape_box[0] - 1, shape_box[1] - 1), radius=radius, fill=255)
-                    canvas.paste(layer, (box[0], box[1]), mask)
-                else:
-                    canvas.paste(layer, (box[0], box[1]))
+            if draw_rotated(canvas, shape, box, warnings):
                 draw = ImageDraw.Draw(canvas)
-                if outline:
-                    draw.rectangle(box, outline=outline, width=outline_width or 1)
-            elif fill or outline:
-                paint_solid(canvas, box, fill, fill_alpha, radius)
-                if outline:
-                    if radius:
-                        draw.rounded_rectangle(box, radius=radius,
-                                               outline=outline, width=outline_width or 1)
-                    else:
-                        draw.rectangle(box, outline=outline, width=outline_width or 1)
-            if shape.has_text_frame and shape.text_frame.text.strip():
-                draw_text(draw, shape.text_frame, box, warnings)
+                continue
+            draw_shape_into(canvas, shape, box, warnings)
+            draw = ImageDraw.Draw(canvas)
+            shape_box = (box[2] - box[0], box[3] - box[1])
         except Exception as error:  # noqa: BLE001 - a preview must never abort
             warnings.append(f"{shape.shape_id}: {type(error).__name__}: {error}")
     return canvas
+
+
+def rotation_degrees(shape) -> float:
+    """Shape rotation in degrees, clockwise positive (DrawingML convention)."""
+    try:
+        return float(getattr(shape, "rotation", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def draw_shape_into(canvas, shape, box, warnings):
+    """Draw one shape at box, ignoring rotation."""
+    if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+        picture_radius = radius_px_from_geometry(shape, box[2] - box[0], box[3] - box[1])
+        picture_outline, picture_outline_width = line_of(shape)
+        if not draw_picture(canvas, shape, box, picture_radius,
+                            picture_outline, picture_outline_width):
+            ImageDraw.Draw(canvas).rectangle(box, outline=(200, 120, 120), width=1)
+        return
+    if getattr(shape, "has_table", False) and shape.has_table:
+        draw_table(ImageDraw.Draw(canvas), shape, box, warnings)
+        return
+    if getattr(shape, "has_chart", False) and shape.has_chart:
+        draw_chart_placeholder(ImageDraw.Draw(canvas), shape, box, canvas)
+        return
+    draw_simple_shape(canvas, shape, box, warnings)
+
+
+def draw_simple_shape(canvas, shape, box, warnings):
+    """Fill, outline and text for a shape that is neither picture nor table."""
+    draw = ImageDraw.Draw(canvas)
+    shape_box = (box[2] - box[0], box[3] - box[1])
+    gradient = gradient_of(shape)
+    fill = None if gradient else fill_color_of(shape)
+    fill_alpha = 1.0 if gradient else fill_alpha_of(shape)
+    outline, outline_width = line_of(shape)
+    radius = corner_radius(shape, shape_box[0], shape_box[1])
+    if gradient and shape_box[0] > 0 and shape_box[1] > 0:
+        layer = linear_gradient((int(shape_box[0]), int(shape_box[1])), *gradient).convert("RGBA")
+        if radius:
+            mask = Image.new("L", layer.size, 0)
+            ImageDraw.Draw(mask).rounded_rectangle(
+                (0, 0, layer.size[0] - 1, layer.size[1] - 1), radius=radius, fill=255)
+            canvas.paste(layer, (int(box[0]), int(box[1])), mask)
+        else:
+            canvas.paste(layer, (int(box[0]), int(box[1])))
+        draw = ImageDraw.Draw(canvas)
+        if outline:
+            draw.rectangle(box, outline=outline, width=outline_width or 1)
+    elif fill or outline:
+        paint_solid(canvas, box, fill, fill_alpha, radius)
+        if outline:
+            if radius:
+                draw.rounded_rectangle(box, radius=radius,
+                                       outline=outline, width=outline_width or 1)
+            else:
+                draw.rectangle(box, outline=outline, width=outline_width or 1)
+    if shape.has_text_frame and shape.text_frame.text.strip():
+        draw_text(draw, shape.text_frame, box, warnings)
+
+
+def draw_rotated(canvas, shape, box, warnings) -> bool:
+    """Draw a rotated shape about its centre, like PowerPoint does."""
+    angle = rotation_degrees(shape)
+    if abs(angle) < 0.05:
+        return False
+    width = max(1, int(round(box[2] - box[0])))
+    height = max(1, int(round(box[3] - box[1])))
+    radians = math.radians(angle)
+    expanded_w = int(math.ceil(abs(width * math.cos(radians)) + abs(height * math.sin(radians)))) + 2
+    expanded_h = int(math.ceil(abs(height * math.cos(radians)) + abs(width * math.sin(radians)))) + 2
+    origin_x = (expanded_w - width) // 2
+    origin_y = (expanded_h - height) // 2
+    layer = Image.new("RGBA", (expanded_w, expanded_h), (0, 0, 0, 0))
+    try:
+        draw_shape_into(layer, shape, (origin_x, origin_y, origin_x + width, origin_y + height), warnings)
+        rotated = layer.rotate(-angle, resample=Image.BICUBIC,
+                               center=(expanded_w // 2, expanded_h // 2))
+    except Exception as error:  # noqa: BLE001 - a preview must never abort
+        warnings.append(f"{shape.shape_id}: rotation {angle}deg failed: {type(error).__name__}: {error}")
+        return False
+    canvas.paste(rotated, (int(round(box[0] - origin_x)), int(round(box[1] - origin_y))), rotated)
+    return True
 
 
 def contact_sheet(images: list[Image.Image], columns: int = 3, gap: int = 12) -> Image.Image:

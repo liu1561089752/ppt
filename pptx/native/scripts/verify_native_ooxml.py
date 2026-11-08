@@ -20,7 +20,7 @@ def inspect(path: Path) -> dict[str, int]:
               "shadows": 0, "alpha_nodes": 0, "charts": 0, "pictures": 0,
               "image_crops": 0, "rounded_pictures": 0, "outlined_pictures": 0,
               "shadowed_pictures": 0, "tables": 0,
-              "merged_cells": 0, "uneven_tables": 0}
+              "merged_cells": 0, "uneven_tables": 0, "rotated": 0}
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
             (name for name in archive.namelist()
@@ -32,6 +32,11 @@ def inspect(path: Path) -> dict[str, int]:
         for name in slide_names:
             root = ET.fromstring(archive.read(name))
             counts["shapes"] += len(root.findall(".//p:sp", NS))
+            # A rotation is an xfrm attribute; 0 means "not rotated".
+            for rotation in root.findall(".//a:xfrm", NS):
+                value = rotation.get("rot")
+                if value is not None and int(value) != 0:
+                    counts["rotated"] += 1
             counts["texts"] += len(root.findall(".//p:sp[p:txBody]", NS))
             counts["gradients"] += len(root.findall(".//a:gradFill", NS))
             counts["shadows"] += len(root.findall(".//a:outerShdw", NS))
@@ -73,6 +78,7 @@ def main() -> int:
     parser.add_argument("--require-picture-effects", action="store_true")
     parser.add_argument("--require-table", action="store_true")
     parser.add_argument("--require-chart", action="store_true")
+    parser.add_argument("--require-rotation", action="store_true")
     parser.add_argument("--require-merged-cells", action="store_true")
     parser.add_argument("--require-uneven-columns", action="store_true")
     args = parser.parse_args()
@@ -89,6 +95,7 @@ def main() -> int:
                             counts["rounded_pictures"] + counts["outlined_pictures"] + counts["shadowed_pictures"]),
         "table": (args.require_table, counts["tables"]),
         "chart": (args.require_chart, counts["charts"]),
+        "rotation": (args.require_rotation, counts["rotated"]),
         "merged table cells": (args.require_merged_cells, counts["merged_cells"]),
         "uneven table columns": (args.require_uneven_columns, counts["uneven_tables"]),
     }
