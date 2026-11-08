@@ -464,12 +464,57 @@ function containerElement(node, plan, resolvedTheme, report) {
   return spec;
 }
 
+function zIndexOf(node) {
+  const value = Number(node && node.style && node.style.zIndex);
+  return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * A text node may paint its own surface (a badge, a chip, a quote block, an
+ * overlay caption). Emitting only the text lost the fill, which on a dark theme
+ * meant white text on the pale page. The pair is expressed as a container whose
+ * background is the surface and whose single child is the text, so the padding
+ * offsets the text exactly like CSS does and everything stays editable.
+ */
+function textWithSurface(node, resolvedTheme, report) {
+  const surface = surfaceElementFromNode(node, resolvedTheme);
+  if (!surface) return null;
+  report.textElements += 1;
+  if (node.runs) report.richTextElements += 1;
+  const text = textElementFromNode(node, null, resolvedTheme);
+  if (!text) return null;
+  report.shapes += 1;
+  delete surface.x;
+  delete surface.y;
+  delete surface.w;
+  delete surface.h;
+  delete text.x;
+  delete text.y;
+  text.h = round4(node.h);
+  const spec = {
+    type: 'container',
+    x: round4(node.x),
+    y: round4(node.y),
+    w: round4(node.w),
+    h: round4(node.h),
+    padding: containerPadding(node),
+    direction: 'column',
+    gap: 0,
+    align: 'stretch',
+    background: surface,
+    children: [text]
+  };
+  return spec;
+}
+
 /** Leaf element (text / image / table / line) for a node, with counters bumped. */
 function leafElement(node, resolvedTheme, report) {
   if (node.kind === 'text' || node.kind === 'list') {
     if (!node.text && !node.runs) return null;
     report.textElements += 1;
     if (node.runs) report.richTextElements += 1;
+    const wrapped = textWithSurface(node, resolvedTheme, report);
+    if (wrapped) return wrapped;
     return textElementFromNode(node, null, resolvedTheme);
   }
   if (node.kind === 'image') {
@@ -502,7 +547,27 @@ function emitContainerChildren(spec, node, plan, context) {
     const element = containerChild(child, plan, Object.assign({}, context, { ownerId: node.id }));
     if (element) children.push(element);
   });
-  spec.children = children;
+  spec.children = sortByPaintOrder(children, node);
+}
+
+/** Stable paint-order sort: DOM order, unless a child declares z-index. */
+function sortByPaintOrder(children, parent) {
+  const indexed = (parent.children || []).filter((child) => zIndexOf(child) !== 0);
+  if (!indexed.length) return children;
+  return children
+    .map((element, index) => ({ element, index }))
+    .sort((a, b) => {
+      const za = elementZ(a.element);
+      const zb = elementZ(b.element);
+      if (za === zb) return a.index - b.index;
+      return za - zb;
+    })
+    .map((entry) => entry.element);
+}
+
+function elementZ(element) {
+  const value = Number(element && element._z);
+  return Number.isFinite(value) ? value : 0;
 }
 
 /** Emit one child positioned by its parent container. */
@@ -533,6 +598,7 @@ function containerChild(node, parentPlan, context) {
   delete element.x;
   delete element.y;
   element._probe = node.id;
+  element._z = zIndexOf(node);
   probes.set(node.id, boxOf(node));
   owners.set(node.id, ownerId);
   return element;
@@ -597,6 +663,7 @@ function emitAbsolute(node, context) {
   const element = leafElement(node, resolvedTheme, report);
   if (!element) return;
   element._probe = node.id;
+  element._z = zIndexOf(node);
   probes.set(node.id, boxOf(node));
   owners.set(node.id, ownerId);
   elements.push(element);
@@ -626,6 +693,12 @@ function verifySlide(elements, pageSize, theme, probes, owners) {
     if (probe === undefined) return;
     const expected = probes.get(probe);
     if (!expected) return;
+    if (![element.x, element.y, element.w, element.h].every(Number.isFinite)) {
+      const owner = owners.get(probe);
+      if (owner !== undefined && owner !== null) mismatched.add(owner);
+      maxDelta = Number.POSITIVE_INFINITY;
+      return;
+    }
     const delta = Math.max(
       Math.abs(element.x - expected.x),
       Math.abs(element.y - expected.y),
@@ -642,11 +715,16 @@ function verifySlide(elements, pageSize, theme, probes, owners) {
 }
 
 function stripProbes(elements) {
-  elements.forEach((element) => {
+  const clean = (element) => {
     delete element._probe;
-    if (element.background) delete element.background._probe;
-    (element.children || []).forEach((child) => delete child._probe);
-  });
+    delete element._z;
+    if (element.background) {
+      delete element.background._probe;
+      delete element.background._z;
+    }
+    (element.children || []).forEach(clean);
+  };
+  elements.forEach(clean);
   return elements;
 }
 
@@ -693,6 +771,12 @@ function buildDeckSpec(analysis, options = {}) {
         ownerId: null
       };
       slide.nodes.forEach((node) => emitAbsolute(node, context));
+      if (slide.nodes.some((node) => zIndexOf(node) !== 0)) {
+        const background = elements.length && elements[0].type === 'shape' && elements[0].x === 0
+          ? elements.shift() : null;
+        elements = sortByPaintOrder(elements, { children: slide.nodes });
+        if (background) elements.unshift(background);
+      }
 
       const verification = verifySlide(elements, analysis.pageSize, resolvedTheme, probes, owners);
       attemptReport.layoutAttempts = attempt + 1;

@@ -33,7 +33,8 @@ const {
   toInches,
   backgroundOf,
   gradientOf,
-  backgroundImageOf
+  backgroundImageOf,
+  parseBackgroundFocus
 } = require('./css');
 const { estimateTextHeight } = require('../engine/text_measure');
 
@@ -46,13 +47,13 @@ const SUPPORTED_PROPERTIES = new Set([
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
-  'boxShadow', 'opacity', 'overflow', 'borderCollapse', 'fontFamily', 'fontSize', 'fontWeight',
+  'boxShadow', 'opacity', 'borderCollapse', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
 const UNSUPPORTED_ALWAYS = new Set([
-  'transform', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
+  'overflow', 'transform', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
@@ -105,6 +106,12 @@ function boxShorthand(style, prefix) {
   };
 }
 
+/** `object-position: right top` uses the same grammar as background-position. */
+function descriptionFocus(value) {
+  if (!value) return undefined;
+  return parseBackgroundFocus(value);
+}
+
 function radiusOf(style) {
   const raw = style.borderTopLeftRadius || style.borderRadius;
   if (!raw) return null;
@@ -151,9 +158,53 @@ function recordUnsupported(ctx, node, property, value, reason) {
   });
 }
 
+/**
+ * Declaring a property with its initial value changes nothing, so it is not a
+ * real limitation and must not pollute the unsupported report.
+ */
+const NOOP_VALUES = {
+  overflow: ['visible'],
+  textShadow: ['none'],
+  transform: ['none'],
+  filter: ['none'],
+  backdropFilter: ['none'],
+  clipPath: ['none'],
+  mask: ['none'],
+  mixBlendMode: ['normal'],
+  animation: ['none'],
+  transition: ['none'],
+  float: ['none'],
+  columns: ['auto'],
+  columnCount: ['auto'],
+  writingMode: ['horizontal-tb'],
+  backgroundClip: ['border-box'],
+  textOverflow: ['clip'],
+  whiteSpace: ['normal'],
+  wordBreak: ['normal'],
+  hyphens: ['manual'],
+  aspectRatio: ['auto'],
+  inset: ['auto'],
+  gridTemplateRows: ['none'],
+  gridAutoRows: ['auto'],
+  order: ['0'],
+  zIndex: ['auto'],
+  alignSelf: ['auto'],
+  justifySelf: ['auto'],
+  flexBasis: ['auto'],
+  flexGrow: ['0'],
+  flexShrink: ['1']
+};
+
+function isNoopValue(property, value) {
+  const allowed = NOOP_VALUES[property];
+  if (!allowed) return false;
+  return allowed.includes(String(value).trim().toLowerCase());
+}
+
 function checkUnsupported(ctx, domNode, style) {
   Object.keys(style).forEach((property) => {
     if (property.startsWith('--')) return;
+    if (isNoopValue(property, style[property])) return;
     if (UNSUPPORTED_ALWAYS.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'CSS feature has no native translation');
     } else if (!SUPPORTED_PROPERTIES.has(property)) {
@@ -263,12 +314,27 @@ function resolveKind(domNode, style, children) {
   return 'block';
 }
 
+/** CSS text-transform is a content change, so it is applied before measuring. */
+function transformText(value, transform) {
+  if (transform === 'uppercase') return value.toUpperCase();
+  if (transform === 'lowercase') return value.toLowerCase();
+  if (transform === 'capitalize') {
+    return value.replace(/(^|[\s\u3000])([a-z])/gu, (match, lead, letter) => lead + letter.toUpperCase());
+  }
+  return value;
+}
+
 function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx) {
   const fontPx = fontPxOf(style, inheritedFontPx);
   const fontSizePt = Number((fontPx * 0.75).toFixed(2));
   const { multiple } = lineSpacingOf(style, fontPx);
   const built = buildRuns(domNode, Object.assign({ fontSize: fontPx + 'px' }, style), ctx);
   const measureOptions = { lineHeight: multiple, safetyFactor: 0.92 };
+  const transform = String(style.textTransform || '').toLowerCase();
+  if (transform && transform !== 'none') {
+    built.text = transformText(built.text, transform);
+    built.runs.forEach((run) => { run.text = transformText(run.text, transform); });
+  }
   return {
     fontPx,
     fontSizePt,
@@ -284,6 +350,40 @@ function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx
  * slot = { x, y, w, h } where x/y is the top-left corner and h may be null (auto).
  */
 function analyzeNode(domNode, slot, inherited, ctx) {
+  const node = analyzeNodeTree(domNode, slot, inherited, ctx);
+  if (!node) return null;
+  applyHeightConstraints(node, slot, ctx);
+  return node;
+}
+
+/**
+ * min/max-height is applied after the subtree is measured, because an auto
+ * height is only known then. A max-height that actually clamps would need
+ * clipping, which no native shape can express, so it is reported instead of
+ * being silently obeyed.
+ */
+function applyHeightConstraints(node, slot, ctx) {
+  const style = node.style || {};
+  const options = {
+    parentWidth: node.parentWidth === undefined ? node.w : node.parentWidth,
+    parentHeight: slot ? slot.h : null,
+    fontSizePx: node.fontPx || 16
+  };
+  const minHeight = inchesOf(style.minHeight, 'y', options);
+  const maxHeight = inchesOf(style.maxHeight, 'y', options);
+  const height = node.h === null || node.h === undefined ? null : node.h;
+  if (minHeight !== null && (height === null ? 0 : height) < minHeight) node.h = minHeight;
+  if (maxHeight !== null && node.h !== null && node.h > maxHeight) {
+    if (node.kind === 'text' || node.kind === 'list' || node.kind === 'image') {
+      node.h = maxHeight;
+    } else {
+      recordUnsupported(ctx, { tag: node.tag, classes: node.classes }, 'maxHeight',
+        style.maxHeight, 'Clamping a container would need clipping, which native shapes cannot do');
+    }
+  }
+}
+
+function analyzeNodeTree(domNode, slot, inherited, ctx) {
   const style = ctx.styles.computed(domNode);
   if (style.display === 'none' || style.visibility === 'hidden') return null;
   checkUnsupported(ctx, domNode, style);
@@ -295,12 +395,37 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   const parentBoxForWidth = inherited.parentBox || { x: 0, y: 0, w: slot.w, h: null };
   const parentWidth = parentBoxForWidth.w;
 
+  const padding = boxShorthand(style, 'padding');
+  const border = parseBorder(style);
+  const insetLeft = padding.left + (border ? border.width / 72 : 0);
+  const insetTop = padding.top + (border ? border.width / 72 : 0);
+  const insetRight = padding.right + (border ? border.width / 72 : 0);
+  const insetBottom = padding.bottom + (border ? border.width / 72 : 0);
+
   let width = slot.w === null || slot.w === undefined ? null : slot.w;
   const explicitHeight = inchesOf(style.height, 'y', { parentWidth, parentHeight: slot.h, fontSizePx });
+  const styleWidth = (width === null || slot.explicitWidth)
+    ? inchesOf(style.width, 'x', { parentWidth, fontSizePx })
+    : null;
   if (width === null) {
-    width = inchesOf(style.width, 'x', { parentWidth, fontSizePx });
-    if (width === null) width = Math.max(0, parentWidth);
+    width = styleWidth === null ? Math.max(0, parentWidth) : styleWidth;
   }
+
+  // `width` is resolved as a border box. Honouring an explicit content-box keeps
+  // the padding from silently shrinking designed boxes.
+  const boxSizing = String(style.boxSizing || '').toLowerCase();
+  if (styleWidth !== null && boxSizing === 'content-box') {
+    width += insetLeft + insetRight;
+  } else if (styleWidth !== null && boxSizing === '' && (insetLeft + insetRight) > 0) {
+    recordUnsupported(ctx, domNode, 'boxSizing', 'content-box (default)',
+      'Width is resolved as a border box; declare box-sizing: border-box to make it exact');
+  }
+
+  const sizeOptions = { parentWidth, parentHeight: slot.h, fontSizePx };
+  const minWidth = inchesOf(style.minWidth, 'x', sizeOptions);
+  const maxWidth = inchesOf(style.maxWidth, 'x', sizeOptions);
+  if (minWidth !== null && width < minWidth) width = minWidth;
+  if (maxWidth !== null && width > maxWidth) width = maxWidth;
 
   let x = slot.x;
   let y = slot.y;
@@ -316,12 +441,6 @@ function analyzeNode(domNode, slot, inherited, ctx) {
     else if (bottom !== null && parentBox.h !== null) y = parentBox.y + parentBox.h - bottom - (explicitHeight || 0);
   }
 
-  const padding = boxShorthand(style, 'padding');
-  const border = parseBorder(style);
-  const insetLeft = padding.left + (border ? border.width / 72 : 0);
-  const insetTop = padding.top + (border ? border.width / 72 : 0);
-  const insetRight = padding.right + (border ? border.width / 72 : 0);
-  const insetBottom = padding.bottom + (border ? border.width / 72 : 0);
   const contentWidth = Math.max(0, width - insetLeft - insetRight);
 
   const contentBox = {
@@ -340,6 +459,7 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   const kind = resolveKind(domNode, style, elementKids);
   const node = {
     id: ctx.nextId++,
+    parentWidth,
     tag: domNode.tag,
     classes: classList(domNode),
     kind,
@@ -400,6 +520,7 @@ function analyzeNode(domNode, slot, inherited, ctx) {
     node.src = domNode.attrs.src || null;
     node.alt = domNode.attrs.alt || '';
     node.objectFit = (style.objectFit || 'cover').toLowerCase();
+    node.focus = descriptionFocus(style.objectPosition);
     node.radius = radiusOf(style);
     return node;
   }
@@ -466,6 +587,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
       x: contentBox.x + margins.left,
       y: isAbsolute(childStyle) ? contentBox.y : cursor + margins.top,
       w: explicitWidth === null ? slotWidth : explicitWidth,
+      explicitWidth: explicitWidth !== null,
       h: null
     };
     const node = analyzeNode(child, slot, inherited, ctx);
@@ -499,6 +621,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
         x: contentBox.x + margins.left,
         y: cursor + margins.top,
         w: explicitWidth === null ? Math.max(0, contentBox.w - margins.left - margins.right) : explicitWidth,
+      explicitWidth: explicitWidth !== null,
         h: null
       };
       const node = analyzeNode(child, slot, inherited, ctx);

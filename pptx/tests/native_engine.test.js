@@ -1052,7 +1052,9 @@ test('html pipeline reproduces the reviewed parity fixture geometry', () => {
   const caption = elements.find((element) => element.type === 'text' && element.role === 'caption');
   assert.equal(caption.text, 'VISUAL SYSTEM / 01');
   assert.equal(caption.fontSize, 9);
-  assert.deepEqual(result.report.unsupportedDetails, []);
+  // The fixture clips its slide with `overflow: hidden`, which no native shape can
+  // express, so it must be reported instead of silently claimed as supported.
+  assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), ['overflow']);
 });
 
 test('html pipeline maps flex rows, grid tracks, lists, tables, and images to native objects', () => {
@@ -1312,3 +1314,99 @@ test('html pipeline declares block-flow cards as containers and falls back when 
     'the fallback reason must name the margins: ' + JSON.stringify(result.report.containerFallbacks));
   assert.ok(result.report.maxBoxDelta < 0.002);
 });
+
+test('html pipeline honours text-transform, min-height and content-box sizing', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.minh { position: absolute; left: 40px; top: 40px; width: 200px; min-height: 200px; background: #DDDDDD; }',
+    '.cap { position: absolute; left: 40px; top: 300px; width: 400px; text-transform: uppercase; font-size: 20px; }',
+    '.boxy { position: absolute; left: 40px; top: 400px; width: 200px; height: 100px;',
+    '  padding: 20px; box-sizing: content-box; background: #EEEEEE; }',
+    '</style></head><body><main class="slide">',
+    '<div class="minh"></div>',
+    '<p class="cap">lowercase source text</p>',
+    '<div class="boxy"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const { layoutSlide } = require('../native/engine/layout');
+  const elements = layoutSlide({ elements: result.deck.slides[0].elements, margin: 0, gap: 0 },
+    result.deck.pageSize, result.deck.theme, {});
+
+  const minh = elements.find((element) => element.type === 'shape' && element.fill === 'DDDDDD');
+  assert.ok(minh, 'the min-height box must keep its fill');
+  assert.ok(Math.abs(minh.h - 200 / 96) < 0.01, 'min-height was ignored, h=' + minh.h);
+
+  const caption = elements.find((element) => element.type === 'text');
+  assert.equal(caption.text, 'LOWERCASE SOURCE TEXT',
+    'text-transform must be applied to the emitted text');
+
+  const boxy = elements.find((element) => element.fill === 'EEEEEE');
+  assert.ok(boxy, 'a box with padding keeps its surface');
+  // content-box: 200px content + 2x20px padding = 240px border box.
+  assert.ok(Math.abs(boxy.w - 240 / 96) < 0.01, 'content-box width was ' + boxy.w);
+});
+
+test('html pipeline keeps the surface behind text and paints z-index in order', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.badge { position: absolute; left: 40px; top: 40px; padding: 8px 16px;',
+    '  background: #D2691E; color: #FFFFFF; border-radius: 999px; font-size: 14px; }',
+    '.under { position: absolute; left: 60px; top: 300px; width: 300px; padding: 12px;',
+    '  background: #222222; color: #FFFFFF; font-size: 18px; z-index: 1; }',
+    '.over { position: absolute; left: 40px; top: 200px; width: 300px; padding: 12px;',
+    '  background: #CCCCCC; color: #000000; font-size: 18px; z-index: 9; }',
+    '</style></head><body><main class="slide">',
+    '<div class="badge">徽标</div>',
+    '<div class="over">z-index 9 but first in DOM</div>',
+    '<div class="under">z-index 1 but second in DOM</div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const elements = result.deck.slides[0].elements;
+  const badge = elements.find((element) => element.type === 'container'
+    && element.background && element.background.fill === 'D2691E');
+  assert.ok(badge, 'a badge must keep its fill instead of emitting bare text');
+  assert.equal(badge.children.length, 1);
+  assert.equal(badge.children[0].type, 'text');
+  assert.equal(badge.children[0].text, '徽标');
+  assert.ok(badge.padding.left > 0.1, 'the text must be inset by the padding');
+
+  const fills = elements
+    .filter((element) => element.type === 'container' && element.background)
+    .map((element) => element.background.fill)
+    .filter((fill) => fill === '222222' || fill === 'CCCCCC');
+  assert.deepEqual(fills, ['222222', 'CCCCCC'],
+    'z-index must decide paint order, not DOM order');
+});
+
+test('html pipeline maps img object-position onto the native crop focus', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAChd0V1AAAABlBMVEX/AAAAAAAB1Vw7zQAAAAxJREFUCNdjYGBgAAAABQABh6FO1AAAAABJRU5ErkJggm==';
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.frame { position: absolute; left: 40px; top: 40px; width: 400px; height: 200px; }',
+    '.frame img { width: 100%; height: 100%; object-fit: cover; object-position: right top; }',
+    '</style></head><body><main class="slide">',
+    '<figure class="frame"><img src="' + png + '" alt="probe"></figure>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const { layoutSlide } = require('../native/engine/layout');
+  const image = layoutSlide({ elements: result.deck.slides[0].elements, margin: 0, gap: 0 },
+    result.deck.pageSize, result.deck.theme, {}).find((element) => element.type === 'image');
+  assert.ok(image, 'the figure must keep a native picture');
+  assert.equal(image.fit, 'cover');
+  assert.equal(image.focus, 'top right', 'object-position must become the crop focus');
+  assert.ok([image.x, image.y, image.w, image.h].every(Number.isFinite),
+    'picture geometry must stay finite: ' + JSON.stringify(image));
+});
+

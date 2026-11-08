@@ -49,12 +49,14 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Selectors | type, `.class`, `#id`, compound (`tag.class`), descendant and child combinators (both treated as descendant), `*` |
 | Cascade | stylesheet order + specificity (ids, classes, tags), then inline `style=""`, plus `var(--token, fallback)` |
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
-| Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius` |
+| Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
 | Layout | `position: absolute` with `left/top/right/bottom`, block flow, `display: flex` (row/column, `gap`, `flex`, `align-items`, `justify-content`), `display: grid` with equal tracks |
-| Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color` |
+| Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring) |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
-| Media | `<img>` with `object-fit: cover/contain/fill` → native crop rectangle |
+| Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
 | Data | `<table>` → native table, `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
+| Stacking | `z-index` decides paint order among siblings; equal or missing values keep document order |
+| Surfaces on text | An element that paints a fill/border/shadow *and* holds text becomes a container whose background is the surface, so badges and overlay captions keep their fill and their editable text |
 
 ## Known limitations (by design, not oversights)
 
@@ -72,6 +74,13 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 - **Unsupported visuals are reported, not approximated**: `filter`,
   `backdrop-filter`, `clip-path`, `mask`, `mix-blend-mode`, `text-shadow`,
   transforms, animations and transitions.
+- **`overflow: hidden` is reported, not faked.** Native shapes cannot clip their
+  contents, so a slide that relies on clipping (a very common `main { overflow:
+  hidden }`) is flagged instead of being claimed as supported. A property declared
+  with its initial value (`overflow: visible`, `text-shadow: none`, …) is not
+  reported, because it changes nothing.
+- **`max-height` on a container is reported** (clamping needs clipping);
+  `min-height` is honoured exactly.
 - **CSS background images** become real native pictures, so they keep an
   editable crop rectangle. Explicit pixel or percentage sizes other than
   `cover`/`contain`/`100% 100%` are approximated as `contain`.
