@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>HTML → Native pipeline reference</title>
+<style>
+:root {
+  --color-background: #F7F7F4;
+  --color-foreground: #202321;
+  --color-primary: #183B3A;
+  --color-accent: #D36B45;
+  --color-muted: #6B7470;
+  --color-surface: #FFFFFF;
+  --color-border: #DCE2DE;
+  --font-heading: "Aptos Display", sans-serif;
+  --font-body: "Aptos", sans-serif;
+  --radius-card: 14px;
+  --shadow-card: 0 6px 18px rgba(27, 42, 40, 0.16);
+  --hero-gradient: linear-gradient(135deg, #142536 0%, #234B61 58%, #E56A42 100%);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: var(--font-body); font-size: 16px; color: var(--color-foreground); background: var(--color-background); }
+.slide { position: relative; width: 1280px; height: 720px; overflow: hidden; background: var(--color-background); padding: 0; }
+.slide.dark { background: var(--hero-gradient); }
+
+.kicker { position: absolute; left: 64px; top: 88px; width: 520px; height: 26px;
+  color: var(--color-accent); font-size: 13px; font-weight: 700; letter-spacing: 1.2px; }
+.hero-title { position: absolute; left: 62px; top: 126px; width: 760px; height: 170px; margin: 0;
+  color: #FFFFFF; font-family: var(--font-heading); font-size: 54px; font-weight: 700; line-height: 1.14; }
+.hero-sub { position: absolute; left: 64px; top: 316px; width: 620px; height: 96px; margin: 0;
+  color: #E8EDEB; font-size: 18px; line-height: 1.4; }
+.hero-rule { position: absolute; left: 64px; top: 470px; width: 120px; height: 6px; background: var(--color-accent); }
+.hero-meta { position: absolute; left: 64px; top: 520px; width: 520px; height: 26px;
+  color: rgba(255, 255, 255, 0.72); font-size: 13px; }
+
+.heading { position: absolute; left: 64px; top: 56px; width: 1000px; height: 56px; margin: 0;
+  color: var(--color-primary); font-family: var(--font-heading); font-size: 34px; font-weight: 700; }
+.rule { position: absolute; left: 64px; top: 122px; width: 1152px; height: 2px; background: var(--color-border); }
+
+.row { position: absolute; left: 64px; top: 168px; width: 1152px; display: flex; gap: 24px; }
+.card { flex: 1; padding: 24px; background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.card h3 { margin: 0 0 10px 0; color: var(--color-primary); font-family: var(--font-heading);
+  font-size: 21px; font-weight: 700; }
+.card p { margin: 0; color: var(--color-foreground); font-size: 15px; line-height: 1.45; }
+.card .metric { margin: 14px 0 0 0; color: var(--color-accent); font-size: 30px; font-weight: 700; }
+
+.grid { position: absolute; left: 64px; top: 168px; width: 1152px; display: grid;
+  grid-template-columns: 1fr 1fr; gap: 32px; }
+figure { margin: 0; }
+figure img { display: block; width: 100%; height: 300px; object-fit: cover; border-radius: 12px; }
+figcaption { margin: 12px 0 0 0; color: var(--color-muted); font-size: 13px; }
+
+.panel { padding: 28px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; }
+.panel h3 { margin: 0 0 12px 0; color: var(--color-primary); font-family: var(--font-heading); font-size: 22px; font-weight: 700; }
+.panel ul { margin: 0; padding-left: 20px; color: var(--color-foreground); font-size: 15px; line-height: 1.55; }
+.panel li { margin-bottom: 8px; }
+
+table.metrics { position: absolute; left: 64px; top: 176px; width: 1152px; border-collapse: collapse; font-size: 15px; }
+table.metrics th { text-align: left; padding: 12px 14px; background: var(--color-primary); color: #FFFFFF; font-weight: 700; }
+table.metrics td { padding: 11px 14px; color: var(--color-foreground); border-bottom: 1px solid var(--color-border); }
+table.metrics td.num { text-align: right; }
+.note { position: absolute; left: 64px; top: 620px; width: 900px; height: 24px; color: var(--color-muted); font-size: 12px; }
+.logo { position: absolute; right: 64px; top: 168px; width: 150px; height: 150px; border-radius: 20px; }
+</style>
+</head>
+<body>
+
+<main class="slide dark" data-slide="1">
+  <div class="kicker">PIPELINE / REFERENCE</div>
+  <h1 class="hero-title">从 HTML 到原生
+可编辑 PowerPoint</h1>
+  <p class="hero-sub">这段内容由 DOM 分析、布局求解与样式映射自动转换而来，标题、正文、卡片、图片、表格仍然全部可编辑。</p>
+  <div class="hero-rule"></div>
+  <div class="hero-meta">HTML → DOM Analyzer → Layout Analyzer → Style Mapper → Native Deck Spec</div>
+</main>
+
+<main class="slide" data-slide="2">
+  <h2 class="heading">弹性行：三张卡片自动等宽</h2>
+  <div class="rule"></div>
+  <section class="row">
+    <article class="card">
+      <h3>结构识别</h3>
+      <p>DOM 分析器识别标题、正文、卡片与列表，而不是把整页当成一张图片。</p>
+      <p class="metric">62%</p>
+    </article>
+    <article class="card">
+      <h3>布局求解</h3>
+      <p>flex 行、列与等宽网格由布局分析器求角，输出与原生引擎一致的几何。</p>
+      <p class="metric">1.8x</p>
+    </article>
+    <article class="card">
+      <h3>样式映射</h3>
+      <p>颜色、字号、行距、圆角、阴影和渐变映射为可编辑的 DrawingML 属性。</p>
+      <p class="metric">100%</p>
+    </article>
+  </section>
+</main>
+
+<main class="slide" data-slide="3">
+  <h2 class="heading">网格：图片与要点并置</h2>
+  <div class="rule"></div>
+  <div class="grid">
+    <figure>
+      <img src="data:image/png;base64,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" alt="流程图示意">
+      <figcaption>图片使用 object-fit: cover 映射为原生裁切矩形。</figcaption>
+    </figure>
+    <div class="panel">
+      <h3>转换阶段</h3>
+      <ul>
+        <li>DOM 分析：保留标题、正文、列表的语义层级。</li>
+        <li>布局分析：解析绝对定位、块流、flex 与等宽网格。</li>
+        <li>样式映射：颜色、字体、间距、圆角、阴影与渐变。</li>
+        <li>输出：原生 Deck Spec，再由原生引擎写入 PPTX。</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<main class="slide" data-slide="4">
+  <h2 class="heading">表格：仍然可编辑的原生 PowerPoint 表格</h2>
+  <div class="rule"></div>
+  <table class="metrics">
+    <thead>
+      <tr><th>阶段</th><th>输出</th><th>可编辑</th><th>备注</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>DOM Analyzer</td><td>语义节点树</td><td>—</td><td>标题 / 正文 / 卡片 / 列表</td></tr>
+      <tr><td>Layout Analyzer</td><td>绝对几何</td><td>—</td><td>flex / grid / 绝对定位</td></tr>
+      <tr><td>Style Mapper</td><td>设计 Tokens</td><td>—</td><td>颜色 / 字体 / 效果</td></tr>
+      <tr><td>Native Engine</td><td>PPTX</td><td>是</td><td>文本、形状、表格、图片</td></tr>
+    </tbody>
+  </table>
+  <img class="logo" src="data:image/png;base64,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" alt="示例图形">
+  <div class="note">本页用于验证表格、列表、图片与绝对定位元素在转换后的可编辑性。</div>
+</main>
+
+</body>
+</html>

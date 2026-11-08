@@ -2,6 +2,12 @@
 
 const { resolveTheme } = require('../themes/design_system');
 
+function textBlock(fontSizePt, theme, minimum = 0.26) {
+  const lineSpacing = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
+  // One line plus the 2pt inset margin used by the text renderer.
+  return Math.max(minimum, (fontSizePt * lineSpacing + 6) / 72);
+}
+
 function processFlow(steps, options = {}) {
   const theme = resolveTheme(options.theme);
   const items = Array.isArray(steps) ? steps : [];
@@ -11,6 +17,11 @@ function processFlow(steps, options = {}) {
   const gap = options.gap === undefined ? theme.layouts.columnGap : options.gap;
   const nodeWidth = (totalWidth - gap * Math.max(0, items.length - 1)) / Math.max(1, items.length);
   const nodeHeight = options.nodeHeight || 1.15;
+  const titleSize = options.titleSize || theme.sizes.heading;
+  const titleHeight = textBlock(titleSize, theme, 0.3);
+  const titleY = y + 0.18;
+  const bodyY = titleY + titleHeight + 0.06;
+  const bodyHeight = Math.max(0.2, y + nodeHeight - bodyY - 0.08);
   const elements = [];
 
   items.forEach((item, index) => {
@@ -24,15 +35,15 @@ function processFlow(steps, options = {}) {
     });
     elements.push({
       type: 'text', text: item.title || String(item),
-      x: nodeX + 0.12, y: y + 0.2, w: nodeWidth - 0.24, h: 0.32,
+      x: nodeX + 0.12, y: titleY, w: nodeWidth - 0.24, h: titleHeight,
       fontFace: theme.fonts.heading,
-      fontSize: options.titleSize || theme.sizes.heading, bold: true,
+      fontSize: titleSize, bold: true,
       color: item.color || theme.colors.primary, align: 'center'
     });
     if (item.description) {
       elements.push({
         type: 'text', text: item.description,
-        x: nodeX + 0.12, y: y + 0.58, w: nodeWidth - 0.24, h: nodeHeight - 0.68,
+        x: nodeX + 0.12, y: bodyY, w: nodeWidth - 0.24, h: bodyHeight,
         fontFace: theme.fonts.body,
         fontSize: options.bodySize || theme.sizes.caption, color: theme.colors.muted,
         align: 'center', valign: 'top'
@@ -61,6 +72,12 @@ function timeline(items, options = {}) {
   const y = options.y === undefined ? 2.4 : options.y;
   const w = options.w === undefined ? 11.2 : options.w;
   const spacing = points.length > 1 ? w / (points.length - 1) : 0;
+  const headingSize = options.titleSize || theme.sizes.heading;
+  const titleHeight = textBlock(headingSize, theme, 0.42);
+  const dateY = y + 0.42;
+  const titleY = dateY + 0.3;
+  const bodyY = titleY + titleHeight + 0.07;
+  const bodyHeight = options.descriptionHeight || 0.8;
   const elements = [];
   if (points.length > 1) {
     elements.push({
@@ -78,20 +95,20 @@ function timeline(items, options = {}) {
     });
     elements.push({
       type: 'text', text: point.date || '',
-      x: pointX - 0.65, y: y + 0.42, w: 1.3, h: 0.25,
+      x: pointX - 0.65, y: dateY, w: 1.3, h: 0.26,
       fontFace: theme.fonts.body,
       fontSize: theme.sizes.caption, bold: true, color: theme.colors.muted, align: 'center'
     });
     elements.push({
       type: 'text', text: point.title || '',
-      x: pointX - 0.85, y: y + 0.78, w: 1.7, h: 0.48,
+      x: pointX - 0.85, y: titleY, w: 1.7, h: titleHeight,
       fontFace: theme.fonts.heading,
-      fontSize: theme.sizes.heading, bold: true, color: theme.colors.primary, align: 'center'
+      fontSize: headingSize, bold: true, color: theme.colors.primary, align: 'center'
     });
     if (point.description) {
       elements.push({
         type: 'text', text: point.description,
-        x: pointX - 0.9, y: y + 1.34, w: 1.8, h: 0.75,
+        x: pointX - 0.9, y: bodyY, w: 1.8, h: bodyHeight,
         fontFace: theme.fonts.body,
         fontSize: theme.sizes.caption, color: theme.colors.muted, align: 'center', valign: 'top'
       });

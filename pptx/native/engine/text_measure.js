@@ -101,4 +101,47 @@ function estimateTextHeight(text, widthIn, fontSizePt, options = {}) {
   return (lines * fontSizePt * lineHeight + paddingPt) / 72;
 }
 
-module.exports = { glyphWidthFactor, graphemes, measureTextPt, wrapText, estimateLineCount, estimateTextHeight };
+/**
+ * Height of a rich-text run array.
+ *
+ * Each run is measured at its own font size where one is declared, and the line
+ * height is taken from the largest size in the paragraph. This is still a
+ * greedy character-level wrap, not OpenType shaping, but it removes the
+ * systematic under-measurement of mixed-size runs.
+ */
+function estimateRichTextHeight(runs, widthIn, fontSizePt, options = {}) {
+  const margin = options.marginIn === undefined ? 0.04 : options.marginIn;
+  const usableWidthPt = Math.max(1, (widthIn - margin * 2) * 72 * (options.safetyFactor || 0.9));
+  const lineHeight = options.lineHeight || 1.22;
+  const list = Array.isArray(runs) ? runs : [];
+  let lines = 1;
+  let lineWidth = 0;
+  let tallest = fontSizePt;
+  list.forEach((run) => {
+    const value = typeof run === 'string' ? run : (run && run.text) || '';
+    const runSize = typeof run === 'string'
+      ? fontSizePt
+      : Number(run && run.options && run.options.fontSize) || fontSizePt;
+    if (runSize > tallest) tallest = runSize;
+    Array.from(String(value)).forEach((character) => {
+      if (character === '\n') {
+        lines += 1;
+        lineWidth = 0;
+        return;
+      }
+      const width = measureTextPt(character, runSize, options);
+      if (lineWidth > 0 && lineWidth + width > usableWidthPt) {
+        lines += 1;
+        lineWidth = 0;
+      }
+      lineWidth += width;
+    });
+  });
+  const paddingPt = margin * 144;
+  return (lines * tallest * lineHeight + paddingPt) / 72;
+}
+
+module.exports = {
+  glyphWidthFactor, graphemes, measureTextPt, wrapText, estimateLineCount,
+  estimateTextHeight, estimateRichTextHeight
+};

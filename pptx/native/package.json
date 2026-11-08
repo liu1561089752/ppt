@@ -17,11 +17,24 @@
     "demo:parity": "node ../examples/native_design_parity_demo.js native-theme-profile/theme.json native-design-parity-demo.pptx",
     "render:parity": "python scripts/render_check.py native-design-parity-demo.pptx --output-dir render-check/native-design-parity-demo",
     "demo:layouts": "node ../examples/native_layouts_demo.js native-layouts-demo.pptx",
-    "render:layouts": "python scripts/render_check.py native-layouts-demo.pptx --output-dir render-check/native-layouts-demo"
+    "render:layouts": "python scripts/render_check.py native-layouts-demo.pptx --output-dir render-check/native-layouts-demo",
+    "demo:images": "node ../examples/native_images_demo.js native-images-demo.pptx",
+    "render:images": "python scripts/render_check.py native-images-demo.pptx --output-dir render-check/native-images-demo",
+    "demo:stress": "node ../examples/native_stress_deck.js native-stress-deck.pptx",
+    "render:stress": "python scripts/render_check.py native-stress-deck.pptx --output-dir render-check/native-stress-deck",
+    "audit:images": "node scripts/audit_deck.js native-images-demo.pptx",
+    "audit:stress": "node scripts/audit_deck.js native-stress-deck.pptx --fail-on-warning",
+    "verify:pictures": "node scripts/inspect_pictures.js native-images-demo.pptx",
+    "pipeline:deck": "node pipeline/cli.js ../examples/pipeline-reference.html --out pipeline-converted/deck.json --report pipeline-converted/report.json",
+    "pipeline:pptx": "node pipeline/cli.js ../examples/pipeline-reference.html --out pipeline-converted/deck.json --report pipeline-converted/report.json --pptx pipeline-converted/pipeline-converted.pptx",
+    "pipeline:parity": "node pipeline/cli.js ../examples/design-reference.html --out pipeline-converted/parity.json --pptx pipeline-converted/pipeline-parity.pptx",
+    "audit:pipeline": "node scripts/audit_deck.js pipeline-converted/pipeline-converted.pptx --min-text-shapes 2",
+    "render:pipeline": "python scripts/render_check.py pipeline-converted/pipeline-converted.pptx --output-dir render-check/pipeline-converted"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",
     "fontkit": "^2.0.4",
+    "image-size": "^1.2.1",
     "jszip": "^3.10.1"
   },
   "engines": {

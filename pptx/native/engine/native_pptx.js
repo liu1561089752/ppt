@@ -5,10 +5,16 @@ const JSZip = require('jszip');
 const pptxgen = require('pptxgenjs');
 const { normalizePageSize } = require('../core/units');
 const { validateDeck } = require('../core/schema');
-const { layoutSlide } = require('./layout');
+const { layoutSlide, flattenElements } = require('./layout');
 const { validateSlide } = require('./validation');
 const { FontManager } = require('./font_manager');
 const { patchEastAsianFonts } = require('./east_asian_font');
+const {
+  EMU_PER_POINT,
+  roundRectAdjustment,
+  resolveImageGeometry,
+  srcRectAttributes
+} = require('./image_fit');
 const defaultTheme = require('../themes/default');
 const { resolveTheme } = require('../themes/design_system');
 
@@ -92,7 +98,10 @@ function shapeStyle(el, theme) {
   return options;
 }
 
-function addElement(slide, el, theme, pptx) {
+function addElement(slide, el, theme, pptx, context = {}) {
+  if (el.type === 'container') {
+    throw new Error('Container elements must be resolved by the layout engine before serialization');
+  }
   if (el.type === 'text') {
     const opts = textOptions(el, theme);
     if (Array.isArray(el.text)) {
@@ -126,8 +135,18 @@ function addElement(slide, el, theme, pptx) {
       }
     });
   } else if (el.type === 'image') {
+    const geometry = resolveImageGeometry(el, context.image || {});
     const source = el.path ? { path: el.path } : { data: el.data };
-    slide.addImage(Object.assign(source, { x: el.x, y: el.y, w: el.w, h: el.h, transparency: el.transparency || 0 }));
+    const imageOptions = Object.assign(source, {
+      x: geometry.box.x, y: geometry.box.y, w: geometry.box.w, h: geometry.box.h,
+      transparency: el.transparency || 0
+    });
+    if (el.altText) imageOptions.altText = el.altText;
+    if (el.rotate !== undefined) imageOptions.rotate = el.rotate;
+    if (el.flipH) imageOptions.flipH = true;
+    if (el.flipV) imageOptions.flipV = true;
+    slide.addImage(imageOptions);
+    if (Array.isArray(context.imagePlans)) context.imagePlans.push(buildImagePlan(el, geometry));
   } else if (el.type === 'chart') {
     const chartTypes = {
       bar: pptx.ChartType.bar,
@@ -163,6 +182,134 @@ function addElement(slide, el, theme, pptx) {
   }
 }
 
+function normalizeShadowOptions(shadow) {
+  const source = shadow === true || !shadow || typeof shadow !== 'object' ? {} : shadow;
+  return {
+    type: source.type || 'outer',
+    color: cleanColor(source.color, '000000'),
+    opacity: source.opacity === undefined ? 0.18 : source.opacity,
+    blur: source.blur === undefined ? 4 : source.blur,
+    angle: source.angle === undefined ? 45 : source.angle,
+    distance: source.distance === undefined ? 2 : source.distance
+  };
+}
+
+/**
+ * Collect the OOXML-level changes an image element needs beyond what PptxGenJS
+ * can express: source-rectangle cropping, rounded corners, an outline, and an
+ * outer shadow. Returns null when the element is a plain stretched picture.
+ */
+function buildImagePlan(el, geometry) {
+  const plan = {};
+  let required = false;
+  if (geometry && geometry.srcRect) {
+    plan.srcRect = geometry.srcRect;
+    required = true;
+  }
+  const adjustment = roundRectAdjustment(el.radius, geometry.box);
+  if (adjustment !== null) {
+    plan.geometry = { prst: 'roundRect', adj: adjustment };
+    required = true;
+  }
+  if (el.line !== false && (el.lineColor !== undefined || el.lineWidth !== undefined)) {
+    plan.line = {
+      color: cleanColor(el.lineColor, '000000'),
+      width: el.lineWidth === undefined ? 0.75 : el.lineWidth,
+      transparency: el.lineTransparency === undefined ? 0 : el.lineTransparency,
+      dash: el.lineDash || el.dash
+    };
+    required = true;
+  }
+  if (el.shadow !== undefined && el.shadow !== false) {
+    plan.shadow = normalizeShadowOptions(el.shadow);
+    required = true;
+  }
+  return required ? plan : null;
+}
+
+function imageSpPrExtras(plan) {
+  const parts = [];
+  if (plan.line) {
+    const width = Math.max(1, Math.round(plan.line.width * EMU_PER_POINT));
+    const alpha = plan.line.transparency ? '<a:alpha val="' + Math.round((100 - plan.line.transparency) * 1000) + '"/>' : '';
+    const dash = plan.line.dash ? '<a:prstDash val="' + plan.line.dash + '"/>' : '';
+    parts.push('<a:ln w="' + width + '" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:srgbClr val="' +
+      plan.line.color + '">' + alpha + '</a:srgbClr></a:solidFill>' + dash + '</a:ln>');
+  }
+  if (plan.shadow) {
+    const shadow = plan.shadow;
+    // 60000 units per degree, matching DrawingML `dir`; blur/distance are points.
+    const direction = Math.round((((Number(shadow.angle) || 0) % 360) + 360) % 360 * 60000);
+    parts.push('<a:effectLst><a:' + shadow.type + 'Shdw' +
+      (shadow.type === 'outer' ? ' sx="100000" sy="100000" kx="0" ky="0" algn="bl" rotWithShape="0"' : '') +
+      ' blurRad="' + Math.round(shadow.blur * EMU_PER_POINT) + '"' +
+      ' dist="' + Math.round(shadow.distance * EMU_PER_POINT) + '"' +
+      ' dir="' + direction + '"><a:srgbClr val="' + shadow.color + '"><a:alpha val="' +
+      Math.round(shadow.opacity * 100000) + '"/></a:srgbClr></a:' + shadow.type + 'Shdw></a:effectLst>');
+  }
+  return parts.join('');
+}
+
+function applyImagePlan(picXml, plan) {
+  let xml = picXml;
+  if (plan.srcRect) {
+    const attributes = srcRectAttributes(plan.srcRect);
+    if (/<a:srcRect\b[^>]*\/>/u.test(xml)) {
+      xml = xml.replace(/<a:srcRect\b[^>]*\/>/u, '<a:srcRect ' + attributes + '/>');
+    } else if (/<a:stretch><a:fillRect\/><\/a:stretch>/u.test(xml)) {
+      xml = xml.replace('<a:stretch><a:fillRect/></a:stretch>',
+        '<a:srcRect ' + attributes + '/><a:stretch><a:fillRect/></a:stretch>');
+    } else {
+      throw new Error('Unable to locate the picture blip fill for an image crop patch');
+    }
+  }
+  const extras = imageSpPrExtras(plan);
+  if (!plan.geometry && !extras) return xml;
+  // Drop any pre-existing outline/effect so repeated patches stay idempotent.
+  xml = xml.replace(/<a:ln[\s>][\s\S]*?<\/a:ln>/gu, '').replace(/<a:effectLst[\s>][\s\S]*?<\/a:effectLst>/gu, '');
+  const geometryPattern = /<a:prstGeom prst="[^"]*">[\s\S]*?<\/a:prstGeom>/u;
+  if (!geometryPattern.test(xml)) {
+    throw new Error('Unable to locate the picture geometry for an image effect patch');
+  }
+  xml = xml.replace(geometryPattern, (whole) => {
+    const geometry = plan.geometry
+      ? '<a:prstGeom prst="' + plan.geometry.prst + '"><a:avLst><a:gd name="adj" fmla="val ' +
+        plan.geometry.adj + '"/></a:avLst></a:prstGeom>'
+      : whole;
+    return geometry + extras;
+  });
+  return xml;
+}
+
+async function patchImageEffects(outputPath, plansBySlide) {
+  const slides = Array.isArray(plansBySlide) ? plansBySlide : [];
+  const needed = slides.some((plans) => Array.isArray(plans) && plans.some(Boolean));
+  if (!needed) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const plans = slides[slideIndex] || [];
+    if (!plans.some(Boolean)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    let xml = await file.async('string');
+    const pictureCount = (xml.match(/<p:pic>/gu) || []).length;
+    if (pictureCount !== plans.length) {
+      throw new Error('Image patch alignment mismatch on slide ' + (slideIndex + 1) +
+        ': Deck Spec has ' + plans.length + ' image elements but PPTX has ' + pictureCount + ' p:pic elements');
+    }
+    let index = 0;
+    xml = xml.replace(/<p:pic>[\s\S]*?<\/p:pic>/gu, (whole) => {
+      const plan = plans[index++];
+      return plan ? applyImagePlan(whole, plan) : whole;
+    });
+    zip.file(name, xml);
+  }
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 async function buildPresentation(deck, options = {}) {
   const errors = validateDeck(deck);
   if (errors.length) throw new Error('Invalid deck spec:\n- ' + errors.join('\n- '));
@@ -191,6 +338,7 @@ async function buildPresentation(deck, options = {}) {
   };
 
   const report = [];
+  const imagePlans = [];
   for (const [index, spec] of deck.slides.entries()) {
     const slide = pptx.addSlide();
     slide.background = { color: cleanColor(spec.background, theme.colors.background) };
@@ -201,11 +349,16 @@ async function buildPresentation(deck, options = {}) {
         warnings.push({ code: 'LAYOUT_WARNING', element: elementIndex, message });
       });
     });
-    elements.forEach((element) => addElement(slide, element, theme, pptx));
+    const slidePlans = [];
+    elements.forEach((element) => addElement(slide, element, theme, pptx, {
+      image: { readFile: options.readImageFile },
+      imagePlans: slidePlans
+    }));
     if (spec.notes) slide.addNotes(spec.notes);
+    imagePlans.push(slidePlans);
     report.push({ slide: index + 1, warnings });
   }
-  return { pptx, report, pageSize, fontReport: fontManager.inspect() };
+  return { pptx, report, pageSize, fontReport: fontManager.inspect(), imagePlans };
 }
 
 function gradientFillXml(gradient, baseTransparency = 0) {
@@ -249,7 +402,7 @@ async function patchGradientFills(outputPath, deck) {
     let shapeIndex = 0;
     let patchedGradientCount = 0;
     // PptxGenJS serializes text, shapes, and lines as p:sp; images and graphic frames use other OOXML nodes.
-    const shapeElements = deck.slides[slideIndex].elements.filter((element) =>
+    const shapeElements = flattenElements(deck.slides[slideIndex].elements).filter((element) =>
       element.type === 'text' || element.type === 'shape' || element.type === 'line'
     );
     let xml = await file.async('string');
@@ -299,7 +452,8 @@ async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
   await result.pptx.writeFile({ fileName: outputPath });
-  if (deck.slides.some((slide) => slide.elements.some((element) => element.type === 'shape' && element.gradient))) await patchGradientFills(outputPath, deck);
+  if (deck.slides.some((slide) => flattenElements(slide.elements).some((element) => element.type === 'shape' && element.gradient))) await patchGradientFills(outputPath, deck);
+  await patchImageEffects(outputPath, result.imagePlans);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
   return {
@@ -310,4 +464,7 @@ async function generatePptx(deck, outputPath, options = {}) {
   };
 }
 
-module.exports = { buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml, shapeStyle, isBoldWeight };
+module.exports = {
+  buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
+  shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects
+};

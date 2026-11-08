@@ -521,3 +521,610 @@ test('gradient fill combines stop alpha with shape-level transparency', () => {
   assert.match(xml, /<a:alpha val="50000"\/>/);
   assert.throws(() => gradientFillXml({ stops: [{ position: 0, color: '112233' }, { position: 1, color: '445566' }] }, 101), /base transparency/);
 });
+
+
+// ---------------------------------------------------------------------------
+// Image fit, crop, and picture effect support
+// ---------------------------------------------------------------------------
+
+const os = require('node:os');
+const fsSync = require('node:fs');
+const pathSync = require('node:path');
+const { makePng, writePngFixture } = require('./helpers/png');
+const imageFit = require('../native/engine/image_fit');
+
+async function withTempDir(prefix, run) {
+  const directory = fsSync.mkdtempSync(pathSync.join(os.tmpdir(), prefix));
+  try {
+    return await run(directory);
+  } finally {
+    fsSync.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function readSlideXml(pptxPath, slideNumber = 1) {
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  return JSZip.loadAsync(fsSync.readFileSync(pptxPath))
+    .then((zip) => zip.file('ppt/slides/slide' + slideNumber + '.xml').async('string'));
+}
+
+test('PNG fixture helper emits an image-size readable file', async () => {
+  await withTempDir('native-png-', (directory) => {
+    const file = writePngFixture(directory, 'fixture.png', 400, 300);
+    assert.deepEqual(imageFit.readImageSize({ type: 'image', path: file }), { width: 400, height: 300 });
+    assert.ok(makePng(16, 9).length > 40);
+  });
+});
+
+test('cover crops the overflow symmetrically around the centre focus', () => {
+  const result = imageFit.resolveImageGeometry({
+    type: 'image', path: 'unused.png', x: 0, y: 0, w: 4, h: 2, fit: 'cover',
+    naturalSize: { width: 400, height: 300 }
+  });
+  assert.equal(result.fit, 'cover');
+  assert.deepEqual(result.box, { x: 0, y: 0, w: 4, h: 2 });
+  assert.ok(Math.abs(result.srcRect.top - 1 / 6) < 1e-9);
+  assert.ok(Math.abs(result.srcRect.bottom - 1 / 6) < 1e-9);
+  assert.equal(result.srcRect.left, 0);
+  assert.equal(result.srcRect.right, 0);
+  assert.equal(imageFit.srcRectAttributes(result.srcRect), 'l="0" t="16667" r="0" b="16667"');
+});
+
+test('cover honours focal presets and zoom without distorting the aspect ratio', () => {
+  const top = imageFit.resolveImageGeometry({
+    type: 'image', path: 'unused.png', x: 0, y: 0, w: 4, h: 2, fit: 'cover', focus: 'top',
+    naturalSize: { width: 400, height: 300 }
+  });
+  assert.equal(top.srcRect.top, 0);
+  assert.ok(Math.abs(top.srcRect.bottom - 1 / 3) < 1e-9);
+
+  const zoomed = imageFit.resolveImageGeometry({
+    type: 'image', path: 'unused.png', x: 0, y: 0, w: 4, h: 2, fit: 'cover', zoom: 2, focus: { x: 0.5, y: 0.5 },
+    naturalSize: { width: 400, height: 300 }
+  });
+  assert.ok(Math.abs(zoomed.srcRect.left - 0.25) < 1e-9);
+  assert.ok(Math.abs(zoomed.srcRect.top - 1 / 3) < 1e-9);
+
+  // A 2x zoom must cut the visible source area to a quarter while keeping the box aspect ratio.
+  const visibleW = 1 - zoomed.srcRect.left - zoomed.srcRect.right;
+  const visibleH = 1 - zoomed.srcRect.top - zoomed.srcRect.bottom;
+  assert.ok(Math.abs(visibleW - 0.5) < 1e-9);
+  assert.ok(Math.abs(visibleH - 1 / 3) < 1e-9);
+  assert.ok(Math.abs((visibleW * 400) / (visibleH * 300) - 4 / 2) < 1e-9);
+});
+
+test('contain shrinks the drawn box to the native aspect ratio inside the slot', () => {
+  const result = imageFit.resolveImageGeometry({
+    type: 'image', path: 'unused.png', x: 1, y: 1, w: 4, h: 4, fit: 'contain',
+    naturalSize: { width: 400, height: 300 }
+  });
+  assert.equal(result.srcRect, null);
+  assert.ok(Math.abs(result.box.x - 1) < 1e-9);
+  assert.ok(Math.abs(result.box.y - 1.5) < 1e-9);
+  assert.ok(Math.abs(result.box.w - 4) < 1e-9);
+  assert.ok(Math.abs(result.box.h - 3) < 1e-9);
+});
+
+test('explicit crop fractions map onto the source rectangle', () => {
+  const result = imageFit.resolveImageGeometry({
+    type: 'image', path: 'unused.png', x: 0, y: 0, w: 3, h: 3, fit: 'crop',
+    crop: { left: 0.25, right: 0, top: 0, bottom: 0.1 }
+  });
+  assert.equal(imageFit.srcRectAttributes(result.srcRect), 'l="25000" t="0" r="0" b="10000"');
+  assert.throws(() => imageFit.resolveImageGeometry({
+    type: 'image', path: 'unused.png', x: 0, y: 0, w: 3, h: 3, fit: 'crop', crop: { left: 0.7, right: 0.4 }
+  }), /less than 1/);
+});
+
+test('image fit resolves natural size from data URIs and reports a helpful error otherwise', () => {
+  const dataUri = 'data:image/png;base64,' + makePng(120, 60).toString('base64');
+  assert.deepEqual(imageFit.readImageSize({ type: 'image', data: dataUri }), { width: 120, height: 60 });
+  assert.throws(() => imageFit.resolveImageGeometry({
+    type: 'image', path: 'does-not-exist.png', x: 0, y: 0, w: 2, h: 2, fit: 'cover'
+  }), /natural pixel size/);
+});
+
+test('schema rejects invalid image fit, focus, zoom, and picture effect tokens', () => {
+  const errors = validateDeck({ slides: [{ elements: [
+    { type: 'image', path: 'a.png', x: 0, y: 0, w: 2, h: 2, fit: 'zoomify' },
+    { type: 'image', path: 'b.png', x: 0, y: 3, w: 2, h: 2, fit: 'crop' },
+    { type: 'image', path: 'c.png', x: 0, y: 5, w: 2, h: 2, fit: 'cover', focus: 'middle-ish' },
+    { type: 'image', path: 'd.png', x: 0, y: 7, w: 2, h: 2, fit: 'cover', zoom: 0.5 },
+    { type: 'image', path: 'e.png', x: 3, y: 0, w: 2, h: 2, radius: -1, lineColor: 'nope' },
+    { type: 'image', path: 'f.png', x: 3, y: 3, w: 2, h: 2, crop: { left: 0.2 } },
+    { type: 'image', path: 'g.png', x: 3, y: 5, w: 2, h: 2, fit: 'crop', crop: { left: 0.6, right: 0.5 } },
+    { type: 'image', path: 'h.png', x: 3, y: 7, w: 2, h: 2, naturalSize: { width: 0, height: 10 } }
+  ] }] });
+  assert.ok(errors.some((message) => message.includes('.fit must be one of')));
+  assert.ok(errors.some((message) => message.includes('.crop is required when fit is crop')));
+  assert.ok(errors.some((message) => message.includes('.focus is not a known focal preset')));
+  assert.ok(errors.some((message) => message.includes('.zoom must be a finite number')));
+  assert.ok(errors.some((message) => message.includes('.radius must be finite and non-negative')));
+  assert.ok(errors.some((message) => message.includes('.lineColor must be a six-digit hex color')));
+  assert.ok(errors.some((message) => message.includes('.crop requires fit: "crop"')));
+  assert.ok(errors.some((message) => message.includes('.crop left + right must be less than 1')));
+  assert.ok(errors.some((message) => message.includes('.naturalSize requires positive finite width and height')));
+});
+
+test('schema accepts a fully specified picture element', () => {
+  assert.deepEqual(validateDeck({ slides: [{ elements: [{
+    type: 'image', path: 'a.png', x: 0, y: 0, w: 4, h: 3,
+    fit: 'cover', focus: { x: 0.4, y: 0.2 }, zoom: 1.4, transparency: 12,
+    radius: 0.18, lineColor: 'DCE2DE', lineWidth: 1, lineTransparency: 20, lineDash: 'dash',
+    shadow: { type: 'outer', color: '000000', opacity: 0.2, blur: 6, angle: 45, distance: 3 },
+    flipH: true, flipV: false, altText: '图表示意', naturalSize: { width: 400, height: 300 }
+  }] }] }), []);
+});
+
+test('generated PPTX stores cover cropping as editable a:srcRect on a picture frame', async () => {
+  await withTempDir('native-cover-', async (directory) => {
+    const image = writePngFixture(directory, 'cover.png', 400, 300);
+    const output = pathSync.join(directory, 'cover.pptx');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    await generatePptx({ slides: [{ elements: [
+      { type: 'image', path: image, x: 1, y: 1, w: 4, h: 2, fit: 'cover'
+      }
+    ] }] }, output);
+    const xml = await readSlideXml(output);
+    assert.equal((xml.match(/<p:pic>/gu) || []).length, 1);
+    assert.ok(xml.includes('<a:srcRect l="0" t="16667" r="0" b="16667"/>'));
+    assert.ok(xml.includes('<a:stretch><a:fillRect/></a:stretch>'));
+    // The picture frame keeps the requested 4x2 inch slot; it is not promoted to a full-slide raster.
+    assert.ok(xml.includes('<a:ext cx="3657600" cy="1828800"/>'));
+  });
+});
+
+test('generated PPTX keeps contain sizing native with no crop rectangle', async () => {
+  await withTempDir('native-contain-', async (directory) => {
+    const image = writePngFixture(directory, 'contain.png', 400, 300);
+    const output = pathSync.join(directory, 'contain.pptx');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    await generatePptx({ slides: [{ elements: [
+      { type: 'image', path: image, x: 1, y: 1, w: 4, h: 4, fit: 'contain' }
+    ] }] }, output);
+    const xml = await readSlideXml(output);
+    assert.ok(!xml.includes('<a:srcRect'));
+    // 4 x 3 inches at 914400 EMU/inch.
+    assert.ok(xml.includes('<a:ext cx="3657600" cy="2743200"/>'));
+  });
+});
+
+test('generated PPTX serializes rounded corners, outline, and shadow on a picture', async () => {
+  await withTempDir('native-pic-effect-', async (directory) => {
+    const image = writePngFixture(directory, 'effect.png', 200, 200);
+    const output = pathSync.join(directory, 'effect.pptx');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    await generatePptx({ slides: [{ elements: [
+      { type: 'image', path: image, x: 1, y: 1, w: 3, h: 3, radius: 0.3,
+        lineColor: 'DCE2DE', lineWidth: 1.5, lineTransparency: 25, lineDash: 'dash',
+        shadow: { type: 'outer', color: '000000', opacity: 0.25, blur: 8, angle: 90, distance: 4 },
+        transparency: 15, altText: '带描边的图片' }
+    ] }] }, output);
+    const xml = await readSlideXml(output);
+    assert.match(xml, /<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 10000"\/><\/a:avLst><\/a:prstGeom>/);
+    assert.match(xml, /<a:ln w="19050"/);
+    assert.match(xml, /<a:prstDash val="dash"\/>/);
+    assert.match(xml, /<a:alpha val="75000"\/>/);
+    assert.match(xml, /<a:outerShdw[^>]*blurRad="101600"[^>]*dist="50800"[^>]*dir="5400000"/);
+    assert.match(xml, /<a:alphaModFix amt="85000"\/>/);
+    assert.ok(xml.includes('带描边的图片'));
+  });
+});
+
+test('plain stretched images require no post-serialization patch', async () => {
+  const { buildPresentation } = require('../native');
+  await withTempDir('native-plain-', async (directory) => {
+    const image = writePngFixture(directory, 'plain.png', 64, 48);
+    const result = await buildPresentation({ slides: [{ elements: [
+      { type: 'image', path: image, x: 1, y: 1, w: 2, h: 2 }
+    ] }] });
+    assert.deepEqual(result.imagePlans, [[null]]);
+  });
+});
+
+test('image patch rejects a plan/element misalignment instead of patching the wrong picture', () => {
+  const { applyImagePlan } = require('../native/engine/native_pptx');
+  const pic = '<p:pic><p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>' +
+    '<p:spPr><a:xfrm/><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>';
+  const patched = applyImagePlan(pic, { srcRect: { left: 0.1, top: 0, right: 0, bottom: 0 } });
+  assert.ok(patched.includes('<a:srcRect l="10000" t="0" r="0" b="0"/>'));
+  // Idempotent: re-applying replaces rather than duplicating the rectangle.
+  const twice = applyImagePlan(patched, { srcRect: { left: 0.2, top: 0, right: 0, bottom: 0 } });
+  assert.equal((twice.match(/<a:srcRect /gu) || []).length, 1);
+  assert.ok(twice.includes('l="20000"'));
+});
+
+test('image patch raises when the picture blip fill is missing', () => {
+  const { applyImagePlan } = require('../native/engine/native_pptx');
+  assert.throws(() => applyImagePlan('<p:pic><p:blipFill></p:blipFill></p:pic>',
+    { srcRect: { left: 0, top: 0, right: 0, bottom: 0 } }), /blip fill/);
+});
+
+
+// ---------------------------------------------------------------------------
+// Declarative container layout
+// ---------------------------------------------------------------------------
+
+const { layoutContainer, flattenElements } = require('../native/engine/layout');
+
+test('column containers stack children with padding and gap', () => {
+  const { elements, height } = layoutContainer({
+    type: 'container', x: 1, y: 1, w: 4, padding: 0.2, gap: 0.1,
+    children: [{ type: 'shape', h: 1, fill: 'FFFFFF' }, { type: 'shape', h: 2, fill: 'FFFFFF' }]
+  }, { x: 1, y: 1, w: 4 }, {});
+  assert.equal(elements.length, 2);
+  assert.ok(Math.abs(elements[0].x - 1.2) < 1e-9);
+  assert.ok(Math.abs(elements[0].y - 1.2) < 1e-9);
+  assert.ok(Math.abs(elements[0].w - 3.6) < 1e-9);
+  assert.ok(Math.abs(elements[1].y - 2.3) < 1e-9);
+  assert.ok(Math.abs(height - 3.5) < 1e-9);
+});
+
+test('row containers share the remaining width between unconstrained children', () => {
+  const { elements, height } = layoutContainer({
+    type: 'container', x: 0, y: 0, w: 6, direction: 'row', gap: 0.5,
+    children: [{ type: 'shape', h: 1, fill: 'FFFFFF' }, { type: 'shape', h: 2, fill: 'FFFFFF' }]
+  }, { x: 0, y: 0, w: 6 }, {});
+  assert.ok(Math.abs(elements[0].w - 2.75) < 1e-9);
+  assert.ok(Math.abs(elements[1].w - 2.75) < 1e-9);
+  assert.ok(Math.abs(elements[1].x - 3.25) < 1e-9);
+  // default cross-axis alignment stretches both children to the tallest row.
+  assert.ok(Math.abs(elements[0].h - 2) < 1e-9);
+  assert.ok(Math.abs(height - 2) < 1e-9);
+});
+
+test('row containers honour flex weights and explicit widths', () => {
+  const { elements } = layoutContainer({
+    type: 'container', x: 0, y: 0, w: 6, direction: 'row', gap: 0,
+    children: [
+      { type: 'shape', w: 1, h: 1, fill: 'FFFFFF' },
+      { type: 'shape', flex: 2, h: 1, fill: 'FFFFFF' },
+      { type: 'shape', flex: 1, h: 1, fill: 'FFFFFF' }
+    ]
+  }, { x: 0, y: 0, w: 6 }, {});
+  assert.ok(Math.abs(elements[0].w - 1) < 1e-9);
+  assert.ok(Math.abs(elements[1].w - 10 / 3) < 1e-9);
+  assert.ok(Math.abs(elements[2].w - 5 / 3) < 1e-9);
+});
+
+test('grid containers wrap children into equal columns with row heights', () => {
+  const { elements, height } = layoutContainer({
+    type: 'container', x: 0, y: 0, w: 6.2, columns: 3, gap: 0.1,
+    children: [
+      { type: 'shape', h: 1, fill: 'FFFFFF' }, { type: 'shape', h: 1.5, fill: 'FFFFFF' },
+      { type: 'shape', h: 1, fill: 'FFFFFF' }, { type: 'shape', h: 1, fill: 'FFFFFF' }
+    ]
+  }, { x: 0, y: 0, w: 6.2 }, {});
+  assert.equal(elements.length, 4);
+  assert.ok(Math.abs(elements[0].w - 2) < 1e-9);
+  assert.ok(Math.abs(elements[1].x - 2.1) < 1e-9);
+  assert.ok(Math.abs(elements[2].x - 4.2) < 1e-9);
+  // the second row starts below the tallest cell of the first row
+  assert.ok(Math.abs(elements[3].y - 1.6) < 1e-9);
+  // Four children in three columns means one wrapped row: 1.5 + 0.1 + 1.
+  assert.ok(Math.abs(height - 2.6) < 1e-9);
+});
+
+test('containers centre or right-align narrower children', () => {
+  const centred = layoutContainer({
+    type: 'container', x: 0, y: 0, w: 6, align: 'center',
+    children: [{ type: 'shape', w: 2, h: 1, fill: 'FFFFFF' }]
+  }, { x: 0, y: 0, w: 6 }, {});
+  assert.ok(Math.abs(centred.elements[0].x - 2) < 1e-9);
+  const right = layoutContainer({
+    type: 'container', x: 0, y: 0, w: 6, align: 'end',
+    children: [{ type: 'shape', w: 2, h: 1, fill: 'FFFFFF' }]
+  }, { x: 0, y: 0, w: 6 }, {});
+  assert.ok(Math.abs(right.elements[0].x - 4) < 1e-9);
+});
+
+test('justify distributes free vertical space inside a fixed-height container', () => {
+  const { elements } = layoutContainer({
+    type: 'container', x: 0, y: 0, w: 4, h: 5, justify: 'space-between',
+    children: [{ type: 'shape', h: 1, fill: 'FFFFFF' }, { type: 'shape', h: 1, fill: 'FFFFFF' }]
+  }, { x: 0, y: 0, w: 4, h: 5 }, {});
+  assert.ok(Math.abs(elements[0].y - 0) < 1e-9);
+  assert.ok(Math.abs(elements[1].y - 4) < 1e-9);
+});
+
+test('nested containers resolve recursively into flat editable geometry', () => {
+  const flattenSpec = {
+    type: 'container', x: 0, y: 0, w: 6, direction: 'row', gap: 0.5,
+    children: [
+      { type: 'container', direction: 'column', gap: 0.2, padding: 0.1,
+        children: [{ type: 'shape', h: 1, fill: 'FFFFFF' }, { type: 'shape', h: 1, fill: 'FFFFFF' }] },
+      { type: 'shape', h: 2, fill: 'FFFFFF' }
+    ]
+  };
+  const { elements } = layoutContainer(flattenSpec, { x: 0, y: 0, w: 6 }, {});
+  assert.equal(elements.length, 3);
+  assert.ok(Math.abs(elements[0].x - 0.1) < 1e-9);
+  assert.ok(Math.abs(elements[0].y - 0.1) < 1e-9);
+  assert.ok(Math.abs(elements[1].y - 1.3) < 1e-9);
+  assert.equal(flattenElements([flattenSpec]).length, 3);
+  assert.ok(flattenElements([flattenSpec]).every((element) => element.type !== 'container'));
+});
+
+test('container height grows to fit measured text', () => {
+  const { elements, height } = layoutContainer({
+    type: 'container', x: 0, y: 0, w: 2, padding: 0.1,
+    children: [{ type: 'text', text: '很长的中文段落需要在窄容器内自动换行并撑开容器高度。'.repeat(3), fontSize: 16 }]
+  }, { x: 0, y: 0, w: 2 }, {});
+  assert.ok(height > 0.5);
+  assert.ok(elements[0]._requiredTextHeight > 0.5);
+  assert.ok(Math.abs(height - (elements[0].h + 0.2)) < 1e-9);
+});
+
+test('layoutSlide flattens containers and advances the cursor past them', () => {
+  const elements = layoutSlide({
+    elements: [
+      { type: 'text', text: '标题', x: 0.5, y: 0.4, w: 5, h: 0.6 },
+      { type: 'container', w: 5, gap: 0.2, children: [
+        { type: 'shape', h: 1, fill: 'FFFFFF' },
+        { type: 'shape', h: 1, fill: 'FFFFFF' }
+      ] },
+      { type: 'text', text: '尾部' }
+    ]
+  }, normalizePageSize('wide'), {});
+  assert.equal(elements.length, 4);
+  assert.ok(elements.every((element) => element.type !== 'container'));
+  const tail = elements[3];
+  // The default page margin is 0.58in and the container occupies 2.2in from there.
+  assert.ok(tail.y >= 0.58 + 2.2, 'trailing flow element must clear the container');
+});
+
+test('schema validates container options and children recursively', () => {
+  const errors = validateDeck({ slides: [{ elements: [
+    { type: 'container', direction: 'diagonal', columns: 0, gap: -1, align: 'middle', justify: 'evenly',
+      padding: { top: -1 }, children: [{ type: 'shape', h: 1, fill: 'not-a-color' }, { type: 'bogus' }] }
+  ] }] });
+  assert.ok(errors.some((message) => message.includes('.direction must be row or column')));
+  assert.ok(errors.some((message) => message.includes('.columns must be a positive integer')));
+  assert.ok(errors.some((message) => message.includes('.gap must be finite and non-negative')));
+  assert.ok(errors.some((message) => message.includes('.align must be one of')));
+  assert.ok(errors.some((message) => message.includes('.justify must be one of')));
+  assert.ok(errors.some((message) => message.includes('.padding.top must be finite and non-negative')));
+  assert.ok(errors.some((message) => message.includes('.children[0].fill must be a six-digit hex color')));
+  assert.ok(errors.some((message) => message.includes('.children[1].type must be one of')));
+  assert.deepEqual(validateDeck({ slides: [{ elements: [
+    { type: 'container', w: 4, direction: 'row', gap: 0.2, padding: 0.1, align: 'center', justify: 'space-between',
+      children: [{ type: 'shape', h: 1, fill: 'FFFFFF' }] }
+  ] }] }), []);
+});
+
+test('gradient patch stays aligned when effects live inside containers', async () => {
+  await withTempDir('native-container-gradient-', async (directory) => {
+    const output = pathSync.join(directory, 'container-gradient.pptx');
+    const gradient = (color) => ({ angle: 90, stops: [{ position: 0, color }, { position: 1, color: 'FFFFFF' }] });
+    const { generatePptx } = require('../native/engine/native_pptx');
+    await generatePptx({ slides: [{ elements: [
+      { type: 'text', text: 'before', x: 0.5, y: 0.4, w: 3, h: 0.4 },
+      { type: 'container', x: 0.5, y: 1, w: 5, direction: 'row', gap: 0.2, children: [
+        { type: 'shape', h: 1, fill: '112233', gradient: gradient('112233') },
+        { type: 'shape', h: 1, fill: '445566', gradient: gradient('445566') }
+      ] },
+      { type: 'text', text: 'after', x: 0.5, y: 5, w: 3, h: 0.4 }
+    ] }] }, output);
+    const xml = await readSlideXml(output);
+    assert.equal((xml.match(/<a:gradFill/gu) || []).length, 2);
+    assert.ok(xml.includes('<a:srgbClr val="112233">'));
+    assert.ok(xml.includes('<a:srgbClr val="445566">'));
+    assert.equal((xml.match(/<p:sp>/gu) || []).length, 4);
+  });
+});
+
+test('container backgrounds render as editable card surfaces behind their children', async () => {
+  await withTempDir('native-card-', async (directory) => {
+    const output = pathSync.join(directory, 'card.pptx');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    await generatePptx({ slides: [{ elements: [
+      { type: 'container', x: 1, y: 1, w: 4, gap: 0.2, padding: 0.3,
+        background: { fill: 'FFFFFF', radius: 0.18, lineColor: 'DCE2DE', lineWidth: 0.75, shadow: { opacity: 0.2, blur: 8 } },
+        children: [
+          { type: 'text', text: '卡片标题', fontSize: 20, bold: true },
+          { type: 'text', text: '卡片正文内容', fontSize: 13 }
+        ] }
+    ] }] }, output);
+    const xml = await readSlideXml(output);
+    assert.equal((xml.match(/<p:sp>/gu) || []).length, 3);
+    // The card surface must be emitted first so it sits behind the two texts.
+    const firstShape = xml.match(/<p:sp>[\s\S]*?<\/p:sp>/u)[0];
+    assert.ok(firstShape.includes('<a:prstGeom prst="roundRect">'));
+    assert.ok(!firstShape.includes('<a:t>'), 'the card surface must not carry text');
+    assert.match(xml, /<a:outerShdw/);
+  });
+});
+
+test('rich-text height uses the largest declared run size', () => {
+  const { estimateRichTextHeight } = require('../native/engine/text_measure');
+  const small = estimateRichTextHeight([{ text: '小字内容' }], 4, 12);
+  const large = estimateRichTextHeight([{ text: '大字内容', options: { fontSize: 32 } }], 4, 12);
+  assert.ok(large > small);
+  const multiline = estimateRichTextHeight([{ text: 'a\nb\nc' }], 4, 12);
+  assert.ok(multiline > small);
+});
+
+test('complex multi-page stress deck stays editable, complete, and warning-free', async () => {
+  await withTempDir('native-stress-', async (directory) => {
+    const { buildStressDeck, buildAssets } = require('../examples/native_stress_deck');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    const { auditPptx } = require('../native/scripts/audit_deck');
+    const assets = buildAssets(pathSync.join(directory, 'assets'));
+    const output = pathSync.join(directory, 'stress.pptx');
+    const result = await generatePptx(buildStressDeck(assets), output);
+    assert.equal(result.report.length, 12);
+    const blocking = result.report.flatMap((slide) =>
+      slide.warnings.filter((warning) => warning.code !== 'LAYOUT_WARNING'));
+    assert.deepEqual(blocking, []);
+
+    const report = await auditPptx(output);
+    assert.equal(report.slideCount, 12);
+    assert.equal(report.errors, 0);
+    assert.ok(report.totals.textShapes >= 100, 'expected a text-heavy deck, saw ' + report.totals.textShapes);
+    assert.ok(report.totals.characters >= 1800, 'expected dense content, saw ' + report.totals.characters);
+    assert.ok(report.totals.charts >= 1);
+    assert.ok(report.totals.tables >= 1);
+    assert.ok(report.totals.croppedPictures >= 2);
+    assert.ok(report.totals.roundedPictures >= 2);
+    assert.ok(report.totals.shadowedPictures >= 1);
+    report.slides.forEach((slide) => {
+      assert.ok(slide.textShapes >= 1, slide.part + ' must keep editable text');
+      assert.ok(slide.characters >= 20, slide.part + ' must keep real content');
+      assert.ok(slide.pictureCoverage <= 1.001, slide.part + ' pictures must stay inside the slide');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HTML -> Native pipeline
+// ---------------------------------------------------------------------------
+
+const pipeline = require('../native/pipeline');
+const htmlParser = require('../native/pipeline/html_parser');
+const cssTools = require('../native/pipeline/css');
+
+const PIPELINE_FIXTURES = pathSync.join(__dirname, '..', 'examples');
+
+test('html parser handles attributes, entities, void tags, and raw text blocks', () => {
+  const root = htmlParser.parseHtml(
+    '<div class="a b" data-x=1><img src="i.png" alt="A &amp; B"><p>hello &lt;world&gt;</p></div>' +
+    '<style>.x{color:red}</style><!-- note --><br>'
+  );
+  const div = htmlParser.elementChildren(root)[0];
+  assert.equal(div.tag, 'div');
+  assert.deepEqual(htmlParser.classesOf(div), ['a', 'b']);
+  assert.equal(div.attrs['data-x'], '1');
+  const img = htmlParser.elementChildren(div)[0];
+  assert.equal(img.tag, 'img');
+  assert.equal(img.attrs.alt, 'A & B');
+  const paragraph = htmlParser.elementChildren(div)[1];
+  assert.equal(htmlParser.normalizedText(paragraph), 'hello <world>');
+  const styleNode = htmlParser.elementChildren(root).find((node) => node.tag === 'style');
+  assert.equal(htmlParser.textContent(styleNode).trim(), '.x{color:red}');
+});
+
+test('css subset resolves variables, specificity, shorthands, and unitless line-height', () => {
+  const sheet = cssTools.parseStylesheet([
+    ':root { --ink: #183B3A; --pad: 12px; }',
+    'p { color: #FF0000; line-height: 1.5; padding: var(--pad); }',
+    '.lead { color: var(--ink); font-size: 18px; }',
+    '.lead.strong { font-weight: 700; }'
+  ].join('\n'));
+  const resolver = cssTools.createStyleResolver(sheet);
+  const document = htmlParser.parseHtml('<body><p class="lead strong">hi</p></body>');
+  const paragraph = htmlParser.findAll(document, (node) => node.tag === 'p')[0];
+  const style = resolver.computed(paragraph);
+  assert.equal(style.color, '#183B3A');
+  assert.equal(style.fontWeight, '700');
+  assert.equal(style.paddingTop, '12px');
+  assert.equal(style.paddingLeft, '12px');
+  assert.equal(style.fontSize, '18px');
+  // Unitless line-height must stay unitless instead of becoming 1.5px.
+  assert.deepEqual(cssTools.parseLength(style.lineHeight), { value: 1.5, unit: '' });
+  assert.equal(cssTools.parseColor('rgba(24, 59, 58, 0.5)').hex, '183B3A');
+  assert.equal(cssTools.parseColor('rgba(24, 59, 58, 0.5)').alpha, 0.5);
+  assert.equal(cssTools.parseLinearGradient('linear-gradient(135deg, #000000 0%, #FFFFFF 100%)').angle, 135);
+});
+
+test('html pipeline reproduces the reviewed parity fixture geometry', () => {
+  const html = fsSync.readFileSync(pathSync.join(PIPELINE_FIXTURES, 'design-reference.html'), 'utf8');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.deck.slides.length, 1);
+  const elements = result.deck.slides[0].elements;
+
+  const panel = elements.find((element) => element.type === 'shape' && element.fill === '1B2836' && element.y === 0);
+  assert.ok(Math.abs(panel.x - 8.653) < 0.01, 'right panel x was ' + panel.x);
+  assert.ok(Math.abs(panel.w - 4.68) < 0.01, 'right panel width was ' + panel.w);
+
+  const title = elements.find((element) => element.type === 'text' && element.role === 'title');
+  assert.equal(title.text, '从 HTML 到原生 PowerPoint');
+  assert.equal(title.fontSize, 28.5);
+  assert.equal(title.color, 'F2AA4C');
+  assert.equal(title.fontFace, 'Aptos Display');
+  assert.equal(title.bold, true);
+  assert.ok(Math.abs(title.x - 1.083) < 0.01);
+
+  const card = elements.find((element) => element.type === 'shape' && element.fill === '1B2836' && element.y > 3);
+  assert.ok(Math.abs(card.radius - 0.146) < 0.005, 'card radius was ' + card.radius);
+  assert.equal(card.lineColor, '344657');
+
+  const caption = elements.find((element) => element.type === 'text' && element.role === 'caption');
+  assert.equal(caption.text, 'VISUAL SYSTEM / 01');
+  assert.equal(caption.fontSize, 9);
+  assert.deepEqual(result.report.unsupportedDetails, []);
+});
+
+test('html pipeline maps flex rows, grid tracks, lists, tables, and images to native objects', () => {
+  const html = fsSync.readFileSync(pathSync.join(PIPELINE_FIXTURES, 'pipeline-reference.html'), 'utf8');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.deck.slides.length, 4);
+  assert.equal(result.report.images, 2);
+  assert.equal(result.report.tables, 1);
+
+  const flexSlide = result.deck.slides[1].elements;
+  const cards = flexSlide.filter((element) => element.type === 'shape' && element.fill === 'FFFFFF');
+  assert.equal(cards.length, 3);
+  // flex: 1 with a 24px gap inside a 1152px row.
+  assert.ok(Math.abs(cards[0].w - 368 / 96) < 0.01, 'card width was ' + cards[0].w);
+  assert.ok(Math.abs(cards[1].x - cards[0].x - (368 + 24) / 96) < 0.01);
+  // align-items defaults to stretch, so every card shares one height.
+  assert.ok(cards.every((card) => Math.abs(card.h - cards[0].h) < 1e-9));
+  assert.ok(cards[0].shadow, 'box-shadow must survive as an editable shadow');
+
+  const gridSlide = result.deck.slides[2].elements;
+  const image = gridSlide.find((element) => element.type === 'image');
+  assert.ok(image, 'the grid slide must keep a native picture');
+  assert.equal(image.fit, 'cover');
+  assert.ok(Math.abs(image.radius - 0.125) < 0.005);
+
+  const list = gridSlide.find((element) => element.type === 'text' && element.bullet === true);
+  assert.ok(list, 'a <ul> must become a bulleted native text box');
+  assert.ok(list.text.split('\n').length >= 4);
+  assert.ok(list.h > 0.9, 'list height must cover all items, was ' + list.h);
+
+  const tableSlide = result.deck.slides[3].elements;
+  const table = tableSlide.find((element) => element.type === 'table');
+  assert.equal(table.rows.length, 5);
+  assert.equal(table.rows[0][0].options.bold, true);
+  assert.equal(table.rows[0][1].text, '输出');
+});
+
+test('html pipeline reports unsupported CSS instead of silently dropping it', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.blur { filter: blur(8px); color: #FF0000; font-size: 20px; }',
+    '.floaty { float: left; }',
+    '</style></head><body>',
+    '<main class="slide"><div class="blur floaty">内容</div></main>',
+    '</body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const properties = result.report.unsupportedDetails.map((entry) => entry.property);
+  assert.ok(properties.includes('filter'));
+  assert.ok(properties.includes('float'));
+  const text = result.deck.slides[0].elements.find((element) => element.type === 'text');
+  assert.equal(text.text, '内容');
+  assert.equal(text.color, 'FF0000');
+});
+
+test('html pipeline output stays editable once written to PPTX', async () => {
+  await withTempDir('native-pipeline-', async (directory) => {
+    const html = fsSync.readFileSync(pathSync.join(PIPELINE_FIXTURES, 'pipeline-reference.html'), 'utf8');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    const { auditPptx } = require('../native/scripts/audit_deck');
+    const result = pipeline.convertHtml(html);
+    const output = pathSync.join(directory, 'pipeline.pptx');
+    await generatePptx(result.deck, output);
+    const report = await auditPptx(output);
+    assert.equal(report.slideCount, 4);
+    assert.equal(report.errors, 0);
+    assert.equal(report.totals.tables, 1);
+    assert.equal(report.totals.pictures, 2);
+    assert.equal(report.totals.croppedPictures, 2);
+    assert.ok(report.totals.characters > 500);
+    report.slides.forEach((slide) => assert.ok(slide.textShapes >= 2, slide.part + ' must keep editable text'));
+  });
+});

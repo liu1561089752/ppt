@@ -1,6 +1,102 @@
 'use strict';
 
-const ELEMENT_TYPES = new Set(['text', 'shape', 'line', 'image', 'table', 'chart']);
+const ELEMENT_TYPES = new Set(['text', 'shape', 'line', 'image', 'table', 'chart', 'container']);
+
+const IMAGE_FITS = new Set(['stretch', 'fill', 'none', 'cover', 'contain', 'crop']);
+const IMAGE_FOCUS_PRESETS = new Set([
+  'center', 'centre', 'middle', 'top', 'bottom', 'left', 'right',
+  'top left', 'top right', 'bottom left', 'bottom right',
+  'left top', 'right top', 'left bottom', 'right bottom'
+]);
+
+function validateShadowOptions(prefix, element, errors) {
+  const shadow = element.shadow;
+  if (shadow === undefined || shadow === false || shadow === true) return;
+  if (typeof shadow !== 'object' || Array.isArray(shadow)) {
+    errors.push(prefix + '.shadow must be a boolean or options object');
+    return;
+  }
+  if (shadow.opacity !== undefined && (!Number.isFinite(shadow.opacity) || shadow.opacity < 0 || shadow.opacity > 1)) {
+    errors.push(prefix + '.shadow.opacity must be between 0 and 1');
+  }
+  ['blur', 'distance'].forEach((key) => {
+    if (shadow[key] !== undefined && (!Number.isFinite(shadow[key]) || shadow[key] < 0)) {
+      errors.push(prefix + '.shadow.' + key + ' must be finite and non-negative');
+    }
+  });
+  if (shadow.angle !== undefined && !Number.isFinite(shadow.angle)) errors.push(prefix + '.shadow.angle must be finite');
+  if (shadow.type !== undefined && !['outer', 'inner'].includes(shadow.type)) errors.push(prefix + '.shadow.type must be outer or inner');
+  if (shadow.color !== undefined && (typeof shadow.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(shadow.color))) {
+    errors.push(prefix + '.shadow.color must be a six-digit hex color');
+  }
+}
+
+function validateImageFit(prefix, element, errors) {
+  if (element.fit !== undefined && !IMAGE_FITS.has(String(element.fit).toLowerCase())) {
+    errors.push(prefix + '.fit must be one of: cover, contain, crop, stretch');
+  }
+  if (element.fit !== undefined && String(element.fit).toLowerCase() === 'crop') {
+    const crop = element.crop;
+    if (!crop || typeof crop !== 'object' || Array.isArray(crop)) {
+      errors.push(prefix + '.crop is required when fit is crop');
+    } else {
+      ['left', 'top', 'right', 'bottom'].forEach((key) => {
+        if (crop[key] !== undefined && (!Number.isFinite(crop[key]) || crop[key] < 0 || crop[key] > 1)) {
+          errors.push(prefix + '.crop.' + key + ' must be between 0 and 1');
+        }
+      });
+      const total = ['left', 'right'].reduce((sum, key) => sum + (Number.isFinite(crop[key]) ? crop[key] : 0), 0);
+      const vertical = ['top', 'bottom'].reduce((sum, key) => sum + (Number.isFinite(crop[key]) ? crop[key] : 0), 0);
+      if (total >= 1) errors.push(prefix + '.crop left + right must be less than 1');
+      if (vertical >= 1) errors.push(prefix + '.crop top + bottom must be less than 1');
+    }
+  }
+  if (element.crop !== undefined && element.fit === undefined) {
+    errors.push(prefix + '.crop requires fit: "crop"');
+  }
+  if (element.focus !== undefined) {
+    if (typeof element.focus === 'string') {
+      const key = element.focus.trim().toLowerCase().replace(/[-_]+/gu, ' ').replace(/\s+/gu, ' ');
+      if (!IMAGE_FOCUS_PRESETS.has(key)) errors.push(prefix + '.focus is not a known focal preset');
+    } else if (!element.focus || typeof element.focus !== 'object' || Array.isArray(element.focus)) {
+      errors.push(prefix + '.focus must be a preset name or an { x, y } object');
+    } else {
+      ['x', 'y'].forEach((key) => {
+        if (element.focus[key] !== undefined && (!Number.isFinite(element.focus[key]) || element.focus[key] < 0 || element.focus[key] > 1)) {
+          errors.push(prefix + '.focus.' + key + ' must be between 0 and 1');
+        }
+      });
+    }
+  }
+  if (element.zoom !== undefined && (!Number.isFinite(element.zoom) || element.zoom < 1)) {
+    errors.push(prefix + '.zoom must be a finite number greater than or equal to 1');
+  }
+  if (element.radius !== undefined && (!Number.isFinite(element.radius) || element.radius < 0)) {
+    errors.push(prefix + '.radius must be finite and non-negative');
+  }
+  if (element.rotate !== undefined && !Number.isFinite(element.rotate)) errors.push(prefix + '.rotate must be finite');
+  if (element.naturalSize !== undefined) {
+    const size = element.naturalSize;
+    if (!size || typeof size !== 'object' || Array.isArray(size) ||
+        !Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) {
+      errors.push(prefix + '.naturalSize requires positive finite width and height');
+    }
+  }
+  ['flipH', 'flipV'].forEach((key) => {
+    if (element[key] !== undefined && typeof element[key] !== 'boolean') errors.push(prefix + '.' + key + ' must be a boolean');
+  });
+  if (element.altText !== undefined && typeof element.altText !== 'string') errors.push(prefix + '.altText must be a string');
+  if (element.lineColor !== undefined && (typeof element.lineColor !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(element.lineColor))) {
+    errors.push(prefix + '.lineColor must be a six-digit hex color');
+  }
+  if (element.lineWidth !== undefined && (!Number.isFinite(element.lineWidth) || element.lineWidth < 0)) {
+    errors.push(prefix + '.lineWidth must be finite and non-negative');
+  }
+  if (element.lineTransparency !== undefined &&
+      (!Number.isFinite(element.lineTransparency) || element.lineTransparency < 0 || element.lineTransparency > 100)) {
+    errors.push(prefix + '.lineTransparency must be between 0 and 100');
+  }
+}
 
 function validateDeck(deck) {
   const errors = [];
@@ -19,12 +115,79 @@ function validateDeck(deck) {
       return;
     }
     slide.elements.forEach((element, elementIndex) => {
-      const p = prefix + '.elements[' + elementIndex + ']';
+      validateElement(prefix + '.elements[' + elementIndex + ']', element, errors);
+    });
+  });
+  return errors;
+}
+
+function validateContainer(prefix, element, errors) {
+  if (element.children !== undefined && !Array.isArray(element.children)) {
+    errors.push(prefix + '.children must be an array');
+    return;
+  }
+  if (element.direction !== undefined && !['row', 'column'].includes(element.direction)) {
+    errors.push(prefix + '.direction must be row or column');
+  }
+  if (element.columns !== undefined && (!Number.isInteger(element.columns) || element.columns < 1)) {
+    errors.push(prefix + '.columns must be a positive integer');
+  }
+  if (element.gap !== undefined && (!Number.isFinite(element.gap) || element.gap < 0)) {
+    errors.push(prefix + '.gap must be finite and non-negative');
+  }
+  ['rowGap', 'columnGap'].forEach((key) => {
+    if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0)) {
+      errors.push(prefix + '.' + key + ' must be finite and non-negative');
+    }
+  });
+  if (element.align !== undefined && !['start', 'center', 'end', 'stretch'].includes(element.align)) {
+    errors.push(prefix + '.align must be one of: start, center, end, stretch');
+  }
+  if (element.justify !== undefined && !['start', 'center', 'end', 'space-between', 'space-around'].includes(element.justify)) {
+    errors.push(prefix + '.justify must be one of: start, center, end, space-between, space-around');
+  }
+  if (element.padding !== undefined) {
+    if (typeof element.padding === 'number') {
+      if (!Number.isFinite(element.padding) || element.padding < 0) {
+        errors.push(prefix + '.padding must be finite and non-negative');
+      }
+    } else if (!element.padding || typeof element.padding !== 'object' || Array.isArray(element.padding)) {
+      errors.push(prefix + '.padding must be a number or { top, right, bottom, left } object');
+    } else {
+      ['top', 'right', 'bottom', 'left'].forEach((key) => {
+        if (element.padding[key] !== undefined && (!Number.isFinite(element.padding[key]) || element.padding[key] < 0)) {
+          errors.push(prefix + '.padding.' + key + ' must be finite and non-negative');
+        }
+      });
+    }
+  }
+  (element.children || []).forEach((child, index) => {
+    validateElement(prefix + '.children[' + index + ']', child, errors);
+  });
+  if (element.background !== undefined && element.background !== true) {
+    if (!element.background || typeof element.background !== 'object' || Array.isArray(element.background)) {
+      errors.push(prefix + '.background must be true or a shape style object');
+    } else {
+      validateElement(prefix + '.background', Object.assign({ type: 'shape' }, element.background), errors);
+    }
+  }
+}
+
+function validateElement(p, element, errors) {
       if (!element || typeof element !== 'object' || Array.isArray(element)) {
         errors.push(p + ' must be an object');
         return;
       }
       if (!ELEMENT_TYPES.has(element.type)) errors.push(p + '.type must be one of: ' + Array.from(ELEMENT_TYPES).join(', '));
+      if (element.type === 'container') {
+        validateContainer(p, element, errors);
+        ['x', 'y', 'w', 'h'].forEach((key) => {
+          if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0)) {
+            errors.push(p + '.' + key + ' must be a finite non-negative number');
+          }
+        });
+        return;
+      }
       if (element.type === 'text' && typeof element.text !== 'string' && !Array.isArray(element.text)) {
         errors.push(p + '.text must be a string or rich-text run array');
       }
@@ -52,6 +215,10 @@ function validateDeck(deck) {
       if (element.type === 'image' && element.transparency !== undefined &&
           (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
         errors.push(p + '.transparency must be between 0 and 100');
+      }
+      if (element.type === 'image') {
+        validateImageFit(p, element, errors);
+        validateShadowOptions(p, element, errors);
       }
       if (element.type === 'line' && element.width !== undefined &&
           (!Number.isFinite(element.width) || element.width <= 0)) {
@@ -97,18 +264,7 @@ function validateDeck(deck) {
             errors.push(p + '.' + key + ' must be a six-digit hex color');
           }
         });
-        if (element.shadow !== undefined && element.shadow !== false && typeof element.shadow === 'object') {
-          const shadow = element.shadow;
-          if (shadow.opacity !== undefined && (!Number.isFinite(shadow.opacity) || shadow.opacity < 0 || shadow.opacity > 1)) errors.push(p + '.shadow.opacity must be between 0 and 1');
-          ['blur', 'distance'].forEach((key) => {
-            if (shadow[key] !== undefined && (!Number.isFinite(shadow[key]) || shadow[key] < 0)) errors.push(p + '.shadow.' + key + ' must be finite and non-negative');
-          });
-          if (shadow.angle !== undefined && !Number.isFinite(shadow.angle)) errors.push(p + '.shadow.angle must be finite');
-          if (shadow.type !== undefined && !['outer', 'inner'].includes(shadow.type)) errors.push(p + '.shadow.type must be outer or inner');
-          if (shadow.color !== undefined && (typeof shadow.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(shadow.color))) errors.push(p + '.shadow.color must be a six-digit hex color');
-        } else if (element.shadow !== undefined && element.shadow !== false && element.shadow !== true) {
-          errors.push(p + '.shadow must be a boolean or options object');
-        }
+        validateShadowOptions(p, element, errors);
       }
       if (element.gradient !== undefined) {
         if (element.type !== 'shape') errors.push(p + '.gradient is only supported on shapes');
@@ -146,9 +302,6 @@ function validateDeck(deck) {
           if (element[key] === 0) errors.push(p + '.' + key + ' must be greater than zero');
         });
       }
-    });
-  });
-  return errors;
 }
 
-module.exports = { ELEMENT_TYPES, validateDeck };
+module.exports = { ELEMENT_TYPES, validateDeck, validateElement };
