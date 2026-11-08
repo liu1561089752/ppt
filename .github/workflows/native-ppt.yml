@@ -98,6 +98,16 @@ jobs:
           # Declared charts must be live chart parts, not pictures, and the
           # rotated watermark must carry a real xfrm rotation.
           python scripts/verify_native_ooxml.py pipeline-converted/pipeline-chart.pptx --require-chart --require-rotation
+      - name: Audit every converted deck for invalid enumerated values
+        working-directory: pptx/native
+        run: |
+          # A value outside the schema's enumerated set makes PowerPoint treat the file
+          # as damaged, and it is invisible in a rendered screenshot, so every deck is
+          # checked here - not just the ones with a feature flag.
+          for deck in pipeline-converted/*.pptx; do
+            echo "auditing $deck"
+            python scripts/verify_native_ooxml.py "$deck"
+          done
       - name: Verify editable OOXML visual effects
         working-directory: pptx/native
         run: |

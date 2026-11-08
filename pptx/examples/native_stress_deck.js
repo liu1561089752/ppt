@@ -163,7 +163,7 @@ function buildStressDeck(assets) {
           text('01', {
             x: 8.4, y: 0.9, w: 4.2, h: 3.4,
             fontFace: theme.fonts.heading, fontSize: 168, bold: true, color: '2A5E5C',
-            align: 'right', valign: 'mid'
+            align: 'right', valign: 'middle'
           }),
           text('SECTION 01', {
             x: 0.96, y: 2.5, w: 4.2, h: 0.24,
@@ -516,7 +516,7 @@ function buildStressDeck(assets) {
               colW: [2.35, 1.85, 1.45, 1.3, 5.05],
               border: { type: 'solid', color: 'DCE2DE', pt: 0.5 },
               fontFace: theme.fonts.body,
-              valign: 'mid',
+              valign: 'middle',
               rowH: 0.42
             }
           },

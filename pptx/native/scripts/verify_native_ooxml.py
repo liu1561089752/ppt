@@ -14,13 +14,48 @@ NS = {
     "c": "http://schemas.openxmlformats.org/drawingml/2006/chart",
 }
 
+# Attributes whose value comes from an enumerated type. A value outside the set is not
+# "slightly wrong": PowerPoint treats the file as damaged, so it is a hard failure.
+ENUM_VALUES = {
+    ("bodyPr", "anchor"): {"t", "ctr", "b", "just", "dist"},
+    ("tcPr", "anchor"): {"t", "ctr", "b", "just", "dist"},
+    ("bodyPr", "vert"): {"horz", "vert", "vert270", "wordArtVert", "eaVert",
+                         "mongolianVert", "wordArtVertRtl"},
+    ("pPr", "algn"): {"l", "ctr", "r", "just", "dist", "thaiDist", "justLow"},
+    ("legendPos", "val"): {"t", "b", "l", "r", "tr"},
+    ("barDir", "val"): {"bar", "col"},
+    ("grouping", "val"): {"standard", "stacked", "percentStacked", "clustered"},
+    ("dLblPos", "val"): {"bestFit", "b", "ctr", "inBase", "inEnd", "l", "outEnd", "r", "t"},
+}
+
+
+def local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def audit_enums(root: ET.Element) -> list[str]:
+    """Every enumerated attribute we write, checked against the schema's value set."""
+    problems: list[str] = []
+    for element in root.iter():
+        name = local_name(element.tag)
+        for (expected, attribute), allowed in ENUM_VALUES.items():
+            if name != expected:
+                continue
+            value = element.get(attribute)
+            if value is not None and value not in allowed:
+                problems.append(f"<{name} {attribute}=\"{value}\"> is not one of "
+                                + "/".join(sorted(allowed)))
+    return problems
+
 
 def inspect(path: Path) -> dict[str, int]:
     counts = {"slides": 0, "shapes": 0, "texts": 0, "gradients": 0,
               "shadows": 0, "alpha_nodes": 0, "charts": 0, "pictures": 0,
               "image_crops": 0, "rounded_pictures": 0, "outlined_pictures": 0,
               "shadowed_pictures": 0, "tables": 0,
-              "merged_cells": 0, "uneven_tables": 0, "rotated": 0}
+              "merged_cells": 0, "uneven_tables": 0, "rotated": 0,
+              "invalid_enums": 0}
+    problems: list[str] = []
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
             (name for name in archive.namelist()
@@ -31,6 +66,7 @@ def inspect(path: Path) -> dict[str, int]:
         counts["slides"] = len(slide_names)
         for name in slide_names:
             root = ET.fromstring(archive.read(name))
+            problems.extend(audit_enums(root))
             counts["shapes"] += len(root.findall(".//p:sp", NS))
             # A rotation is an xfrm attribute; 0 means "not rotated".
             for rotation in root.findall(".//a:xfrm", NS):
@@ -65,6 +101,14 @@ def inspect(path: Path) -> dict[str, int]:
                     counts["outlined_pictures"] += 1
                 if picture.findall(".//a:effectLst", NS):
                     counts["shadowed_pictures"] += 1
+        chart_names = [name for name in archive.namelist()
+                       if name.startswith("ppt/charts/chart") and name.endswith(".xml")
+                       and "/_rels/" not in name]
+        for name in chart_names:
+            problems.extend(audit_enums(ET.fromstring(archive.read(name))))
+    counts["invalid_enums"] = len(problems)
+    if problems:
+        counts["_problem_examples"] = problems[:5]  # noqa: PLC0206 - report, then fail
     return counts
 
 
@@ -104,6 +148,10 @@ def main() -> int:
         raise SystemExit("Missing required editable OOXML features: " + ", ".join(missing))
     if counts["slides"] < 1:
         raise SystemExit("PPTX contains no slide XML parts")
+    if counts["invalid_enums"]:
+        examples = counts.get("_problem_examples") or []
+        raise SystemExit("Invalid enumerated values in the generated OOXML ("
+                         + str(counts["invalid_enums"]) + "): " + "; ".join(examples))
     return 0
 
 
