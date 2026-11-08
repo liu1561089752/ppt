@@ -65,6 +65,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 | Transform | `translate()`/`rotate()` compose as one plan (a later translate is turned with the rotation; percentages resolve against the box); `scale()`/`skew()` and a non-centre `transform-origin` are reported |
 
+| line-height: normal | Estimated as 1.25 em; a browser uses the real face, so CJK boxes on a substituted face measure a few px short per block and positions drift cumulatively (measured against Chrome: -11px at the bottom of a full page, every margin exact). Reading font metrics is the fix and is not done |
+
 | Paint order | Positioned boxes paint above the in-flow boxes around them, and an absolute text child that paints its own surface keeps that surface instead of becoming a bare-text overlay |
 
 | Round or elliptical | `border-radius: 50%` becomes the ellipse geometry (a circle on a square box, the inscribed ellipse on any other); a smaller percentage is reported and drawn square |
