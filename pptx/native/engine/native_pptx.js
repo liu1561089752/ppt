@@ -46,7 +46,13 @@ function textOptions(el, theme) {
     underline: !!el.underline,
     strike: !!el.strike,
     charSpacing: el.charSpacing,
-    lineSpacingMultiple: el.lineSpacingMultiple || theme.typography.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22,
+    // CSS `line-height` is a multiple of the *font size*; DrawingML `spcPct` is a
+    // percentage of the font's own line box, which is ~1.2em, so a 200% multiple drew
+    // lines ~20% taller than the analyser reserved and text spilled out of its box.
+    // Points carry the CSS number exactly.
+    lineSpacing: Number(((el.lineSpacingMultiple || theme.typography.lineSpacingMultiple
+      || theme.lineSpacingMultiple || 1.22) * (el.fontSize
+      || (isTitle ? theme.sizes[el.role] || theme.sizes.title : theme.sizes.body))).toFixed(2)),
     paraSpaceBeforePt: el.paraSpaceBeforePt,
     bullet: el.bullet,
     margin: Number.isFinite(el.margin) ? el.margin : 0,

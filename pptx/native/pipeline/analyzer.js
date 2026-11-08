@@ -511,6 +511,14 @@ function lineSpacingOf(style, fontPx) {
 }
 
 /** Build rich-text runs from inline children, keeping bold/italic/colour spans. */
+/** The first family a `font-family` declaration names, or null. */
+function runFontFamily(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  if (!text) return null;
+  const first = text.split(',')[0].replace(/^["']|["']$/gu, '').trim();
+  return first || null;
+}
+
 function baseRunFlags(baseStyle) {
   const color = parseColor(baseStyle.color);
   const weight = String(baseStyle.fontWeight || '').toLowerCase();
@@ -519,16 +527,35 @@ function baseRunFlags(baseStyle) {
     color: color && color.hex ? color.hex : null,
     bold: weight === 'bold' || weight === 'bolder' || Number(weight) >= 600,
     italic: String(baseStyle.fontStyle || '').toLowerCase() === 'italic',
-    fontSize: size ? Math.round(toInches(size, {}) * 72 * 100) / 100 : null
+    fontSize: size ? Math.round(toInches(size, {}) * 72 * 100) / 100 : null,
+    fontFace: runFontFamily(baseStyle.fontFamily)
   };
 }
 
 function buildRuns(domNode, baseStyle, ctx) {
   const base = baseRunFlags(baseStyle);
   const runs = [];
-  const pushText = (value, style) => {
+  /**
+   * The decoration an inline element carries. `<u>`/`<s>` are the tags a design uses for
+   * it and `text-decoration` is the declaration; both end up as run properties, which is
+   * where PowerPoint keeps them.
+   */
+  const decorationOptions = (style, tag) => {
+    const options = {};
+    const decoration = String((style && (style.textDecorationLine || style.textDecoration)) || '').toLowerCase();
+    if (decoration.includes('underline') || tag === 'u' || tag === 'ins') options.underline = true;
+    if (decoration.includes('line-through') || tag === 's' || tag === 'del' || tag === 'strike') {
+      options.strike = true;
+    }
+    const vertical = String((style && style.verticalAlign) || '').trim().toLowerCase();
+    if (tag === 'sup' || vertical === 'super') options.superscript = true;
+    else if (tag === 'sub' || vertical === 'sub') options.subscript = true;
+    return options;
+  };
+  const pushText = (value, style, inline) => {
     if (!value) return;
     const options = {};
+    const tag = inline && inline.tag ? inline.tag : '';
     if (style) {
       const color = parseColor(style.color);
       if (color && color.hex && color.hex !== base.color) options.color = color.hex;
@@ -543,37 +570,58 @@ function buildRuns(domNode, baseStyle, ctx) {
         const rounded = inches ? Math.round(inches * 72 * 100) / 100 : null;
         if (rounded && rounded !== base.fontSize) options.fontSize = rounded;
       }
+      const face = runFontFamily(style.fontFamily);
+      if (face && face !== base.fontFace) options.fontFace = face;
     }
+    Object.assign(options, decorationOptions(style, tag));
+    // A background on a plain inline element is a highlighter, which PowerPoint keeps
+    // as a run property (`<a:highlight>`), so the words really are marked.
+    if (inline && inline.highlight) options.highlight = inline.highlight;
+    if (inline && inline.href) options.hyperlink = { url: inline.href };
     runs.push(Object.keys(options).length ? { text: value, options } : { text: value });
   };
 
-  const visit = (node, inheritedStyle) => {
+  const visit = (node, inheritedStyle, inheritedInline) => {
     if (node.type === 'text') {
-      pushText(node.text.replace(/[ \t\u00A0]+/gu, ' '), inheritedStyle);
+      pushText(node.text.replace(/[ \t\u00A0]+/gu, ' '), inheritedStyle, inheritedInline);
       return;
     }
     if (node.type !== 'element') return;
     if (node.tag === 'br') {
-      pushText('\n', null);
+      pushText('\n', null, null);
       return;
     }
     const style = ctx.styles.computed(node);
+    // `<a href>` becomes a native run hyperlink, which also carries the underline the
+    // browser draws; the URL is kept instead of being flattened into plain words.
+    const inline = {
+      tag: node.tag,
+      href: node.tag === 'a' && node.attrs && node.attrs.href ? String(node.attrs.href) : undefined
+    };
     // An inline box that paints a fill or a border draws a rectangle around its words. A
-    // text run has no such rectangle, so the words are kept and the paint is reported
-    // rather than dropped in silence.
-    if (backgroundOf(style) || gradientOf(style) || style.border || style.boxShadow) {
-      recordUnsupported(ctx, node, 'inlineBox', node.tag,
-        'An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped');
+    // text run has no such rectangle - but it does have a highlighter, so a plain
+    // background (no padding, no border, like `<mark>`) becomes one.
+    const background = backgroundOf(style);
+    const paintsBox = gradientOf(style) || style.border || style.boxShadow;
+    if (background || paintsBox) {
+      const padding = boxShorthand(style, 'padding');
+      const padded = [padding.top, padding.right, padding.bottom, padding.left].some((value) => value > 0);
+      if (background && background.hex && !paintsBox && !padded && !elementChildren(node).length) {
+        inline.highlight = background.hex;
+      } else {
+        recordUnsupported(ctx, node, 'inlineBox', node.tag,
+          'An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped');
+      }
     }
     const merged = Object.assign({}, inheritedStyle || baseStyle, style);
     if (!node.children.length) {
-      pushText(normalizedText(node), merged);
+      pushText(normalizedText(node), merged, inline);
       return;
     }
-    node.children.forEach((child) => visit(child, merged));
+    node.children.forEach((child) => visit(child, merged, inline));
   };
 
-  (domNode.children || []).forEach((child) => visit(child, baseStyle));
+  (domNode.children || []).forEach((child) => visit(child, baseStyle, null));
   const text = runs.map((run) => run.text).join('');
   const hasFormatting = runs.some((run) => run.options);
   return { runs, text, hasFormatting };
@@ -1156,6 +1204,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   };
 
   const elementKids = elementChildren(domNode);
+  // A closed `<details>` shows only its summary in a browser; every renderer here grows
+  // the box instead, so the difference is named rather than discovered later.
+  if (domNode.tag === 'details' && !(domNode.attrs && 'open' in domNode.attrs)) {
+    recordUnsupported(ctx, domNode, 'details', 'closed',
+      'A closed details element shows only its summary in a browser; its other content is kept here');
+  }
   const kind = resolveKind(domNode, style, elementKids);
   const unsupportedGradient = unsupportedGradientOf(style);
   const shadowNote = boxShadowNote(style.boxShadow);
@@ -1247,12 +1301,51 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     const measured = measureTextElement(domNode, style, contentWidth, fontSizePx, ctx);
     Object.assign(node, measured);
     if (kind === 'list') {
-      const items = elementKids.filter((child) => child.tag === 'li').map((child) => normalizedText(child));
-      node.text = items.join('\n');
+      const items = readListItems(domNode);
       node.bullet = true;
       node.runs = null;
-      node.textHeight = estimateTextHeight(node.text, Math.max(0.2, contentWidth), measured.fontSizePt,
-        { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92, noWrap: measured.noWrap });
+      // An item's own inline content keeps its styling (a `<strong>` in a bullet, a link
+      // inside a bullet), so each item is built as runs rather than one flat string.
+      const itemRuns = items.map((item) => {
+        const shallow = {
+          children: (item.node.children || []).filter((child) =>
+            !(child.type === 'element' && (child.tag === 'ul' || child.tag === 'ol')))
+        };
+        const built = buildRuns(shallow, style, ctx);
+        return { level: item.level, text: item.text, runs: built.hasFormatting ? built.runs : null };
+      });
+      const rich = itemRuns.some((item) => item.runs) || itemRuns.some((item) => item.level > 0);
+      // A nested list is a bullet level, not more words on the parent line: each item is
+      // its own paragraph, and the levels PowerPoint already knows carry the indent.
+      if (rich) {
+        const flat = [];
+        itemRuns.forEach((item, index) => {
+          const runs = item.runs && item.runs.length ? item.runs : [{ text: item.text }];
+          runs.forEach((run, runIndex) => {
+            const options = Object.assign({}, run.options);
+            // The bullet belongs on the run that starts the paragraph: the writer reads a
+            // paragraph's properties from that run, and a run without its own bullet gets
+            // `buNone` plus `marL="0"` - which is why every item after the first lost both.
+            // Every run of the item carries the bullet: the writer takes a paragraph's
+            // properties from the run it closes the paragraph on, which is the last one,
+            // so a bullet only on the first run lost the first item of every list.
+            options.bullet = true;
+            if (item.level > 0) options.indentLevel = item.level;
+            if (runIndex === runs.length - 1 && index < itemRuns.length - 1) options.breakLine = true;
+            flat.push(Object.keys(options).length ? { text: run.text, options } : { text: run.text });
+          });
+        });
+        node.text = flat;
+      } else {
+        node.text = items.map((item) => item.text).join('\n');
+      }
+      // Each item is measured at the width its level leaves, so an indented item wraps
+      // where the browser wraps it instead of where the full width would.
+      node.textHeight = items.reduce((sum, item) => sum + estimateTextHeight(
+        item.text, Math.max(0.4, contentWidth - item.level * LIST_INDENT_IN),
+        measured.fontSizePt,
+        { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92, noWrap: measured.noWrap }
+      ), 0);
     }
     // Padding and border are part of the box: leaving them out of the height made a
     // padded card shorter than it renders, so a wrapped row put the next line on top
@@ -3040,6 +3133,34 @@ function readTableCell(cell, ctx, rowBackground) {
       paddingRight: padding.right
     }
   };
+}
+
+/** One bullet level of indent, matching what PowerPoint gives `indentLevel`. */
+const LIST_INDENT_IN = 0.25;
+
+/**
+ * The words of one list item: its text and inline children, but not a nested list,
+ * which is a deeper bullet level rather than more words on this line.
+ */
+function ownListItemText(item) {
+  const parts = [];
+  (item.children || []).forEach((child) => {
+    if (child.type === 'text') { parts.push(child.text); return; }
+    if (child.type !== 'element') return;
+    if (child.tag === 'ul' || child.tag === 'ol') return;
+    parts.push(normalizedText(child));
+  });
+  return parts.join(' ').replace(/\s+/gu, ' ').trim();
+}
+
+function readListItems(domNode, level = 0, out = []) {
+  elementChildren(domNode).filter((child) => child.tag === 'li').forEach((item) => {
+    const own = ownListItemText(item);
+    if (own) out.push({ node: item, text: own, level });
+    elementChildren(item).filter((child) => child.tag === 'ul' || child.tag === 'ol')
+      .forEach((nested) => readListItems(nested, level + 1, out));
+  });
+  return out;
 }
 
 function readTable(domNode, ctx, contentWidth) {

@@ -108,6 +108,33 @@ function mediaMatches(query, viewport) {
  * Parse a stylesheet into ordered rules plus a global custom-property map.
  * `@media` blocks are evaluated against `options.viewportWidth/Height`.
  */
+/**
+ * The element defaults a browser applies with no CSS at all: what `<b>`, `<em>`, `<mark>`
+ * and `<code>` mean before any stylesheet speaks.
+ */
+const UA_TAG_STYLES = {
+  b: { fontWeight: 'bold' },
+  strong: { fontWeight: 'bold' },
+  h1: { fontWeight: 'bold' },
+  h2: { fontWeight: 'bold' },
+  h3: { fontWeight: 'bold' },
+  h4: { fontWeight: 'bold' },
+  h5: { fontWeight: 'bold' },
+  h6: { fontWeight: 'bold' },
+  i: { fontStyle: 'italic' },
+  em: { fontStyle: 'italic' },
+  cite: { fontStyle: 'italic' },
+  dfn: { fontStyle: 'italic' },
+  var: { fontStyle: 'italic' },
+  address: { fontStyle: 'italic' },
+  mark: { backgroundColor: '#FFFF00', color: '#000000' },
+  small: { fontSize: '0.8333em' },
+  code: { fontFamily: 'Consolas, Menlo, monospace' },
+  kbd: { fontFamily: 'Consolas, Menlo, monospace' },
+  samp: { fontFamily: 'Consolas, Menlo, monospace' },
+  pre: { fontFamily: 'Consolas, Menlo, monospace' }
+};
+
 function parseStylesheet(cssText, options = {}) {
   const viewport = {
     width: Number(options.viewportWidth) || 1280,
@@ -738,6 +765,11 @@ function createStyleResolver(stylesheet) {
     if (cache.has(node)) return cache.get(node);
     const matched = rules.filter((rule) => matchesSelector(node, rule)).sort(compareSpecificity);
     const style = Object.create(null);
+    // The element defaults a browser applies with no CSS at all. A design that writes
+    // `<strong>`, `<em>`, `<mark>` or `<code>` and no rules relies on these, and without
+    // them those words come out plain: the tag itself is not a styling hint.
+    const defaults = UA_TAG_STYLES[node.tag];
+    if (defaults) Object.assign(style, defaults);
     matched.forEach((rule) => applyDeclarations(style, rule.declarations, variables));
     if (node.attrs && node.attrs.style) {
       applyDeclarations(style, parseDeclarations(node.attrs.style.replace(/&quot;/gu, '"')), variables);

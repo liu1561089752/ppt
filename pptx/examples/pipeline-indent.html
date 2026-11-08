@@ -59,6 +59,13 @@
     /* 徽标里不许换行：导出为 bodyPr wrap="none"，否则窄盒子里会折成两行 */
     white-space: nowrap;
   }
+
+  /* 行内语义标签：UA 默认样式 + 原生文本属性 */
+  .inline-body { width: 1040px; font-size: 14px; line-height: 2; color: #37474B; }
+  .inline-body p { margin: 0 0 12px; }
+  .inline-body ul { margin: 0 0 12px; padding-left: 24px; }
+  .inline-body li { margin-bottom: 6px; }
+  .inline-note { font-size: 11px; color: #8A9A9E; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -108,5 +115,24 @@
     <div class="chip">position: fixed</div>
   </div>
 </main>
+<main class="slide">
+  <div class="kicker">INLINE SEMANTICS</div>
+  <h1>上下标、下划线、高亮和链接都是原生文本属性</h1>
+  <div class="inline-body">
+    <p>化学式 H<sub>2</sub>O；幂次 E = mc<sup>2</sup>；<u>下划线</u>、<s>删除线</s>、<mark>高亮</mark>与 <code>npm test</code> 等宽体。</p>
+    <ul>
+      <li>一级：<strong>重点</strong>和<em>强调</em>都保留字重与斜体</li>
+      <li>父项
+        <ul>
+          <li>二级：嵌套列表是真正的第二级项目符号</li>
+          <li>二级：缩进来自 indentLevel，不是空格</li>
+        </ul>
+      </li>
+      <li>一级：链接 <a href="https://example.com/spec">规范原文</a> 仍然是可点链接</li>
+    </ul>
+    <p class="inline-note">b / strong / em / mark / small / code 的浏览器默认样式也被识别，无需额外 CSS。</p>
+  </div>
+</main>
+
 </body>
 </html>

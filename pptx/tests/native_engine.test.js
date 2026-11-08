@@ -479,7 +479,11 @@ test('native text boxes inherit shared theme line spacing when not overridden', 
     ] }]
   });
   const textObject = result.pptx._slides[0]._slideObjects.find((object) => object._type === 'text');
-  assert.equal(textObject.options.lineSpacingMultiple, 1.42);
+  // CSS `line-height` is a multiple of the font size, so the writer turns it into exact
+  // points: DrawingML `spcPct` is a percentage of the font's own line box instead.
+  assert.ok(!textObject.options.lineSpacingMultiple, 'the percentage form is not used');
+  assert.equal(textObject.options.lineSpacing,
+    Number((1.42 * textObject.options.fontSize).toFixed(2)));
 });
 
 
@@ -4547,5 +4551,63 @@ test('a rowspan is clipped to the rows that exist and an unused slot becomes an 
   assert.equal(raggedTable.columnCount, 3);
   assert.equal(raggedTable.rows[1].length, 3, 'the short row is padded');
   assert.equal(raggedTable.rows[1][2].text, '');
+});
+
+
+test('inline semantics become native run properties, and lists keep their levels', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  p { margin: 0 0 12px; font-size: 16px; }',
+    '  ul { margin: 0; padding-left: 24px; }',
+    '</style></head><body><main class="slide">',
+    '  <p>H<sub>2</sub>O and mc<sup>2</sup>, <u>under</u>, <s>struck</s>, <mark>marked</mark>,',
+    '     <code>code</code>, <strong>bold</strong>, <em>italic</em>,',
+    '     <a href="https://example.com/x">link</a>.</p>',
+    '  <ul><li>Parent<ul><li>Child</li></ul></li><li>Second</li></ul>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const elements = result.deck.slides[0].elements;
+  const runs = elements[0].text;
+  const byText = (needle) => runs.find((run) => run.text === needle);
+  assert.equal(byText('2').options.subscript, true);
+  assert.equal(byText('2').options.superscript, undefined);
+  assert.equal(runs.filter((run) => run.options && run.options.superscript).length, 1);
+  assert.equal(byText('under').options.underline, true);
+  assert.equal(byText('struck').options.strike, true);
+  assert.equal(byText('marked').options.highlight, 'FFFF00', 'a plain background is a highlighter');
+  assert.equal(byText('code').options.fontFace, 'Consolas', 'the UA monospace default');
+  assert.equal(byText('bold').options.bold, true);
+  assert.equal(byText('italic').options.italic, true);
+  assert.equal(byText('link').options.hyperlink.url, 'https://example.com/x');
+
+  const list = elements[1].text;
+  assert.ok(Array.isArray(list), 'a nested list is a run list, one run per item level');
+  const child = list.find((run) => run.text === 'Child');
+  assert.equal(child.options.indentLevel, 1, 'the nested item is one level in');
+  assert.ok(list.every((run) => run.options && run.options.bullet), 'every item keeps its bullet');
+  assert.ok(list.filter((run) => run.options.breakLine).length === list.length - 1, 'one paragraph per item');
+});
+
+test('line-height maps to exact points, not a percentage of the font line box', async () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  p { margin: 0; font-size: 20px; line-height: 2; }',
+    '</style></head><body><main class="slide"><p>two<br>lines<br>here</p></main></body></html>'
+  ].join('\n'));
+  const element = result.deck.slides[0].elements[0];
+  // Into the writer: the CSS multiple times the font size, in points.
+  const { buildPresentation } = require('../native');
+  const written = await buildPresentation({
+    slides: [{ elements: [Object.assign({}, element)] }]
+  });
+  const textObject = written.pptx._slides[0]._slideObjects.find((object) => object._type === 'text');
+  const options = textObject.options;
+  assert.equal(options.lineSpacing, Number((2 * element.fontSize).toFixed(2)));
+  assert.ok(!options.lineSpacingMultiple, 'spcPct would render ~20% taller than the CSS asks');
+  // And the reserved box uses the same number, so the text cannot spill out of it.
+  assert.equal(Number(element.h.toFixed(2)), Number((3 * 2 * element.fontSize / 72).toFixed(2)));
 });
 
