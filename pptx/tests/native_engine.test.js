@@ -277,7 +277,7 @@ test('generated PPTX contains editable DrawingML gradient fill', async () => {
     await generatePptx({ slides: [{ elements: [
       { type: 'shape', x: 1, y: 1, w: 5, h: 2, fill: 'FFFFFF', gradient: { angle: 90, stops: [{ position: 0, color: '112233' }, { position: 1, color: 'E56A42', transparency: 20 }] } }
     ] }] }, output);
-    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const zip = await JSZip.loadAsync(require('node:fs').readFileSync(output));
     const xml = await zip.file('ppt/slides/slide1.xml').async('string');
     assert.ok(xml.includes('<a:gradFill'));
     assert.ok(xml.includes('<a:gsLst>'));
@@ -305,7 +305,7 @@ test('gradient patch keeps text, lines, and multiple shapes aligned in source or
       { type: 'text', text: 'between', x: 0.5, y: 2.7, w: 2, h: 0.4 },
       { type: 'shape', x: 3, y: 1.5, w: 2, h: 1, fill: '445566', gradient: gradient('445566') }
     ] }] }, output);
-    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const zip = await JSZip.loadAsync(require('node:fs').readFileSync(output));
     const xml = await zip.file('ppt/slides/slide1.xml').async('string');
     assert.equal((xml.match(/<a:gradFill/g) || []).length, 2);
     assert.ok(xml.includes('<a:srgbClr val="112233">'));
@@ -373,7 +373,7 @@ test('native radius tokens serialize as editable rounded-rectangle geometry', as
     await generatePptx({ slides: [{ elements: [
       { type: 'shape', x: 1, y: 1, w: 4, h: 2, fill: 'FFFFFF', radius: 0.16 }
     ] }] }, output);
-    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const zip = await JSZip.loadAsync(require('node:fs').readFileSync(output));
     const xml = await zip.file('ppt/slides/slide1.xml').async('string');
     assert.ok(xml.includes('<a:prstGeom prst="roundRect">'));
   } finally {
@@ -394,7 +394,7 @@ test('native text styling preserves italic underline strike and character spacin
       { type: 'text', text: 'Styled text', x: 1, y: 1, w: 4, h: 1, bold: true, italic: true,
         underline: true, strike: true, charSpacing: 1.2, paraSpaceAfterPt: 4, lineSpacingMultiple: 1.1 }
     ] }] }, output);
-    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const zip = await JSZip.loadAsync(require('node:fs').readFileSync(output));
     const xml = await zip.file('ppt/slides/slide1.xml').async('string');
     assert.match(xml, /\bi="1"/);
     assert.match(xml, /\bu="sng"/);
@@ -3489,5 +3489,85 @@ test('a border side can be recoloured by its longhand', () => {
   assert.equal(strips[0].edge.color, 'EEEEEE');
   assert.equal(strips[1].edge.color, '123456', 'the longhand wins over the shorthand colour');
   assert.ok(Math.abs(strips[1].edge.width - 2.25) < 0.01, 'the shorthand still supplies the width: ' + strips[1].edge.width);
+});
+
+
+test('declared chart styling reaches the chart part, not just the spec', async () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .chart { width: 900px; height: 420px; }',
+    '</style></head><body><main class="slide">',
+    '  <table class="chart" data-chart="bar" data-chart-title="收入"',
+    '         data-chart-colors="#F2A24C,#4FB3A8" data-chart-legend="bottom" data-chart-grid="false"',
+    '         data-chart-axis-titles="季度|万元" data-chart-labels="value" data-chart-value-format="#,##0"',
+    '         data-chart-grouping="stacked" data-chart-dir="bar" data-chart-text-color="#3F5450">',
+    '    <thead><tr><th>季度</th><th>收入</th><th>成本</th></tr></thead>',
+    '    <tbody><tr><td>Q1</td><td>320</td><td>210</td></tr><tr><td>Q2</td><td>418</td><td>246</td></tr></tbody>',
+    '  </table>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const chart = result.deck.slides[0].elements.find((element) => element.type === 'chart');
+  assert.ok(chart, 'the chart element exists');
+  const options = chart.options || {};
+  assert.deepEqual(options.chartColors, ['F2A24C', '4FB3A8'], 'one colour per series');
+  assert.equal(options.showLegend, true);
+  assert.equal(options.legendPos, 'b');
+  assert.equal(options.valGridLine.style, 'none');
+  assert.equal(options.catAxisTitle, '季度');
+  assert.equal(options.valAxisTitle, '万元');
+  assert.equal(options.showCatAxisTitle, true);
+  assert.equal(options.showValAxisTitle, true);
+  assert.equal(options.showValue, true);
+  assert.equal(options.valLabelFormatCode, '#,##0');
+  assert.equal(options.barGrouping, 'stacked');
+  assert.equal(options.barDir, 'bar');
+  assert.equal(options.titleColor, '3F5450');
+  assert.equal(options.catAxisLabelColor, '3F5450');
+
+  await withTempDir('native-chart-', async (directory) => {
+    const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+    const { generatePptx } = require('../native/engine/native_pptx');
+    const output = require('node:path').join(directory, 'chart.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(require('node:fs').readFileSync(output));
+    const chartName = Object.keys(zip.files).find((name) => /charts\/chart\d+\.xml$/u.test(name));
+    const chartEntry = chartName ? zip.file(chartName) : null;
+    assert.ok(chartEntry, 'the chart is a real chart part');
+    const xml = await chartEntry.async('string');
+    assert.ok(xml.includes('<c:barDir val="bar"'), 'declared direction');
+    assert.ok(xml.includes('<c:grouping val="stacked"'), 'declared grouping');
+    assert.ok(xml.includes('<c:legendPos val="b"'), 'declared legend position');
+    assert.ok(xml.includes('F2A24C') && xml.includes('4FB3A8'), 'declared series colours');
+    assert.ok(!xml.includes('<c:majorGridlines'), 'gridlines are off');
+    assert.ok(xml.includes('<c:showVal val="1"'), 'value labels are on');
+    assert.ok(xml.includes('3F5450'), 'the declared text colour reaches the axis labels');
+  });
+});
+
+test('chart styling that cannot be translated is reported instead of dropped', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .chart { width: 800px; height: 400px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="chart" data-chart="line" data-values="1,2,3"',
+    '       data-chart-colors="#123456,notacolor" data-chart-legend="diagonal"',
+    '       data-chart-grouping="wobble" data-chart-labels="value,sparkle"',
+    '       data-chart-grid="maybe" data-chart-dir="sideways"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const reported = result.report.unsupportedDetails.map((entry) => entry.property);
+  ['data-chart-colors', 'data-chart-legend', 'data-chart-grouping', 'data-chart-labels',
+    'data-chart-grid', 'data-chart-dir'].forEach((property) => {
+    assert.ok(reported.includes(property), property + ' must be reported: ' + reported.join(', '));
+  });
+  const chart = result.deck.slides[0].elements.find((element) => element.type === 'chart');
+  // The valid half of the colour list survives: one colour, one rejection.
+  assert.deepEqual(chart.options.chartColors, ['123456']);
 });
 

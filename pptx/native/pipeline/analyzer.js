@@ -1957,8 +1957,7 @@ function readChart(domNode, ctx) {
   }
 
   const options = {};
-  const legend = String(attrs['data-chart-legend'] || '').trim().toLowerCase();
-  if (legend) options.showLegend = legend === 'true' || legend === '1';
+  applyChartStyling(attrs, options, domNode, ctx);
   const title = attrs['data-chart-title'];
 
   let data = null;
@@ -2002,6 +2001,147 @@ function readChart(domNode, ctx) {
     options.title = title;
   }
   return { chartType: requested, data, options };
+
+}
+
+const CHART_LEGEND_POSITIONS = {
+  bottom: 'b', b: 'b', top: 't', t: 't', left: 'l', l: 'l', right: 'r', r: 'r', 'top-right': 'tr', tr: 'tr'
+};
+const CHART_LABEL_FLAGS = { value: 'showValue', percent: 'showPercent', series: 'showSerName' };
+const CHART_LABEL_POSITIONS = new Set(['b', 'bestFit', 'ctr', 'l', 'r', 't', 'inEnd', 'outEnd']);
+const CHART_GROUPINGS = new Set(['clustered', 'stacked', 'percentStacked']);
+
+/**
+ * Chart styling is declared, never guessed: every attribute below names exactly the
+ * one thing it sets, so a chart that is happy with the theme defaults says nothing.
+ * A value that cannot be translated is reported rather than dropped quietly, and a
+ * chart colour list is per series, in the order the series appear.
+ */
+function applyChartStyling(attrs, options, domNode, ctx) {
+  const colors = attrs['data-chart-colors'];
+  if (colors !== undefined) {
+    const list = [];
+    const bad = [];
+    String(colors).split(',').forEach((token) => {
+      const trimmed = token.trim();
+      if (!trimmed) return;
+      const parsed = parseColor(trimmed);
+      if (parsed && parsed.hex) list.push(parsed.hex); else bad.push(trimmed);
+    });
+    if (bad.length) {
+      recordUnsupported(ctx, domNode, 'data-chart-colors', bad.join(','),
+        'Chart colours must be #rrggbb values, one per series, in series order');
+    }
+    if (list.length) options.chartColors = list;
+  }
+
+  const labels = attrs['data-chart-labels'];
+  if (labels !== undefined) {
+    const tokens = String(labels).trim().toLowerCase().split(/[,\s]+/u).filter(Boolean);
+    if (tokens.includes('none')) {
+      options.showValue = false;
+      options.showPercent = false;
+      options.showSerName = false;
+    }
+    const unknown = [];
+    tokens.forEach((token) => {
+      if (token === 'none') return;
+      const flag = CHART_LABEL_FLAGS[token];
+      if (flag) options[flag] = true; else unknown.push(token);
+    });
+    if (unknown.length) {
+      recordUnsupported(ctx, domNode, 'data-chart-labels', unknown.join(','),
+        'Use value, percent, series or none');
+    }
+  }
+
+  const labelPosition = String(attrs['data-chart-label-position'] || '').trim();
+  if (labelPosition) {
+    if (CHART_LABEL_POSITIONS.has(labelPosition)) options.dataLabelPosition = labelPosition;
+    else recordUnsupported(ctx, domNode, 'data-chart-label-position', labelPosition,
+      'Use b, bestFit, ctr, l, r, t, inEnd or outEnd');
+  }
+
+  const valueFormat = attrs['data-chart-value-format'];
+  if (valueFormat !== undefined) {
+    options.valLabelFormatCode = String(valueFormat);
+    if (options.showValue === undefined) options.showValue = true;
+  }
+
+  const axisTitles = attrs['data-chart-axis-titles'];
+  if (axisTitles !== undefined) {
+    const parts = String(axisTitles).split('|').map((part) => part.trim());
+    if (parts.length > 2) {
+      recordUnsupported(ctx, domNode, 'data-chart-axis-titles', String(axisTitles),
+        'Give at most two titles: "category|value"');
+    } else {
+      if (parts[0]) {
+        options.catAxisTitle = parts[0];
+        options.showCatAxisTitle = true;
+      }
+      if (parts[1]) {
+        options.valAxisTitle = parts[1];
+        options.showValAxisTitle = true;
+      }
+    }
+  }
+
+  const legend = attrs['data-chart-legend'];
+  if (legend !== undefined) {
+    const value = String(legend).trim().toLowerCase();
+    if (value === 'none' || value === 'false' || value === '0') options.showLegend = false;
+    else if (value === 'true' || value === '1') options.showLegend = true;
+    else if (CHART_LEGEND_POSITIONS[value]) {
+      options.showLegend = true;
+      options.legendPos = CHART_LEGEND_POSITIONS[value];
+    } else {
+      recordUnsupported(ctx, domNode, 'data-chart-legend', value,
+        'Use true, false, none, top, bottom, left, right or top-right');
+    }
+  }
+
+  const grid = attrs['data-chart-grid'];
+  if (grid !== undefined) {
+    const value = String(grid).trim().toLowerCase();
+    if (value === 'false' || value === 'none' || value === 'off') options.valGridLine = { style: 'none' };
+    else if (value === 'true' || value === 'on') { /* the theme gridline already applies */ }
+    else recordUnsupported(ctx, domNode, 'data-chart-grid', value, 'Use true or false');
+  }
+
+  const grouping = attrs['data-chart-grouping'];
+  if (grouping !== undefined) {
+    const value = String(grouping).trim();
+    if (CHART_GROUPINGS.has(value)) options.barGrouping = value;
+    else recordUnsupported(ctx, domNode, 'data-chart-grouping', value,
+      'Use clustered, stacked or percentStacked');
+  }
+
+  const direction = attrs['data-chart-dir'];
+  if (direction !== undefined) {
+    const value = String(direction).trim().toLowerCase();
+    if (value === 'col' || value === 'vertical') options.barDir = 'col';
+    else if (value === 'bar' || value === 'horizontal') options.barDir = 'bar';
+    else recordUnsupported(ctx, domNode, 'data-chart-dir', value, 'Use col (vertical bars) or bar (horizontal bars)');
+  }
+
+  // A chart can sit on a light panel inside a dark deck, so the text colour is a
+  // declaration rather than something inferred from the slide background.
+  const textColor = attrs['data-chart-text-color'];
+  if (textColor !== undefined) {
+    const parsed = parseColor(String(textColor));
+    if (parsed && parsed.hex) {
+      options.titleColor = parsed.hex;
+      options.catAxisLabelColor = parsed.hex;
+      options.valAxisLabelColor = parsed.hex;
+      options.catAxisTitleColor = parsed.hex;
+      options.valAxisTitleColor = parsed.hex;
+      options.legendColor = parsed.hex;
+      options.dataLabelColor = parsed.hex;
+    } else {
+      recordUnsupported(ctx, domNode, 'data-chart-text-color', String(textColor),
+        'Chart text colour must be a #rrggbb value');
+    }
+  }
 }
 
 const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];

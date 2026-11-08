@@ -187,7 +187,14 @@ function addElement(slide, el, theme, pptx, context = {}) {
       valAxisLabelFontFace: theme.fonts.body,
       catAxisLabelColor: theme.colors.muted,
       valAxisLabelColor: theme.colors.muted,
-      valGridLine: { color: theme.colors.border, width: 0.6 }
+      valGridLine: { color: theme.colors.border, size: 0.6 },
+      // Axis titles must use the deck face: PptxGenJS defaults to Arial and black,
+      // which looks imported next to a themed chart. Colours stay as declared by the
+      // deck (`data-chart-text-color`) because a chart can sit on a light panel.
+      titleFontFace: theme.fonts.heading || theme.fonts.body,
+      catAxisTitleFontFace: theme.fonts.body,
+      valAxisTitleFontFace: theme.fonts.body,
+      legendFontFace: theme.fonts.body
     }, el.options || {}));
   } else if (el.type === 'table') {
     slide.addTable(el.rows || [], Object.assign({

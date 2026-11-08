@@ -66,7 +66,9 @@
   <div class="rule"></div>
 
   <div class="panel">
-    <table class="chart" data-chart="bar" data-chart-title="季度收入与成本（万元）">
+    <table class="chart" data-chart="bar" data-chart-title="季度收入与成本（万元）"
+           data-chart-colors="#F2A24C,#4FB3A8" data-chart-legend="bottom" data-chart-grid="false"
+           data-chart-axis-titles="季度|万元" data-chart-text-color="#3F5450" data-chart-labels="value" data-chart-value-format="#,##0">
       <thead><tr><th>季度</th><th>收入</th><th>成本</th></tr></thead>
       <tbody>
         <tr><td>Q1</td><td>320</td><td>210</td></tr>
@@ -91,12 +93,13 @@
       <h3>月度活跃用户</h3>
       <p>折线图适合表达趋势，数据由属性直接声明。</p>
       <div class="chart" data-chart="line" data-chart-title="近六个月活跃用户（千）"
+           data-chart-colors="#4FB3A8" data-chart-labels="value" data-chart-grid="false" data-chart-text-color="#3F5450"
            data-labels="一月,二月,三月,四月,五月,六月" data-values="182,196,214,238,259,281"></div>
     </div>
     <div class="card">
       <h3>收入构成</h3>
       <p>环形图由表格生成：一行一个分项。</p>
-      <div class="chart" data-chart="doughnut">
+      <div class="chart" data-chart="doughnut" data-chart-colors="#F2A24C,#4FB3A8,#9FB2B4" data-chart-legend="bottom" data-chart-text-color="#3F5450">
         <table>
           <thead><tr><th>来源</th><th>占比</th></tr></thead>
           <tbody>
