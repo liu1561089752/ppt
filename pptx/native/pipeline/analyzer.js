@@ -33,6 +33,7 @@ const {
   toInches,
   backgroundOf,
   gradientOf,
+  unsupportedGradientOf,
   backgroundImageOf,
   parseBackgroundFocus
 } = require('./css');
@@ -348,7 +349,7 @@ const NOOP_VALUES = {
   clear: ['none'],
   columns: ['auto'],
   columnCount: ['auto'],
-  writingMode: ['horizontal-tb'],
+  writingMode: ['horizontal-tb', 'vertical-rl', 'vertical-lr', 'sideways-rl', 'sideways-lr'],
   backgroundClip: ['border-box'],
   textOverflow: ['clip', 'ellipsis'],
   whiteSpace: ['normal'],
@@ -536,7 +537,10 @@ function resolveKind(domNode, style, children) {
   const text = normalizedText(domNode);
   if (text) return 'text';
   if (backgroundImageOf(style)) return style.backgroundColor ? 'block' : 'image';
-  if (backgroundOf(style) || gradientOf(style) || style.border || style.boxShadow) return 'shape';
+  // A gradient we cannot express still paints a box, so it stays a shape instead of
+  // collapsing to a childless block.
+  if (backgroundOf(style) || gradientOf(style) || unsupportedGradientOf(style)
+    || style.border || style.boxShadow) return 'shape';
   return 'block';
 }
 
@@ -667,10 +671,21 @@ function clipsContent(node) {
 function applyWritingMode(node, domNode, style, measured, explicitHeight, ctx) {
   const value = String(style.writingMode || 'horizontal-tb').toLowerCase();
   if (value === 'horizontal-tb') return;
-  const vertical = { 'vertical-rl': 'eaVert', 'sideways-rl': 'vert' }[value];
+  // DrawingML names two directions: `vert` turns the line 90° clockwise (columns run
+  // right to left, CJK upright -> `eaVert`) and `vert270` turns it 90° the other way
+  // (columns left to right). That makes `sideways-lr` a direct match, and `vertical-lr`
+  // one too whenever the text does not need upright glyphs: with Latin text the two
+  // spellings render the same, while upright CJK would need `eaVert270`, which does not
+  // exist.
+  const needsUprightGlyphs = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/u.test(String(node.text || ''));
+  let vertical = { 'vertical-rl': 'eaVert', 'sideways-rl': 'vert' }[value];
+  if (!vertical && value === 'sideways-lr') vertical = 'vert270';
+  if (!vertical && value === 'vertical-lr' && !needsUprightGlyphs) vertical = 'vert270';
   if (!vertical) {
     recordUnsupported(ctx, domNode, 'writingMode', value,
-      'Only vertical-rl and sideways-rl have a native equivalent; this direction would be upside down');
+      value === 'vertical-lr'
+        ? 'vertical-lr needs upright CJK glyphs, and DrawingML only names the right-to-left variant (eaVert); sideways-lr is the translatable spelling'
+        : 'Only vertical-rl, vertical-lr, sideways-rl and sideways-lr have a native equivalent');
     return;
   }
   if (explicitHeight === null) {
@@ -1007,6 +1022,11 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
 
   const elementKids = elementChildren(domNode);
   const kind = resolveKind(domNode, style, elementKids);
+  const unsupportedGradient = unsupportedGradientOf(style);
+  if (unsupportedGradient) {
+    recordUnsupported(ctx, domNode, 'backgroundImage', style.backgroundImage || style.background,
+      'PowerPoint fills are linear only: ' + unsupportedGradient + ' cannot be translated, so the box keeps its geometry and is left unpainted');
+  }
   const node = {
     id: ctx.nextId++,
     parentWidth,

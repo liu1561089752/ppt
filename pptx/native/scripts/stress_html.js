@@ -206,7 +206,7 @@ function metricsSlide(index, total, random) {
     '  <h2 class="title">四个数字，一条基线</h2>',
     '  <p class="sub">数字用同一字号，说明用同一行高，卡片高度由最长的说明决定。</p>',
     '  <div class="metrics">',
-    ...metrics.map((value, position) => '    <div class="metric"><div class="value">' + value
+    ...metrics.map((value, position) => '    <div class="metric' + (position === 0 ? ' lead' : '') + '"><div class="value">' + value
       + '</div><div class="label">' + sentences(random, 1)[0][0] + (position % 2 ? '（本月）' : '') + '</div></div>'),
     '  </div>',
     '  <p class="foot">第 ' + (index + 1) + ' 页 · 指标行同样由 flex 均分。</p>',
@@ -273,6 +273,8 @@ const STYLE = `
 
   .metrics { display: flex; flex-direction: row; gap: 18px; width: 1168px; }
   .metric { flex: 1; padding: 18px; background: #FFFFFF; border-radius: 12px; }
+  .metric.lead { background: linear-gradient(135deg, #1D3B3F, #2C5A52); }
+  .metric.lead .value, .metric.lead .label { color: #F3EFE7; }
   .metric .value { font-size: 34px; line-height: 1.15; color: #1D3B3F; font-weight: 600; }
   .metric .label { margin-top: 6px; font-size: 12.5px; line-height: 1.7; color: #6B7B7F; }
 `;

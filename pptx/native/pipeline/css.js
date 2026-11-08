@@ -836,12 +836,82 @@ function parseColor(value) {
   return null;
 }
 
-/** Parse a simple two-or-more-stop linear-gradient. Returns null when too complex. */
+/** Split on a separator that is not nested inside parentheses. */
+function splitTopLevel(text, separator) {
+  const parts = [];
+  let depth = 0;
+  let buffer = '';
+  for (const character of String(text)) {
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (character === separator && depth === 0) {
+      parts.push(buffer);
+      buffer = '';
+    } else {
+      buffer += character;
+    }
+  }
+  if (buffer.trim()) parts.push(buffer);
+  return parts;
+}
+
+const SIDE_ANGLES = {
+  bottom: 180, top: 0, right: 90, left: 270,
+  'bottom right': 135, 'bottom left': 225, 'right bottom': 135, 'left bottom': 225,
+  'top right': 45, 'top left': 315, 'right top': 45, 'left top': 315
+};
+
+/** An angle or a `to <side>` direction, or null when the text is neither. */
+function gradientAngleOf(text) {
+  const value = String(text === undefined ? '' : text).trim().toLowerCase();
+  const numeric = /^([-+]?[\d.]+)(deg|rad|grad|turn)$/u.exec(value);
+  if (numeric) {
+    const amount = Number.parseFloat(numeric[1]);
+    if (!Number.isFinite(amount)) return null;
+    if (numeric[2] === 'deg') return amount;
+    if (numeric[2] === 'rad') return (amount * 180) / Math.PI;
+    if (numeric[2] === 'grad') return amount * 0.9;
+    return amount * 360;
+  }
+  if (!value.startsWith('to ')) return null;
+  const key = value.slice(3).trim().split(/\s+/u).filter(Boolean).join(' ');
+  const angle = SIDE_ANGLES[key];
+  return angle === undefined ? null : angle;
+}
+
+/**
+ * The gradient function a declaration uses when no native fill can express it. Only a
+ * plain `linear-gradient` is translatable: PowerPoint has no radial or conic fill, and a
+ * repeating gradient would have to be rasterised into stops it does not have.
+ */
+function unsupportedGradientOf(style) {
+  const candidates = [style.backgroundImage, style.background];
+  for (const candidate of candidates) {
+    const match = /((?:repeating-)?(?:radial|conic|linear)-gradient)\s*\(/iu.exec(String(candidate || ''));
+    if (!match) continue;
+    const name = match[1].toLowerCase();
+    if (name === 'linear-gradient') continue;
+    return name;
+  }
+  return null;
+}
+
+/**
+ * Parse a two-or-more-stop linear gradient. The direction is optional in CSS (it
+ * defaults to `to bottom`), so the first argument is only read as one when it *is* a
+ * direction - otherwise a plain `linear-gradient(#f00, #00f)` swallowed its first
+ * colour as an angle and the whole declaration was dropped without a word.
+ */
 function parseLinearGradient(value) {
-  const match = /linear-gradient\(\s*([^,]*),\s*([\s\S]*)\)$/u.exec(String(value || '').trim());
-  if (!match) return null;
-  const angleText = match[1].trim().toLowerCase();
-  const stopText = match[2];
+  const text = String(value || '').trim();
+  const open = /^linear-gradient\(([\s\S]*)\)$/u.exec(text);
+  if (!open) return null;
+  const args = splitTopLevel(open[1], ',');
+  let angleText = '';
+  if (args.length > 1 && gradientAngleOf(args[0]) !== null) {
+    angleText = String(args.shift()).trim().toLowerCase();
+  }
+  const stopText = args.join(',');
   const stopParts = [];
   let depth = 0;
   let buffer = '';
@@ -878,16 +948,10 @@ function parseLinearGradient(value) {
   });
   stops.sort((a, b) => a.position - b.position);
 
-  let angle = 180;
-  if (/^-?[\d.]+deg$/u.test(angleText)) angle = Number.parseFloat(angleText);
-  else if (angleText === 'to bottom') angle = 180;
-  else if (angleText === 'to top') angle = 0;
-  else if (angleText === 'to right') angle = 90;
-  else if (angleText === 'to left') angle = 270;
-  else if (angleText === 'to bottom right') angle = 135;
-  else if (angleText === 'to bottom left') angle = 225;
-  else if (angleText === 'to top right') angle = 45;
-  else if (angleText === 'to top left') angle = 315;
+  // `to <side>`, `rad`/`grad`/`turn` and the plain `deg` form all resolve here; an
+  // unknown direction falls back to the CSS default, `to bottom`.
+  const direction = gradientAngleOf(angleText);
+  const angle = direction === null ? 180 : direction;
 
   return { angle, stops };
 }
@@ -1076,6 +1140,8 @@ module.exports = {
   pxToPoints,
   parseColor,
   parseLinearGradient,
+  gradientAngleOf,
+  unsupportedGradientOf,
   parseBoxShadow,
   parseBorder,
   backgroundOf,

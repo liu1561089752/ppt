@@ -366,10 +366,15 @@ async function buildPresentation(deck, options = {}) {
 
   const report = [];
   const imagePlans = [];
+  // The patches below rewrite `slideN.xml` by walking the elements in order, so they need
+  // the *laid out* list: a container contributes its background, its single-side border
+  // strips and its overlays on top of the elements the spec lists.
+  const laidOut = [];
   for (const [index, spec] of deck.slides.entries()) {
     const slide = pptx.addSlide();
     slide.background = { color: cleanColor(spec.background, theme.colors.background) };
     const elements = layoutSlide(spec, pageSize, theme, { fontManager });
+    laidOut.push(elements);
     const warnings = validateSlide(elements, pageSize);
     elements.forEach((element, elementIndex) => {
       (element._layoutWarnings || []).forEach((message) => {
@@ -385,7 +390,25 @@ async function buildPresentation(deck, options = {}) {
     imagePlans.push(slidePlans);
     report.push({ slide: index + 1, warnings });
   }
-  return { pptx, report, pageSize, fontReport: fontManager.inspect(), imagePlans };
+  return { pptx, report, pageSize, fontReport: fontManager.inspect(), imagePlans, laidOut };
+}
+
+/**
+ * The laid-out elements of one slide, when the caller supplied them, flattened to the
+ * order PptxGenJS serializes `p:sp` nodes in. Falls back to the spec so the helpers stay
+ * usable on their own.
+ */
+function supplied(laidOut, slides) {
+  if (Array.isArray(laidOut) && laidOut.length === slides.length) return laidOut;
+  return slides.map((slide) => flattenElements(slide.elements));
+}
+
+function serializedShapes(laidOut, slideIndex, deck) {
+  const slides = (deck && deck.slides) || [];
+  const elements = supplied(laidOut, slides)[slideIndex] || [];
+  return elements.filter((element) =>
+    element.type === 'text' || element.type === 'shape' || element.type === 'line'
+  );
 }
 
 function gradientFillXml(gradient, baseTransparency = 0) {
@@ -420,7 +443,7 @@ function gradientFillXml(gradient, baseTransparency = 0) {
     '</a:gsLst><a:lin ang="' + angle + '" scaled="1"/></a:gradFill>';
 }
 
-async function patchGradientFills(outputPath, deck) {
+async function patchGradientFills(outputPath, deck, laidOut) {
   const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
   for (let slideIndex = 0; slideIndex < deck.slides.length; slideIndex++) {
     const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
@@ -429,9 +452,7 @@ async function patchGradientFills(outputPath, deck) {
     let shapeIndex = 0;
     let patchedGradientCount = 0;
     // PptxGenJS serializes text, shapes, and lines as p:sp; images and graphic frames use other OOXML nodes.
-    const shapeElements = flattenElements(deck.slides[slideIndex].elements).filter((element) =>
-      element.type === 'text' || element.type === 'shape' || element.type === 'line'
-    );
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
     let xml = await file.async('string');
     const serializedShapeCount = (xml.match(/<p:sp>/gu) || []).length;
     if (serializedShapeCount !== shapeElements.length) {
@@ -500,16 +521,14 @@ function applyTextIndent(xml, indentIn) {
   });
 }
 
-async function patchTextIndents(outputPath, deck) {
+async function patchTextIndents(outputPath, deck, laidOut) {
   const slides = (deck && deck.slides) || [];
-  const needed = slides.some((slide) => flattenElements(slide.elements)
+  const needed = supplied(laidOut, slides).some((elements) => elements
     .some((element) => element.type === 'text' && Number.isFinite(element.textIndent) && element.textIndent > 0));
   if (!needed) return false;
   const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
   for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
-    const shapeElements = flattenElements(slides[slideIndex].elements).filter((element) =>
-      element.type === 'text' || element.type === 'shape' || element.type === 'line'
-    );
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
     if (!shapeElements.some((element) => element.type === 'text' && Number.isFinite(element.textIndent))) continue;
     const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
     const file = zip.file(name);
@@ -545,8 +564,11 @@ async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
   await result.pptx.writeFile({ fileName: outputPath });
-  if (deck.slides.some((slide) => flattenElements(slide.elements).some((element) => element.type === 'shape' && element.gradient))) await patchGradientFills(outputPath, deck);
-  await patchTextIndents(outputPath, deck);
+  const laidOutShapes = result.laidOut.map((elements) => flattenElements(elements));
+  if (laidOutShapes.some((elements) => elements.some((element) => element.type === 'shape' && element.gradient))) {
+    await patchGradientFills(outputPath, deck, result.laidOut);
+  }
+  await patchTextIndents(outputPath, deck, result.laidOut);
   await patchImageEffects(outputPath, result.imagePlans);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);

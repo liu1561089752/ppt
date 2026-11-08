@@ -4130,3 +4130,100 @@ test('an ellipsis truncates a single line, and only when the CSS asks', () => {
     'an unclipped box reports the ellipsis');
 });
 
+
+test('all four writing modes have a native direction, except upright CJK', () => {
+  const build = (writingMode, text) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .lbl { position: absolute; left: 60px; top: 60px; width: 80px; height: 260px;',
+    '         font-size: 15px; ' + writingMode + ' }',
+    '</style></head><body><main class="slide"><div class="lbl">' + text + '</div></main></body></html>'
+  ].join('\n'));
+  const vertOf = (result) => {
+    let found;
+    const visit = (elements) => (elements || []).forEach((element) => {
+      if (element.type === 'text' && found === undefined) found = element.vert;
+      visit(element.children);
+    });
+    visit(result.deck.slides[0].elements);
+    return found;
+  };
+
+  const rightToLeft = build('writing-mode: vertical-rl;', 'vertical rl label');
+  assert.equal(vertOf(rightToLeft), 'eaVert');
+  assert.deepEqual(rightToLeft.report.unsupportedDetails, []);
+
+  assert.equal(vertOf(build('writing-mode: sideways-rl;', 'sideways rl label')), 'vert');
+
+  // Columns running left to right is `vert270`; Latin text needs no upright glyphs, so
+  // `vertical-lr` renders the same way.
+  const sidewaysLeft = build('writing-mode: sideways-lr;', 'sideways lr label');
+  assert.equal(vertOf(sidewaysLeft), 'vert270');
+  assert.deepEqual(sidewaysLeft.report.unsupportedDetails, []);
+  const verticalLeft = build('writing-mode: vertical-lr;', 'vertical lr latin only');
+  assert.equal(vertOf(verticalLeft), 'vert270');
+
+  // Upright CJK in a left-to-right column has no DrawingML direction, so it is reported
+  // rather than rendered upside down.
+  const cjk = build('writing-mode: vertical-lr;', '\u7ad6\u6392\u4ece\u5de6\u5f80\u53f3');
+  assert.ok(cjk.report.unsupportedDetails.some((entry) => entry.property === 'writingMode'),
+    'vertical-lr over CJK is reported');
+});
+
+test('position: sticky is static, because a slide never scrolls', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .head { position: sticky; top: 0; height: 40px; background: #DDDDDD; }',
+    '  .body { height: 200px; background: #EEEEEE; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="head">header</div><div class="body"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const [head, body] = result.analysis.slides[0].nodes;
+  // Sticky offsets apply while scrolling; with no scroll, the box stays where flow put it.
+  assert.ok(Math.abs(head.y - 40 / 96) < 0.01, 'the sticky box stays in flow: ' + head.y);
+  assert.ok(Math.abs(body.y - (head.y + head.h)) < 0.01, 'and the next box starts below it');
+});
+
+
+test('a linear gradient reads its direction only when it has one', () => {
+  const build = (background) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: 300px; height: 120px; ' + background + ' }',
+    '</style></head><body><main class="slide"><div class="box"></div></main></body></html>'
+  ].join('\n'));
+  const shapeOf = (result) => (result.deck.slides[0].elements || []).find((element) => element.type === 'shape');
+
+  // CSS defaults to `to bottom` (180deg) when the direction is omitted; the deck spec
+  // stores the DrawingML angle, which is measured 90deg round from the CSS one.
+  const plain = build('background: linear-gradient(#f00, #00f);');
+  assert.deepEqual(plain.report.unsupportedDetails, []);
+  const plainShape = shapeOf(plain);
+  assert.equal(plainShape.gradient.angle, 90);
+  assert.equal(plainShape.gradient.stops.length, 2);
+  assert.equal(plainShape.gradient.stops[0].color, 'FF0000');
+
+  // `to right` is 90deg in CSS, i.e. 0 in the file, and `0.25turn` says the same thing.
+  assert.equal(shapeOf(build('background: linear-gradient(to right, #f00, #00f);')).gradient.angle, 0);
+  assert.equal(shapeOf(build('background: linear-gradient(0.25turn, #f00, #00f);')).gradient.angle, 0);
+  assert.equal(shapeOf(build('background: linear-gradient(135deg, #f00, #00f);')).gradient.angle, 45);
+
+  // A fill PowerPoint cannot express is reported and left unpainted: no shape is emitted
+  // for it (nothing to paint), while the analyzer keeps the box so the layout around it
+  // is unchanged - which is also what the report says.
+  ['conic-gradient(#f00, #00f)', 'radial-gradient(circle, #f00, #00f)',
+    'repeating-linear-gradient(#f00, #00f 20px)'].forEach((fill) => {
+    const result = build('background: ' + fill + ';');
+    assert.equal(shapeOf(result), undefined, 'no shape pretends to paint ' + fill);
+    const node = result.analysis.slides[0].nodes[0];
+    assert.equal(Number(node.w.toFixed(3)), 3.125, 'the box keeps its declared width');
+    const report = result.report.unsupportedDetails.find((entry) => entry.property === 'backgroundImage');
+    assert.ok(report, fill + ' is reported');
+    assert.ok(report.reason.includes(fill.split('(')[0]), 'the reason names the function: ' + report.reason);
+    assert.ok(report.reason.includes('unpainted'), 'and says what happens instead: ' + report.reason);
+  });
+});
+
