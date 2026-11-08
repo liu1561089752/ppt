@@ -38,6 +38,16 @@
   .thumb { width: 240px; aspect-ratio: 1; background: #E7EFEC; border-radius: 14px; }
   .thumb.alt { background: #EFE7DC; }
 
+  /* translate(-50%, -50%) 以自身尺寸的一半为位移：位移是纯平移，所以这里是精确的 */
+  .media { position: relative; }
+  .pin {
+    position: absolute; left: 260px; top: 0;
+    transform: translate(-50%, -50%);
+    width: 132px; height: 34px; padding: 7px 0;
+    background: #17332F; border-radius: 17px;
+    color: #F3F1E9; font-size: 11px; letter-spacing: 1px; text-align: center;
+  }
+
   .foot { position: absolute; left: 64px; bottom: 40px; font-size: 11px; color: #9AA5A1; }
 </style>
 </head>
@@ -45,7 +55,7 @@
 <main class="slide">
   <div class="kicker">relative · aspect-ratio</div>
   <h1>相对偏移只挪自己，宽高比由宽度定高</h1>
-  <p class="lede">中间卡片的右上角压着一枚徽标，它用 <code>position: relative</code> 向上向右移动，兄弟卡片纹丝不动；下方的媒体区用 <code>aspect-ratio: 16 / 9</code> 声明宽度、由宽度算出高度。</p>
+  <p class="lede">中间卡片的右上角压着一枚徽标，它用 <code>position: relative</code> 向上向右移动，兄弟卡片纹丝不动；下方的媒体区用 <code>aspect-ratio: 16 / 9</code> 声明宽度、由宽度算出高度；媒体区顶边那枚标签用 <code>transform: translate(-50%, -50%)</code> 把自己对准那条边。</p>
 
   <div class="row">
     <div class="card">
@@ -64,6 +74,7 @@
   </div>
 
   <div class="media">
+    <div class="pin">16 : 9</div>
     <div class="stage"></div>
     <div class="thumb"></div>
     <div class="thumb alt"></div>

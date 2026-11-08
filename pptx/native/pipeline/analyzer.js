@@ -157,19 +157,74 @@ function angleDegrees(argument) {
   return value;
 }
 
+/**
+ * What a `transform` list does to a box: how far it moves and how far it turns.
+ *
+ * CSS applies the list right to left, so a translate that follows a rotate is itself rotated.
+ * Both are exact for a box whose `transform-origin` is its centre, which is the default and the
+ * only origin DrawingML can express: `x`/`y` plus a rotation about the shape's own centre.
+ * `scale()` and `skew()` change the glyphs inside a text box, which no native shape can carry,
+ * so they are named instead of approximated.
+ */
+function transformPlanOf(value, widthIn, heightIn, origin) {
+  const plan = { rotate: 0, dx: 0, dy: 0, unsupported: [] };
+  const functions = transformFunctions(value);
+  if (!functions.length) return plan;
+  const originValue = String(origin === undefined || origin === null ? '' : origin).trim();
+  const centred = !originValue || /^(?:50%|center)(?:\s+(?:50%|center))?$/iu.test(originValue);
+  if (!centred) plan.unsupported.push('transform-origin: ' + originValue);
+  const steps = [];
+  for (const entry of functions) {
+    if (ROTATE_FUNCTIONS.has(entry.name)) {
+      const degrees = angleDegrees(entry.args);
+      if (degrees === null) { plan.unsupported.push(entry.name + '()'); continue; }
+      plan.rotate += degrees;
+      steps.push({ rotate: degrees });
+      continue;
+    }
+    const movesX = entry.name === 'translatex' || entry.name === 'translate';
+    const movesY = entry.name === 'translatey' || entry.name === 'translate';
+    if (!movesX && !movesY) { plan.unsupported.push(entry.name + '()'); continue; }
+    const args = String(entry.args || '').split(/[,\s]+/u).filter(Boolean);
+    const axis = (argument, basis) => {
+      const length = parseLength(argument);
+      if (!length) return null;
+      if (length.unit === '%') return basis === null ? null : (length.value / 100) * basis;
+      return toInches(length, {});
+    };
+    const tx = entry.name === 'translatey' ? 0 : axis(args[0] || '0', widthIn);
+    const ty = entry.name === 'translatex' ? 0 : axis(args[1] || '0', heightIn);
+    if (tx === null || ty === null) { plan.unsupported.push(entry.name + '()'); continue; }
+    steps.push({ dx: tx, dy: ty });
+  }
+  // Right to left: a rotation turns every translation written after it.
+  let x = 0;
+  let y = 0;
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const step = steps[index];
+    if (step.rotate !== undefined) {
+      const radians = (step.rotate * Math.PI) / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      const nx = x * cos - y * sin;
+      const ny = x * sin + y * cos;
+      x = nx;
+      y = ny;
+      continue;
+    }
+    x += step.dx;
+    y += step.dy;
+  }
+  plan.dx = Number(x.toFixed(4));
+  plan.dy = Number(y.toFixed(4));
+  plan.rotate = Number((plan.rotate % 360).toFixed(2));
+  return plan;
+}
+
 /** `transform: rotate(-4deg)` → degrees, clockwise positive like DrawingML. */
 function rotationFromTransform(value) {
-  const functions = transformFunctions(value);
-  if (!functions.length) return undefined;
-  if (!functions.every((entry) => ROTATE_FUNCTIONS.has(entry.name))) return undefined;
-  let total = 0;
-  for (const entry of functions) {
-    const degrees = angleDegrees(entry.args);
-    if (degrees === null) return undefined;
-    total += degrees;
-  }
-  if (Math.abs(total) < 0.01) return undefined;
-  return Number(total.toFixed(2));
+  const plan = transformPlanOf(value, null, null, null);
+  return plan.rotate ? plan.rotate : undefined;
 }
 
 /** CSS `order`; 0 when absent, and DOM order is the stable tiebreak. */
@@ -536,16 +591,7 @@ function checkUnsupported(ctx, domNode, style) {
         'CJK text breaks between characters here; keep-all forbids exactly that break');
     }
   }
-  const transform = style.transform;
-  if (transform && !isNoopValue('transform', transform)) {
-    const unsupported = transformFunctions(transform)
-      .filter((entry) => !ROTATE_FUNCTIONS.has(entry.name))
-      .map((entry) => entry.name + '()');
-    if (unsupported.length) {
-      recordUnsupported(ctx, domNode, 'transform', unsupported.join(', '),
-        'Only rotate() has a native shape rotation');
-    }
-  }
+  // The transform is resolved in analyzeNode, where the box it moves is known.
   // `flex-wrap: wrap` is laid out in real lines by the row branch; a wrapping
   // column still falls back to a single column, so it is reported there instead.
   // A native outline is uniform, so an asymmetric border cannot live on the shape
@@ -1085,6 +1131,21 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   const node = analyzeNodeTree(domNode, slot, inherited, ctx);
   if (!node) return null;
   applyHeightConstraints(node, slot, ctx);
+  // The transform is resolved once the box is measured: a percentage translate resolves
+  // against that box, and the rotation rides on the shape's own centre.
+  const style = ctx.styles.computed(domNode);
+  const transformPlan = transformPlanOf(style.transform,
+    Number(node.w) || 0, Number(node.h) || 0, style.transformOrigin);
+  if (transformPlan.rotate) node.rotate = transformPlan.rotate;
+  if (transformPlan.dx || transformPlan.dy) {
+    node.x = Number(((Number(node.x) || 0) + transformPlan.dx).toFixed(4));
+    node.y = Number(((Number(node.y) || 0) + transformPlan.dy).toFixed(4));
+  }
+  if (transformPlan.unsupported.length) {
+    recordUnsupported(ctx, domNode, 'transform', transformPlan.unsupported.join(', '),
+      'rotate() and translate() have native answers; scale()/skew() and a non-centre'
+        + ' transform-origin do not');
+  }
   attachDecorations(domNode, node, ctx);
   // A percentage radius that is not a full ellipse is an elliptical corner, and the shape is
   // drawn square: saying so beats letting a rounded card arrive with sharp corners.
@@ -1120,7 +1181,14 @@ function absoluteChildOverlays(node) {
   const kept = [];
   let added = false;
   node.children.forEach((child) => {
+    const childStyle = child.style || {};
+    // A child that paints its own surface (a pill, a chip, a bordered tag) must keep its
+    // own shape: an overlay carries text only, so converting it would drop the paint and
+    // paint the words *under* the container's children instead of above them.
+    const paintsSurface = Boolean(child.radius || child.ellipse || child.clip
+      || backgroundOf(childStyle) || childStyle.border || childStyle.boxShadow);
     const convertible = child.absolute
+      && !paintsSurface
       && child.kind === 'text'
       && typeof child.text === 'string'
       && !(child.children && child.children.length)
@@ -1517,8 +1585,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     return null;
   }
 
-  const rotate = rotationFromTransform(style.transform);
-  if (rotate !== undefined) node.rotate = rotate;
+  // Rotation and shift are applied in analyzeNode, once the box is measured.
 
   const chart = readChart(domNode, ctx);
   if (chart) {

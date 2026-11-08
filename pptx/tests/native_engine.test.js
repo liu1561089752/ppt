@@ -1769,10 +1769,12 @@ test('html pipeline maps transform: rotate() to native shape rotation', () => {
 
   // A transform that also scales has no native equivalent, so it is reported and
   // must not be silently half-applied.
+  // `scale()` has no native equivalent, so it is reported. The rotation in the same list is
+  // exact, so it is applied: a reported omission plus an exact remainder beats dropping both.
   const transformReports = result.report.unsupportedDetails.filter((entry) => entry.property === 'transform');
   assert.equal(transformReports.length, 1);
   assert.equal(transformReports[0].value, 'scale()');
-  assert.equal(elements.filter((element) => element.rotate === 10).length, 0);
+  assert.equal(elements.filter((element) => element.rotate === 10).length, 1, 'the exact rotate still lands');
 
   // rotate(0deg) is a no-op, not a rotation.
   const flat = elements.filter((element) => element.rotate === 0);
@@ -5258,5 +5260,67 @@ test('border-radius: 50% is the inscribed ellipse, smaller percentages are named
   assert.equal(soft.element.shape, undefined);
   assert.equal(soft.element.radius, undefined);
   assert.deepEqual(soft.reported, ['borderRadius'], 'the box arrives square, so it is named');
+});
+
+
+test('a transform: translate() is a shift, and it composes with rotate', () => {
+  const build = (css) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; position: relative; }',
+      '  ' + css,
+      '</style></head><body><main class="slide"><div class="box"></div></main></body></html>'
+    ].join('\n'));
+    return { element: result.deck.slides[0].elements[0] || {}, reported: result.report.unsupportedDetails.map((item) => item.property) };
+  };
+
+  // `translate(-50%, -50%)` centres a 200x80 box on the 640,300 anchor.
+  const centred = build('.box { position: absolute; left: 640px; top: 300px; width: 200px; height: 80px;'
+    + ' background: #17332F; transform: translate(-50%, -50%); }');
+  assert.equal(centred.element.x, 5.625);
+  assert.equal(centred.element.y, 2.7083);
+  assert.deepEqual(centred.reported, [], 'a translation is exact, so nothing is named');
+
+  // A rotation composes: a translate written after it is turned with it.
+  const turned = build('.box { width: 200px; height: 80px; background: #ccc;'
+    + ' transform: rotate(90deg) translate(96px, 0); }');
+  assert.equal(turned.element.rotate, 90);
+  assert.equal(turned.element.x, 0.4167, 'the horizontal anchor does not move');
+  assert.equal(turned.element.y, 1.4167, 'the 96px offset becomes vertical');
+
+  // scale() changes the glyphs inside a text box, so it is named and not applied.
+  const scaled = build('.box { width: 100px; height: 50px; background: #ccc; transform: scale(2); }');
+  assert.deepEqual(scaled.reported, ['transform']);
+  assert.equal(scaled.element.w, 1.0417, 'the box keeps its declared size');
+});
+
+test('a positioned child paints above the in-flow boxes it sits on', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .media { display: flex; width: 800px; }',
+    '  .stage { width: 520px; height: 292px; background: #17332F; }',
+    '  .pin { position: absolute; left: 260px; top: 0; width: 132px; height: 34px;',
+    '    background: #C05B3E; border-radius: 17px; color: #fff; font-size: 11px;',
+    '    transform: translate(-50%, -50%); }',
+    '</style></head><body><main class="slide">',
+    '<div class="media"><div class="pin">16 : 9</div><div class="stage"></div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const elements = result.deck.slides[0].elements;
+  const flat = elements.flatMap((element) => [element, ...(element.children || [])]);
+  const pin = flat.find((element) => element.text === '16 : 9' || (Array.isArray(element.text)
+    && element.text.some((run) => run.text === '16 : 9')));
+  const stage = flat.find((element) => element.fill === '17332F');
+  assert.ok(pin, 'the pin keeps its own words');
+  // The pin comes first in the DOM, so a document-order sort would paint it under the picture.
+  assert.ok(flat.indexOf(pin) > flat.indexOf(stage), 'the positioned pin paints after the picture');
+  // A child that paints its own surface must keep it: an overlay would carry text only, and
+  // the pin would arrive as bare words.
+  const painted = flat.find((element) => (element.background && element.background.fill === 'C05B3E')
+    || element.fill === 'C05B3E');
+  assert.ok(painted, 'the pill keeps its own fill');
+  const surface = painted.background || painted;
+  assert.equal(surface.radius, 0.177, 'and its rounded corners');
 });
 

@@ -850,17 +850,29 @@ function emitContainerChildren(spec, node, plan, context) {
   spec.children = sortByPaintOrder(children, node);
 }
 
-/** Stable paint-order sort: DOM order, unless a child declares z-index. */
+/**
+ * Stable paint-order sort: z-index, then in-flow before positioned, then DOM order.
+ *
+ * A browser paints non-positioned boxes first and the positioned ones above them, so a pin
+ * written before the picture it marks still sits on top of it. Sorting by z-index alone put
+ * it underneath.
+ */
 function sortByPaintOrder(children, parent) {
-  const indexed = (parent.children || []).filter((child) => zIndexOf(child) !== 0);
-  if (!indexed.length) return children;
+  const nodesById = new Map((parent.children || []).map((child) => [child.id, child]));
+  const positioned = (element) => {
+    const node = nodesById.get(element && element._probe);
+    return node && node.absolute ? 1 : 0;
+  };
   return children
     .map((element, index) => ({ element, index }))
     .sort((a, b) => {
       const za = elementZ(a.element);
       const zb = elementZ(b.element);
-      if (za === zb) return a.index - b.index;
-      return za - zb;
+      if (za !== zb) return za - zb;
+      const pa = positioned(a.element);
+      const pb = positioned(b.element);
+      if (pa !== pb) return pa - pb;
+      return a.index - b.index;
     })
     .map((entry) => entry.element);
 }

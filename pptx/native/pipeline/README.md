@@ -63,6 +63,10 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 | Clip path | `clip-path: polygon(...)` on a box with a declared height becomes a `custGeom` path whose vertices are the polygon corners: the shape itself is the clip, so it stays editable and its outline follows the cut. Percentages and lengths both resolve; anything else (`circle()`, `ellipse()`, `inset()`, `url()`) is reported, and so is a clipped box that has children, because only the box's own paint is clipped here |
 
+| Transform | `translate()`/`rotate()` compose as one plan (a later translate is turned with the rotation; percentages resolve against the box); `scale()`/`skew()` and a non-centre `transform-origin` are reported |
+
+| Paint order | Positioned boxes paint above the in-flow boxes around them, and an absolute text child that paints its own surface keeps that surface instead of becoming a bare-text overlay |
+
 | Round or elliptical | `border-radius: 50%` becomes the ellipse geometry (a circle on a square box, the inscribed ellipse on any other); a smaller percentage is reported and drawn square |
 
 | Long tables | A table taller than the page continues on further slides, one row never split across pages, with the `<thead>` rows repeated and the same left edge, width and top margin. `Paged:` on stdout names the split |
