@@ -1631,7 +1631,15 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
         }
         // Nothing may be left over that the browser would still have wrapped beside the
         // float, so the band has to end exactly at the content or run out of children.
-        const exact = probe >= visible.length || remaining <= FLOAT_BAND_SLACK;
+        // A sibling that is out of flow cannot be wrapped beside anything, so a footer
+        // pinned with `position: absolute` does not make the band inexact: it is placed
+        // whether or not the band is used.
+        const stillInFlow = visible.slice(probe).some((sibling) => {
+          const siblingStyle = ctx.styles.computed(sibling);
+          return !isAbsolute(siblingStyle)
+            && siblingStyle.display !== 'none' && siblingStyle.visibility !== 'hidden';
+        });
+        const exact = !stillInFlow || remaining <= FLOAT_BAND_SLACK;
         if (group.length && exact) {
           let offset = 0;
           group.forEach((entry) => {
@@ -1751,27 +1759,30 @@ const FLOAT_VALUES = new Set(['none', 'left', 'right', 'inline-start', 'inline-e
  */
 function layoutFloatRun(run, contentBox, top, inherited, ctx) {
   const options = { parentWidth: contentBox.w, fontSizePx: inherited.fontPx };
-  const directions = new Set(run.map((entry) => floatOf(entry.style)));
-  if (directions.size > 1) {
-    recordUnsupported(ctx, run[0].child, 'float', 'left and right',
-      'Left and right floats on one line pack from opposite edges; this run is packed from one edge');
-  }
-  const direction = floatOf(run[0].style) || 'left';
   const tolerance = 0.01;
-  let runWidth = 0;
+  const rightEdge = contentBox.x + contentBox.w;
   const nodes = [];
   let lineTop = top;
   let lineHeight = 0;
-  let cursorX = direction === 'right' ? contentBox.x + contentBox.w : contentBox.x;
   let lines = 1;
+  // Both edges are packed at once. A left float takes width from the left cursor and a
+  // right float from the right one, so a run that mixes them meets in the middle - which
+  // is what the browser does: the two stack from opposite edges and the line box that is
+  // left between them carries the text.
+  let leftCursor = contentBox.x;
+  let rightCursor = rightEdge;
+  let usedLeft = false;
+  let usedRight = false;
   const startLine = () => {
     lineTop += lineHeight;
     lineHeight = 0;
-    cursorX = direction === 'right' ? contentBox.x + contentBox.w : contentBox.x;
+    leftCursor = contentBox.x;
+    rightCursor = rightEdge;
     lines += 1;
   };
 
   run.forEach((entry) => {
+    const direction = floatOf(entry.style) || 'left';
     const margins = childMargins(entry.style, options);
     const declared = inchesOf(entry.style.width, 'x', options);
     if (declared === null) {
@@ -1781,13 +1792,16 @@ function layoutFloatRun(run, contentBox, top, inherited, ctx) {
     }
     const width = Math.max(0.02, declared === null ? contentBox.w : declared);
     const outer = width + margins.left + margins.right;
-    runWidth += outer;
     const fits = direction === 'right'
-      ? cursorX - outer >= contentBox.x - tolerance
-      : cursorX + outer <= contentBox.x + contentBox.w + tolerance;
-    if (!fits && lineHeight > 0) startLine();
+      ? rightCursor - outer >= leftCursor - tolerance
+      : leftCursor + outer <= rightCursor + tolerance;
+    if (!fits && lineHeight > 0) {
+      startLine();
+      usedLeft = false;
+      usedRight = false;
+    }
     const slot = {
-      x: direction === 'right' ? cursorX - margins.right - width : cursorX + margins.left,
+      x: direction === 'right' ? rightCursor - margins.right - width : leftCursor + margins.left,
       y: lineTop + margins.top,
       w: width,
       explicitWidth: declared !== null,
@@ -1803,16 +1817,26 @@ function layoutFloatRun(run, contentBox, top, inherited, ctx) {
     nodes.push(node);
     const height = node.h + margins.top + margins.bottom;
     if (height > lineHeight) lineHeight = height;
-    cursorX = direction === 'right' ? cursorX - outer : cursorX + outer;
+    if (direction === 'right') {
+      rightCursor -= outer;
+      usedRight = true;
+    } else {
+      leftCursor += outer;
+      usedLeft = true;
+    }
   });
 
   // The strip this run leaves free, but only while it stays on one line: a run that
   // wrapped leaves a band that differs per line, and a single text box cannot express
-  // that, so the caller keeps reporting instead.
-  const bandWidth = contentBox.w - runWidth;
-  const band = lines === 1 && bandWidth > 0.5
-    ? { x: direction === 'right' ? contentBox.x : contentBox.x + runWidth, w: bandWidth }
-    : null;
+  // that, so the caller keeps reporting instead. When both edges were used the free strip
+  // is the middle one, which is exactly where the browser puts the text.
+  let band = null;
+  if (lines === 1) {
+    const bandX = usedLeft ? leftCursor : contentBox.x;
+    const bandRight = usedRight ? rightCursor : rightEdge;
+    const bandWidth = bandRight - bandX;
+    if (bandWidth > 0.5) band = { x: bandX, w: bandWidth };
+  }
   return { nodes, bottom: nodes.length ? lineTop + lineHeight : top, band };
 }
 

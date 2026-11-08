@@ -69,6 +69,22 @@
   /* The float in the second card is shorter than its paragraph on purpose: that is
      the case a single text box cannot express, so it has to be reported. */
   .pair.short .pair-img { height: 72px; }
+
+  /* 左右同时浮动：两条边各自堆，中间的走廊留给文字 */
+  .fl-left  { float: left;  width: 300px; height: 424px; margin-right: 24px; padding: 20px;
+              background: #17332F; border-radius: 14px; color: #F3EFE6; }
+  .fl-right { float: right; width: 260px; height: 424px; margin-left: 24px; padding: 20px;
+              background: #B4633A; border-radius: 14px; color: #FBF3EC; }
+  .fl-left .num, .fl-right .num { font-size: 46px; font-weight: 600; line-height: 1.1; }
+  .fl-left .cap, .fl-right .cap { margin-top: 8px; font-size: 12px; line-height: 1.75; }
+  /* The band beside a float takes leaf blocks only: no wrapper, no declared width,
+     no background - anything else is a column, and a column is a different thing. */
+  /* A shrink-to-fit caption is exactly as wide as the declared face makes it, so a machine
+     that substitutes a wider face wraps its last character. An explicit width is what the
+     design wants anyway. */
+  .foot.wide { width: 320px; }
+  .mid-h { margin: 0 0 10px; font-size: 18px; }
+  .mid-p { margin: 0 0 12px; font-size: 13px; line-height: 1.9; color: #4A5A56; }
 </style>
 </head>
 <body>
@@ -136,6 +152,28 @@
   </div>
 
   <div class="foot">并排 = 浮动 + 适配高度的文字 · 绕排 = 未实现，上报</div>
+</main>
+
+<main class="slide">
+  <div class="kicker">float / both edges</div>
+  <h1>左右同时浮动，文字落在中间那一栏</h1>
+
+  <div class="fl-left">
+    <div class="num">L</div>
+    <div class="cap">float: left 从左边堆</div>
+  </div>
+
+  <div class="fl-right">
+    <div class="num">R</div>
+    <div class="cap">float: right 从右边堆</div>
+  </div>
+
+  <h2 class="mid-h">两条边各自堆，中间留给文字</h2>
+  <p class="mid-p">浏览器把左浮动从左边堆、右浮动从右边堆，两条游标在中间相遇，剩下的那段空档就是内容的行盒宽度。</p>
+  <p class="mid-p">量出来的空档是 544px，与下面的文字宽度一致；两侧浮动的宽度、外边距都从声明里读，不靠猜。</p>
+  <p class="mid-p">文字用完两侧浮动的高度之后再换到下一块，和浏览器里的行框缩短是同一件事——这里只译能表达的那一半，剩下的仍然上报。</p>
+
+  <div class="foot wide">左右同时浮动 · 中间走廊 544px · 三栏并排</div>
 </main>
 
 </body>

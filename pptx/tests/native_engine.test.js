@@ -4763,3 +4763,38 @@ test('ch and ex resolve from font ratios, not from half an em', () => {
   assert.equal(Number(width('width: 20em').toFixed(4)), Number((20 * 16 / 96).toFixed(4)));
 });
 
+
+test('left and right floats pack from opposite edges and the text sits between them', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .l { float: left; width: 300px; height: 200px; margin-right: 24px; background: #17332F; }',
+    '  .r { float: right; width: 260px; height: 200px; margin-left: 24px; background: #B4633A; }',
+    '  .mid { margin: 0; font-size: 16px; line-height: 1.5; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="l"></div>',
+    '  <div class="r"></div>',
+    '  <p class="mid">中间这一栏就是两条游标相遇之后剩下的空档。</p>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const [left, right, middle] = result.deck.slides[0].elements;
+  const near = (actual, expected, message) =>
+    assert.ok(Math.abs(actual - expected) < 0.001, message + ': ' + actual + ' vs ' + expected);
+  const content = { x: 40 / 96, w: (1280 - 80) / 96 };
+
+  near(left.x, content.x, 'the left float starts at the left edge');
+  // The right float hugs the right edge; its 24px margin sits on its own left, inside the
+  // band, which is where the browser puts it too.
+  near(right.x + right.w, content.x + content.w, 'the right float ends at the right edge');
+  // The band starts after the left float's box and margin, and stops at the right float's
+  // margin: that gap is what the text gets.
+  near(middle.x, content.x + (300 + 24) / 96, 'the text starts where the left float ends');
+  near(middle.w, (1200 - 324 - 284) / 96, 'the text is as wide as the gap');
+  near(middle.y, left.y, 'the text starts level with the floats');
+
+  const reported = (result.report && result.report.unsupported) || [];
+  assert.ok(!reported.some((entry) => entry.property === 'float'),
+    'a left and a right float on one line is translated, not reported: ' + JSON.stringify(reported));
+});
+
