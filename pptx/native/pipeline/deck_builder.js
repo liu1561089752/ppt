@@ -221,6 +221,7 @@ function imageElementFromNode(node) {
   if (/^data:/iu.test(node.src) || /^https?:/iu.test(node.src)) element.data = node.src;
   else element.path = node.src;
   if (node.alt) element.altText = node.alt;
+  if (node.focus) element.focus = node.focus;
   if (node.radius) element.radius = node.radius;
   if (node.border) {
     element.lineColor = node.border.color;
@@ -295,11 +296,30 @@ function emitNode(node, resolvedTheme, elements, report) {
     return;
   }
 
-  // Block / card / group
+  // Block / card / group. CSS paints the colour first, then the background
+  // image, then the children, so the order below matches browser stacking.
   const surface = surfaceElementFromNode(node, resolvedTheme);
   if (surface) {
     elements.push(surface);
     report.shapes += 1;
+  }
+  if (node.backgroundImage) {
+    const picture = imageElementFromNode({
+      src: node.backgroundImage.src,
+      x: node.x,
+      y: node.y,
+      w: node.w,
+      h: node.h,
+      objectFit: node.backgroundImage.fit,
+      focus: node.backgroundImage.focus,
+      radius: node.radius,
+      alt: ''
+    });
+    if (picture) {
+      elements.push(picture);
+      report.images += 1;
+      report.backgroundImages += 1;
+    }
   }
   (node.children || []).forEach((child) => emitNode(child, resolvedTheme, elements, report));
 }
@@ -318,6 +338,7 @@ function buildDeckSpec(analysis, options = {}) {
     images: 0,
     tables: 0,
     lines: 0,
+    backgroundImages: 0,
     unsupported: analysis.unsupported.length
   };
 

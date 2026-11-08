@@ -42,7 +42,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius` |
 | Layout | `position: absolute` with `left/top/right/bottom`, block flow, `display: flex` (row/column, `gap`, `flex`, `align-items`, `justify-content`), `display: grid` with equal tracks |
 | Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color` |
-| Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, single outer `box-shadow`, `opacity` |
+| Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
 | Media | `<img>` with `object-fit: cover/contain/fill` → native crop rectangle |
 | Data | `<table>` → native table, `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
 
@@ -61,7 +61,10 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   from the browser, especially with mixed scripts and unusual tracking.
 - **Unsupported visuals are reported, not approximated**: `filter`,
   `backdrop-filter`, `clip-path`, `mask`, `mix-blend-mode`, `text-shadow`,
-  `background-size`/`position`, transforms, animations and transitions.
+  transforms, animations and transitions.
+- **CSS background images** become real native pictures, so they keep an
+  editable crop rectangle. Explicit pixel or percentage sizes other than
+  `cover`/`contain`/`100% 100%` are approximated as `contain`.
 - **No automatic fallback to images.** If a element cannot be expressed natively,
   it is reported so a human can translate that detail into a native shape or a
   targeted vector asset. Whole-slide rasterization is never produced.

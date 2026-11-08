@@ -32,7 +32,8 @@ const {
   parseLength,
   toInches,
   backgroundOf,
-  gradientOf
+  gradientOf,
+  backgroundImageOf
 } = require('./css');
 const { estimateTextHeight } = require('../engine/text_measure');
 
@@ -47,13 +48,13 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'overflow', 'borderCollapse', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform',
-  'objectFit', 'objectPosition', 'zIndex', 'visibility'
+  'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
 const UNSUPPORTED_ALWAYS = new Set([
   'transform', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
-  'backgroundSize', 'backgroundPosition', 'backgroundClip', 'textShadow',
+  'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
   'gridTemplateRows', 'gridAutoRows', 'gridColumn', 'gridRow', 'order',
   'flexBasis', 'flexGrow', 'flexShrink', 'alignSelf', 'justifySelf'
@@ -256,6 +257,7 @@ function resolveKind(domNode, style, children) {
   if (hasBlockChild) return 'block';
   const text = normalizedText(domNode);
   if (text) return 'text';
+  if (backgroundImageOf(style)) return style.backgroundColor ? 'block' : 'image';
   if (backgroundOf(style) || gradientOf(style) || style.border || style.boxShadow) return 'shape';
   return 'block';
 }
@@ -372,6 +374,16 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   }
 
   if (kind === 'image') {
+    const layer = backgroundImageOf(style);
+    if (layer && domNode.tag !== 'img') {
+      node.h = explicitHeight === null ? Math.max(width * 0.5625, 0.2) : explicitHeight;
+      node.src = layer.src;
+      node.alt = '';
+      node.objectFit = layer.fit;
+      node.focus = layer.focus;
+      node.radius = radiusOf(style);
+      return node;
+    }
     const attrWidth = Number(domNode.attrs.width);
     const attrHeight = Number(domNode.attrs.height);
     if (width === null || width === slot.w) {
@@ -399,6 +411,9 @@ function analyzeNode(domNode, slot, inherited, ctx) {
     node.h = explicitHeight === null ? Math.max(0.4, node.rows.length * 0.34) : explicitHeight;
     return node;
   }
+
+  const backgroundLayer = backgroundImageOf(style);
+  if (backgroundLayer) node.backgroundImage = backgroundLayer;
 
   // Container-ish node: lay out children.
   const display = style.display;

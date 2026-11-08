@@ -502,6 +502,81 @@ function gradientOf(style) {
   return null;
 }
 
+/** Turn `background-position` into a nine-grid focus preset or a {x,y} pair. */
+function parseBackgroundFocus(value) {
+  if (!value) return 'center';
+  const tokens = String(value).trim().toLowerCase().split(/\s+/u).filter(Boolean);
+  if (!tokens.length) return 'center';
+  const named = tokens.filter((token) => ['top', 'bottom', 'left', 'right', 'center'].includes(token));
+  if (named.length === tokens.length) {
+    const vertical = tokens.find((token) => token === 'top' || token === 'bottom');
+    const horizontal = tokens.find((token) => token === 'left' || token === 'right');
+    if (vertical && horizontal) return vertical + ' ' + horizontal;
+    return vertical || horizontal || 'center';
+  }
+  const ratios = tokens.slice(0, 2).map((token) => {
+    const length = parseLength(token);
+    if (!length) return null;
+    if (length.unit === '%') return length.value / 100;
+    if (length.unit === '') return length.value;
+    return null;
+  });
+  if (ratios[0] === null && (ratios[1] === undefined || ratios[1] === null)) return 'center';
+  return {
+    x: ratios[0] === null || ratios[0] === undefined ? 0.5 : Math.max(0, Math.min(1, ratios[0])),
+    y: ratios[1] === null || ratios[1] === undefined ? 0.5 : Math.max(0, Math.min(1, ratios[1]))
+  };
+}
+
+/** Pull size/position out of a `background` shorthand layer (after the url()). */
+function shorthandLayerGeometry(shorthand) {
+  const text = String(shorthand || '').replace(/url\([^)]*\)/iu, ' ');
+  const [beforeSlash, afterSlash] = text.split(/\s*\/\s*/u);
+  const isPosition = (token) => ['top', 'bottom', 'left', 'right', 'center'].includes(token)
+    || /^[\d.]+%$/u.test(token);
+  const isSize = (token) => ['cover', 'contain', 'auto'].includes(token)
+    || /^[\d.]+(?:%|px)?$/u.test(token);
+  const position = (beforeSlash || '').split(/\s+/u).filter(isPosition).join(' ') || null;
+  const size = (afterSlash || '').split(/\s+/u).filter(isSize).slice(0, 2).join(' ') || null;
+  return { size, position };
+}
+
+/**
+ * Resolve a `background-image: url(...)` layer into a native picture request.
+ * Returns `{ src, fit, focus }` or null.
+ */
+function backgroundImageOf(style) {
+  if (!style) return null;
+  const layers = [style.backgroundImage, style.background];
+  let src = null;
+  for (const layer of layers) {
+    if (!layer) continue;
+    const match = /url\(\s*(?:'([^']*)'|"([^"]*)"|([^)\s]+))\s*\)/iu.exec(String(layer));
+    if (match) {
+      src = (match[1] || match[2] || match[3] || '').trim();
+      if (src) break;
+    }
+  }
+  if (!src) return null;
+
+  const shorthand = style.background && /url\(/iu.test(String(style.background))
+    ? shorthandLayerGeometry(style.background)
+    : { size: null, position: null };
+  const rawSize = style.backgroundSize !== undefined ? style.backgroundSize : shorthand.size;
+  const rawPosition = style.backgroundPosition !== undefined
+    ? style.backgroundPosition
+    : shorthand.position;
+
+  const size = String(rawSize || '').trim().toLowerCase();
+  let fit = 'cover';
+  if (size.startsWith('contain')) fit = 'contain';
+  else if (size.startsWith('cover')) fit = 'cover';
+  else if (/^100%\s*(?:100%|auto)?$/u.test(size) || /^auto\s+100%$/u.test(size)) fit = 'stretch';
+  else if (size) fit = 'contain';
+
+  return { src, fit, focus: parseBackgroundFocus(rawPosition) };
+}
+
 module.exports = {
   NAMED_COLORS,
   INHERITED_PROPERTIES,
@@ -523,6 +598,8 @@ module.exports = {
   parseBorder,
   backgroundOf,
   gradientOf,
+  backgroundImageOf,
+  parseBackgroundFocus,
   expandVariables,
   expandBoxShorthand
 };

@@ -1182,3 +1182,52 @@ test('html pipeline paints table header cells declared with the background short
   assert.equal(table.rows[0][0].options.bold, true);
   assert.equal(table.rows[1][0].options.color, '202321');
 });
+
+test('html pipeline turns a CSS background image into a native picture', async () => {
+  const { makePng, gradientPainter } = require('../native/scripts/sample_image');
+  await withTempDir('native-bgimage-', async (directory) => {
+    fsSync.writeFileSync(pathSync.join(directory, 'photo.png'),
+      makePng(400, 300, gradientPainter([10, 20, 30], [200, 120, 60])));
+    const html = `<!doctype html><html><head><style>
+.slide { width: 1280px; height: 720px; }
+.hero { position: absolute; left: 40px; top: 40px; width: 600px; height: 300px;
+  background-image: url("photo.png"); background-size: cover; background-position: top left;
+  border-radius: 16px; }
+.panel { position: absolute; left: 40px; top: 400px; width: 600px; height: 240px;
+  background: url("photo.png") center / contain no-repeat; }
+</style></head><body><main class="slide">
+  <div class="hero"></div>
+  <div class="panel"><p>叠加在图片上的正文</p></div>
+</main></body></html>`;
+    fsSync.writeFileSync(pathSync.join(directory, 'deck.html'), html);
+
+    const result = await pipeline.convertFile(pathSync.join(directory, 'deck.html'), {
+      pptx: pathSync.join(directory, 'deck.pptx')
+    });
+    assert.deepEqual(result.errors, []);
+    // The childless .hero becomes a plain native picture; the .panel keeps its
+    // text child, so it is a block with a background picture painted underneath.
+    assert.equal(result.report.images, 2);
+    assert.equal(result.report.backgroundImages, 1);
+    assert.deepEqual(result.report.unsupportedDetails, []);
+
+    const elements = result.deck.slides[0].elements;
+    const pictures = elements.filter((element) => element.type === 'image');
+    assert.equal(pictures.length, 2);
+    assert.equal(pictures[0].fit, 'cover');
+    assert.equal(pictures[0].focus, 'top left');
+    assert.equal(pictures[0].radius, 0.167);
+    assert.equal(pictures[1].fit, 'contain');
+    // Children painted on top of a background image stay editable text.
+    const overlay = elements.find((element) => element.type === 'text');
+    assert.equal(overlay.text, '叠加在图片上的正文');
+    assert.ok(elements.indexOf(overlay) > elements.indexOf(pictures[1]),
+      'text must be painted above the background picture');
+
+    // The relative url() must resolve against the HTML file when writing the PPTX.
+    const { auditPptx } = require('../native/scripts/audit_deck');
+    const audit = await auditPptx(result.output.pptx);
+    assert.equal(audit.totals.pictures, 2);
+    assert.equal(audit.errors, 0);
+  });
+});

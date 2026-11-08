@@ -55,6 +55,22 @@ function convertHtml(html, options = {}) {
   };
 }
 
+/**
+ * PptxGenJS reads picture files relative to the process cwd, so relative urls
+ * from the HTML must be rebased onto the HTML file's own directory first.
+ */
+function resolveDeckImagePaths(deck, baseDirectory) {
+  const isAbsolute = (value) => path.isAbsolute(value) || /^[a-zA-Z]:[\\/]/u.test(value);
+  deck.slides.forEach((slide) => {
+    (slide.elements || []).forEach((element) => {
+      if (element.type !== 'image' || !element.path) return;
+      if (isAbsolute(element.path) || /^(?:data|https?):/iu.test(element.path)) return;
+      element.path = path.resolve(baseDirectory, element.path);
+    });
+  });
+  return deck;
+}
+
 /** Convert an HTML file and optionally write the deck JSON and a PPTX. */
 async function convertFile(inputPath, options = {}) {
   const absolute = path.resolve(inputPath);
@@ -62,6 +78,7 @@ async function convertFile(inputPath, options = {}) {
   const html = fs.readFileSync(absolute, 'utf8');
   const baseDirectory = path.dirname(absolute);
   const result = convertHtml(html, options);
+  resolveDeckImagePaths(result.deck, baseDirectory);
 
   if (options.out) {
     fs.mkdirSync(path.dirname(path.resolve(options.out)), { recursive: true });
@@ -86,6 +103,7 @@ async function convertFile(inputPath, options = {}) {
 module.exports = {
   convertHtml,
   convertFile,
+  resolveDeckImagePaths,
   analyzeHtml,
   buildDeckSpec,
   deriveTheme,

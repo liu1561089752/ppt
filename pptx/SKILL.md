@@ -803,7 +803,7 @@ node pipeline/cli.js ../examples/pipeline-reference.html \
   --out converted/deck.json --report converted/report.json --pptx converted/deck.pptx
 ```
 
-The CLI prints how many nodes became text / shapes / images / tables, and lists every CSS feature it could not translate. Text keeps semantic roles (`title` / `heading` / `body` / `caption`), cards become editable shapes plus their own text boxes, images keep an editable crop rectangle, `<table>` becomes a native table, and `<ul>` becomes a bulleted native text box.
+The CLI prints how many nodes became text / shapes / images / tables, and lists every CSS feature it could not translate. Text keeps semantic roles (`title` / `heading` / `body` / `caption`), cards become editable shapes plus their own text boxes, `<img>` and `background-image: url(...)` both become native pictures with an editable crop rectangle (honouring `object-fit` / `background-size` and `background-position`), `<table>` becomes a native table, and `<ul>` becomes a bulleted native text box.
 
 Scope discipline: the pipeline covers absolute positioning, block flow, single-line flex (row/column) and equal-track grid. It is **not** a browser — see `pptx/native/pipeline/README.md` for the exact supported subset and the reported gaps (`filter`, `clip-path`, `mask`, `flex-wrap`, media queries, pseudo-elements, transforms, and more). Unsupported visuals are reported for deliberate human translation; the pipeline never rasterizes a slide.
 
