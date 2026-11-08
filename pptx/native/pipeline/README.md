@@ -67,9 +67,12 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   collapsing, no writing modes, no `flex-wrap`, no `position: fixed`
   stacking contexts. `transform` supports rotation only: a rotated container
   keeps its children unrotated and is reported.
-- **Cascade is simplified.** `@media`, pseudo-elements, attribute selectors,
-  `:not()`, sibling combinators and `!important` are ignored. Custom properties
-  are resolved globally rather than per-subtree.
+- **Cascade is simplified.** `@media` blocks are evaluated against the slide
+  viewport (1280x720 by default): `min`/`max-width`, `min`/`max-height`,
+  `orientation`, `screen` and `print` are supported, and a condition that cannot
+  be evaluated is reported rather than applied. Pseudo-elements, attribute
+  selectors, `:not()`, sibling combinators and `!important` are ignored. Custom
+  properties are resolved globally rather than per-subtree.
 - **Percentages** resolve against the direct parent's *content* box, which is the
   authored intent but differs from a browser when a parent's height is auto.
 - **Text measurement is an estimate**, not OpenType shaping. Wrapping can differ

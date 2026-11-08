@@ -1858,3 +1858,37 @@ test('html pipeline gives pie and doughnut charts a legend and percentages', () 
   assert.equal(line.options.showPercent, undefined);
 });
 
+
+test('html pipeline resolves @media blocks against the slide viewport', () => {
+  const html = [
+    '<html><head><style>',
+    '@media (min-width: 900px) {',
+    '  .slide { width: 1280px; height: 720px; background: #0E1A1D; }',
+    '  .title { position: absolute; left: 40px; top: 40px; width: 700px; font-size: 34px; color: #F2A24C; }',
+    '}',
+    '@media (max-width: 600px) {',
+    '  .title { font-size: 14px; color: #FF0000; }',
+    '}',
+    '@media print { .title { display: none; } }',
+    '</style></head><body><main class="slide"><h1 class="title">桌面标题</h1></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const title = result.deck.slides[0].elements.find((element) => typeof element.text === 'string');
+  assert.ok(title, 'the title must survive a media-query-only stylesheet');
+  // 34px inside the matching min-width block → 25.5pt, not the 14px mobile rule.
+  assert.equal(title.fontSize, 25.5, 'font size came from ' + title.fontSize);
+  assert.equal(title.color, 'F2A24C');
+  assert.ok(Math.abs(title.x - 40 / 96) < 0.01);
+  assert.ok(Math.abs(title.y - 40 / 96) < 0.01);
+
+  // A query that cannot match the 1280x720 slide is reported, not silently lost.
+  const reported = result.report.unsupportedDetails
+    .filter((entry) => entry.property === '@media')
+    .map((entry) => entry.value);
+  assert.deepEqual(reported, ['(max-width: 600px)', 'print']);
+  assert.ok(result.report.notes.some((note) => note.includes('@media block(s) applied at 1280x720')),
+    'the applied count must be reported: ' + JSON.stringify(result.report.notes));
+});
+

@@ -208,7 +208,12 @@ function createContext(html, options = {}) {
   walk(root, (node) => {
     if (node.type === 'element' && node.tag === 'style') styleBlocks.push(textContent(node));
   });
-  const stylesheet = parseStylesheet(styleBlocks.join('\n'));
+  const pageSize = pageSizeInches(options);
+  // The slide is a fixed viewport, so `@media` can be resolved instead of dropped.
+  const stylesheet = parseStylesheet(styleBlocks.join('\n'), {
+    viewportWidth: Math.round(pageSize.width * 96),
+    viewportHeight: Math.round(pageSize.height * 96)
+  });
   const unsupported = (stylesheet.pseudoSelectors || []).map((selectorText) => ({
     tag: null,
     classes: [],
@@ -216,13 +221,29 @@ function createContext(html, options = {}) {
     value: selectorText,
     reason: 'Pseudo-elements and pseudo-classes describe boxes that do not exist; their rules are not translated'
   }));
+  const mediaQueries = stylesheet.mediaQueries || [];
+  mediaQueries.filter((entry) => !entry.matched).forEach((entry) => {
+    unsupported.push({
+      tag: null,
+      classes: [],
+      property: '@media',
+      value: entry.query,
+      reason: 'Media query does not match the slide viewport; its rules were not applied'
+    });
+  });
+  const notes = [];
+  const appliedMedia = mediaQueries.filter((entry) => entry.matched).length;
+  if (appliedMedia) {
+    notes.push(appliedMedia + ' @media block(s) applied at '
+      + Math.round(pageSize.width * 96) + 'x' + Math.round(pageSize.height * 96));
+  }
   return {
     root,
     stylesheet,
     styles: createStyleResolver(stylesheet),
     nextId: 1,
     unsupported,
-    notes: [],
+    notes,
     options
   };
 }

@@ -54,14 +54,72 @@ function stripComments(css) {
   return String(css || '').replace(/\/\*[\s\S]*?\*\//gu, '');
 }
 
-/** Parse a stylesheet into ordered rules plus a global custom-property map. */
-function parseStylesheet(cssText) {
-  const css = stripComments(cssText);
-  const rules = [];
-  const variables = Object.create(null);
-  const pseudoSelectors = [];
+function mediaLengthInPx(value, unit) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  if (unit === 'em' || unit === 'rem') return number * 16;
+  return number;
+}
+
+/** One media condition, e.g. `(min-width: 900px) and (orientation: landscape)`. */
+function mediaConditionMatches(condition, viewport) {
+  const parts = String(condition || '').split(/\s+and\s+/u).map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return true;
+  return parts.every((part) => {
+    if (part === 'screen' || part === 'all') return true;
+    if (part === 'print') return false;
+    const comparison = /^\(\s*(min|max)-(width|height)\s*:\s*([\d.]+)\s*(px|em|rem)?\s*\)$/u.exec(part);
+    if (comparison) {
+      const pixels = mediaLengthInPx(comparison[3], comparison[4] || 'px');
+      if (pixels === null) return false;
+      const actual = comparison[2] === 'width' ? viewport.width : viewport.height;
+      return comparison[1] === 'min' ? actual >= pixels : actual <= pixels;
+    }
+    const orientation = /^\(\s*orientation\s*:\s*(landscape|portrait)\s*\)$/u.exec(part);
+    if (orientation) {
+      const landscape = viewport.width >= viewport.height;
+      return orientation[1] === 'landscape' ? landscape : !landscape;
+    }
+    // A condition we cannot evaluate is not applied, and the caller reports it.
+    return false;
+  });
+}
+
+/** A media query list: any matching query applies. */
+function mediaMatches(query, viewport) {
+  const text = String(query || '').trim();
+  if (!text) return true;
+  return text.split(',').some((part) => mediaConditionMatches(part.trim(), viewport));
+}
+
+/**
+ * Parse a stylesheet into ordered rules plus a global custom-property map.
+ * `@media` blocks are evaluated against `options.viewportWidth/Height`.
+ */
+function parseStylesheet(cssText, options = {}) {
+  const viewport = {
+    width: Number(options.viewportWidth) || 1280,
+    height: Number(options.viewportHeight) || 720
+  };
+  const state = {
+    rules: [],
+    variables: Object.create(null),
+    pseudoSelectors: [],
+    mediaQueries: [],
+    order: 0
+  };
+  collectRules(stripComments(cssText), viewport, state);
+  return {
+    rules: state.rules,
+    variables: state.variables,
+    pseudoSelectors: state.pseudoSelectors,
+    mediaQueries: state.mediaQueries
+  };
+}
+
+function collectRules(css, viewport, state) {
+  const { rules, variables, pseudoSelectors } = state;
   let index = 0;
-  let order = 0;
 
   while (index < css.length) {
     const open = css.indexOf('{', index);
@@ -78,8 +136,16 @@ function parseStylesheet(cssText) {
     index = scan;
 
     if (selectorText.startsWith('@')) {
-      // At-rules are not modeled; keep any custom properties they declare at the root.
-      if (/@(media|supports|layer)/u.test(selectorText)) parseDeclarations(body).forEach((declaration) => {
+      const media = /^@media\s+(.+)$/iu.exec(selectorText);
+      if (media) {
+        // The slide is a fixed viewport, so min/max-width can be resolved now.
+        const matched = mediaMatches(media[1], viewport);
+        state.mediaQueries.push({ query: media[1].trim(), matched });
+        if (matched) collectRules(body, viewport, state);
+        continue;
+      }
+      // Other at-rules are not modeled; keep custom properties they declare.
+      if (/@(supports|layer)/u.test(selectorText)) parseDeclarations(body).forEach((declaration) => {
         if (declaration.property.startsWith('--')) variables[declaration.property] = declaration.value;
       });
       continue;
@@ -103,12 +169,11 @@ function parseStylesheet(cssText) {
         selectorText: rawSelector.trim(),
         parts: parsed.parts,
         declarations,
-        order: order++,
+        order: state.order++,
         specificity: parsed.specificity
       });
     });
   }
-  return { rules, variables, pseudoSelectors };
 }
 
 function parseSimpleSelector(segment) {
