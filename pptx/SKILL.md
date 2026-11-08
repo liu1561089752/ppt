@@ -837,7 +837,7 @@ Scope discipline: the pipeline covers absolute positioning (and `position: fixed
 
 ### Current Native quality gates
 
-- The CI suite runs Node engine tests (139 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
+- The CI suite runs Node engine tests (141 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
 - The visual comparator is active, but it only performs real deck comparisons when reviewed PNGs exist under `pptx/native/golden/<deck>/`. Its self-test is not a substitute for a real baseline.
 - Never add generated PNGs to Golden directories merely to make CI green. A human must review each paired HTML/Native slide and approve the baseline first.
 - LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.
@@ -847,6 +847,8 @@ Scope discipline: the pipeline covers absolute positioning (and `position: fixed
 - A run of consecutive `float: left/right` siblings is packed into a wrapping row (declared widths, one edge, every line as tall as its tallest item); `clear` is honoured because the next block always starts below the run. A block that would have wrapped its lines *beside* a float is reported, and a floated box without a declared width is reported because shrink-to-fit is max-content.
 - Absolute children resolve against the **padding box** of their containing block, like CSS: a `right: 72px` footer sits 72px from the slide edge, not 72px inside the padded content area.
 - `aspect-ratio` sizes a box whose height is auto from its used width; a declared height wins, and `align-items: stretch` still wins over the ratio, exactly as in CSS. Stretch never resizes an axis the CSS pinned (`fixedHeight`/`fixedWidth` travel in the spec so the engine agrees).
+- `position: relative` offsets are applied after layout and travel in the spec as `relativeShift`: the sibling flow keeps the static slot and the engine nudges the box once, whether it sits flat on the slide or inside a declarative container. `sticky` is treated as in-flow because a slide never scrolls.
+- A border side can be recoloured with `border-top-color` (or re-weighted with `border-top-width`) on top of the `border-top` shorthand.
 - Text boxes carry no autofit (`normAutofit` made LibreOffice draw a 25.5pt title at 22pt); the conservative wrap width is what keeps the declared size safe.
 - Text height is the CSS line box (`lines x fontSize x lineHeight`, nothing added), so stacked blocks stay on their CSS positions; the width used for wrapping is deliberately 10% conservative so a line breaks early rather than overflowing.
 - Wrapping is greedy and breaks an over-long token at grapheme level, so `word-break: break-all`/`break-word` are translated (that is also what PowerPoint itself does) while `keep-all` is reported. `overflow-wrap` is not read, so it is reported rather than claimed.

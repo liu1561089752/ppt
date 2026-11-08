@@ -67,8 +67,10 @@ function auditLayout(nodes, page) {
         const first = boxes[i];
         const second = boxes[j];
         if (!first.box || !second.box) continue;
-        // Layers are intentional; a node that declares absolute positioning is one.
+        // Layers are intentional: absolute positioning says so, and so does a relative
+        // nudge - the author moved the box onto its neighbour on purpose.
         if (first.node.absolute || second.node.absolute) continue;
+        if (first.node.relativeShift || second.node.relativeShift) continue;
         const area = intersectionArea(first.box, second.box);
         if (area < MIN_AREA) continue;
         const smaller = Math.min(first.box.w * first.box.h, second.box.w * second.box.h);
@@ -89,7 +91,9 @@ function auditLayout(nodes, page) {
       // never sees. `nowrap` text is exempt because overflowing is what it means,
       // and an absolutely positioned node is a deliberate layer (a band that bleeds
       // past the edge on purpose), not flow content that ran out of room.
-      if (box && pageSize && !node.noWrap && !node.absolute) {
+      // A relative nudge is the same kind of statement: the author put it there.
+      if (box && pageSize && !node.noWrap && !node.absolute
+        && !node.relativeShift) {
         const overRight = box.x + box.w - pageSize.width;
         const overBottom = box.y + box.h - pageSize.height;
         const underLeft = -box.x;
@@ -102,7 +106,7 @@ function auditLayout(nodes, page) {
         }
       }
       if (box && children.length) {
-        const content = children.filter((child) => !child.absolute);
+        const content = children.filter((child) => !child.absolute && !child.relativeShift);
         const right = content.reduce((max, child) => Math.max(max, (child.x || 0) + (child.w || 0)), box.x);
         const bottom = content.reduce((max, child) => Math.max(max, (child.y || 0) + (child.h || 0)), box.y);
         const overflowX = right - (box.x + box.w);

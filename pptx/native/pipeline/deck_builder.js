@@ -174,8 +174,8 @@ function textElementFromNode(node, theme, resolvedTheme) {
     type: 'text',
     role,
     text: node.runs || node.text,
-    x: Number(node.x.toFixed(4)),
-    y: Number(node.y.toFixed(4)),
+    x: Number(xOf(node).toFixed(4)),
+    y: Number(yOf(node).toFixed(4)),
     w: Number(Math.max(0.05, node.w).toFixed(4)),
     h: Number(Math.max(0.05, node.h).toFixed(4)),
     fontFace,
@@ -226,8 +226,8 @@ function surfaceElementFromNode(node, resolvedTheme) {
 
   const element = {
     type: 'shape',
-    x: Number(node.x.toFixed(4)),
-    y: Number(node.y.toFixed(4)),
+    x: Number(xOf(node).toFixed(4)),
+    y: Number(yOf(node).toFixed(4)),
     w: Number(Math.max(0.02, node.w).toFixed(4)),
     h: Number(Math.max(0.02, node.h).toFixed(4)),
     fill: background ? background.hex : resolvedTheme.colors.surface
@@ -264,7 +264,21 @@ function surfaceElementFromNode(node, resolvedTheme) {
  * single-side border strip, and whether CSS pinned the width or the height. The
  * engine needs the latter to know what stretch alignment may resize.
  */
+/**
+ * The position the box occupies in the flow. A `position: relative` offset is
+ * applied again by the engine, so the spec carries the static position and the
+ * shift separately - otherwise a container child would be placed twice.
+ */
+function xOf(node) {
+  return Number.isFinite(node.staticX) ? node.staticX : node.x;
+}
+
+function yOf(node) {
+  return Number.isFinite(node.staticY) ? node.staticY : node.y;
+}
+
 function attachBoxFacts(element, node) {
+  if (node.relativeShift) element.relativeShift = Object.assign({}, node.relativeShift);
   if (node.fixedWidth) element.fixedWidth = true;
   if (node.fixedHeight) element.fixedHeight = true;
   if (!node.edge) return element;
@@ -284,16 +298,16 @@ function standaloneEdgeElement(node) {
   const round = (value) => Number(value.toFixed(4));
   const element = { type: 'shape', fill: edge.color, line: false };
   if (edge.side === 'top') {
-    Object.assign(element, { x: round(node.x), y: round(node.y), w: round(node.w), h: thickness });
+    Object.assign(element, { x: round(xOf(node)), y: round(yOf(node)), w: round(node.w), h: thickness });
   } else if (edge.side === 'bottom') {
     Object.assign(element, {
-      x: round(node.x), y: round(node.y + node.h - thickness), w: round(node.w), h: thickness
+      x: round(xOf(node)), y: round(yOf(node) + node.h - thickness), w: round(node.w), h: thickness
     });
   } else if (edge.side === 'left') {
-    Object.assign(element, { x: round(node.x), y: round(node.y), w: thickness, h: round(node.h) });
+    Object.assign(element, { x: round(xOf(node)), y: round(yOf(node)), w: thickness, h: round(node.h) });
   } else {
     Object.assign(element, {
-      x: round(node.x + node.w - thickness), y: round(node.y), w: thickness, h: round(node.h)
+      x: round(xOf(node) + node.w - thickness), y: round(yOf(node)), w: thickness, h: round(node.h)
     });
   }
   return element;
@@ -303,8 +317,8 @@ function imageElementFromNode(node) {
   if (!node.src) return null;
   const element = {
     type: 'image',
-    x: Number(node.x.toFixed(4)),
-    y: Number(node.y.toFixed(4)),
+    x: Number(xOf(node).toFixed(4)),
+    y: Number(yOf(node).toFixed(4)),
     w: Number(Math.max(0.05, node.w).toFixed(4)),
     h: Number(Math.max(0.05, node.h).toFixed(4)),
     fit: FIT_BY_OBJECT_FIT[node.objectFit] || 'cover'
@@ -346,8 +360,8 @@ function tableElementFromNode(node, resolvedTheme) {
   const width = Math.max(0.2, node.w);
   return {
     type: 'table',
-    x: Number(node.x.toFixed(4)),
-    y: Number(node.y.toFixed(4)),
+    x: Number(xOf(node).toFixed(4)),
+    y: Number(yOf(node).toFixed(4)),
     w: Number(width.toFixed(4)),
     h: Number(Math.max(0.2, node.h).toFixed(4)),
     rows: node.rows,
@@ -368,8 +382,8 @@ function lineElementFromNode(node, resolvedTheme) {
   const color = backgroundOf(style) || hexOrNull(style.borderColor);
   return {
     type: 'line',
-    x: Number(node.x.toFixed(4)),
-    y: Number(node.y.toFixed(4)),
+    x: Number(xOf(node).toFixed(4)),
+    y: Number(yOf(node).toFixed(4)),
     w: Number(Math.max(0.05, node.w).toFixed(4)),
     h: 0,
     color: (color && color.hex) || resolvedTheme.colors.border,
@@ -528,8 +542,8 @@ function containerElement(node, plan, resolvedTheme, report) {
   // A rotated group would need every child rotated about the group centre.
   if (node.rotate !== undefined) report.rotatedGroups += 1;
   const spec = { type: 'container', w: round4(node.w), h: round4(node.h) };
-  if (Number.isFinite(node.x)) spec.x = round4(node.x);
-  if (Number.isFinite(node.y)) spec.y = round4(node.y);
+  if (Number.isFinite(xOf(node))) spec.x = round4(xOf(node));
+  if (Number.isFinite(yOf(node))) spec.y = round4(yOf(node));
   attachBoxFacts(spec, node);
 
   spec.padding = containerPadding(node);
@@ -616,8 +630,8 @@ function textWithSurface(node, resolvedTheme, report) {
   text.h = round4(Math.max(0.02, node.h - boxPadding.top - boxPadding.bottom));
   const spec = {
     type: 'container',
-    x: round4(node.x),
-    y: round4(node.y),
+    x: round4(xOf(node)),
+    y: round4(yOf(node)),
     w: round4(node.w),
     h: round4(node.h),
     padding: boxPadding,
@@ -691,8 +705,8 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     report.charts += 1;
     return {
       type: 'chart',
-      x: Number(node.x.toFixed(4)),
-      y: Number(node.y.toFixed(4)),
+      x: Number(xOf(node).toFixed(4)),
+      y: Number(yOf(node).toFixed(4)),
       w: Number(Math.max(0.5, node.w).toFixed(4)),
       h: Number(Math.max(0.5, node.h).toFixed(4)),
       chartType: node.chartType,
@@ -707,7 +721,7 @@ function leafElementRotationFree(node, resolvedTheme, report) {
 }
 
 function boxOf(node) {
-  return { x: node.x, y: node.y, w: node.w, h: node.h };
+  return { x: xOf(node), y: yOf(node), w: node.w, h: node.h };
 }
 
 function emitContainerChildren(spec, node, plan, context) {
@@ -812,8 +826,8 @@ function emitAbsolute(node, context) {
   if (node.backgroundImage) {
     const picture = imageElementFromNode({
       src: node.backgroundImage.src,
-      x: node.x,
-      y: node.y,
+      x: xOf(node),
+      y: yOf(node),
       w: node.w,
       h: node.h,
       objectFit: node.backgroundImage.fit,

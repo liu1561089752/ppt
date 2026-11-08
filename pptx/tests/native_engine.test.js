@@ -3412,3 +3412,82 @@ test('stretch alignment never resizes a box whose CSS pinned that axis', () => {
   assert.ok(Math.abs(pinnedBox.y - freeBox.y) < 0.002, 'a non-stretched item aligns at the start');
 });
 
+
+test('a relative offset moves the box and leaves its siblings where they were', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .nudge { position: relative; top: 20px; left: 30px; width: 200px; height: 60px; background: #EEE; }',
+    '  .sticky { position: sticky; top: 0; width: 200px; height: 40px; background: #DDD; }',
+    '  .plain { width: 200px; height: 40px; background: #CCC; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="nudge"></div><div class="sticky"></div><div class="plain"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.report.unsupportedDetails, [], 'relative and sticky are translated, not reported');
+
+  const top = result.analysis.slides[0].nodes;
+  const nudge = top.find((node) => (node.classes || []).includes('nudge'));
+  const sticky = top.find((node) => (node.classes || []).includes('sticky'));
+  const plain = top.find((node) => (node.classes || []).includes('plain'));
+  // 40px padding + 30px / 20px of offset, in inches.
+  assert.ok(Math.abs(nudge.x - (70 / 96)) < 0.002, 'nudged right: ' + nudge.x);
+  assert.ok(Math.abs(nudge.y - (60 / 96)) < 0.002, 'nudged down: ' + nudge.y);
+  assert.ok(Math.abs(nudge.relativeShift.dx - 30 / 96) < 0.002, 'shift dx ' + nudge.relativeShift.dx);
+  assert.ok(Math.abs(nudge.relativeShift.dy - 20 / 96) < 0.002, 'shift dy ' + nudge.relativeShift.dy);
+  // Siblings keep the static flow position: the nudge is visual only.
+  assert.ok(Math.abs(sticky.y - (100 / 96)) < 0.002, 'sticky keeps the flow slot: ' + sticky.y);
+  assert.ok(Math.abs(plain.y - (140 / 96)) < 0.002, 'the next block is unmoved: ' + plain.y);
+  // In a slide nothing scrolls, so `sticky` never sticks and needs no offset.
+  assert.equal(sticky.relativeShift, undefined);
+
+  // The nudge travels in the spec and is applied by the engine, so a container child
+  // is not placed twice and a flat element is not shifted twice.
+  const cards = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .card { width: 400px; padding: 20px; background: #FFFFFF; }',
+    '  .card p { margin: 0; font-size: 14px; }',
+    '  .tag { position: relative; top: -12px; left: 200px; width: 80px; height: 24px; background: #B4633A; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="card"><p>body copy</p><div class="tag">NEW</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const card = cards.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(card, 'the card stays a declarative container');
+  assert.deepEqual(cards.report.containerFallbacks, []);
+  const tag = card.children.find((child) => JSON.stringify(child).includes('NEW'));
+  assert.ok(tag && tag.relativeShift, 'the shift travels beside the static position');
+
+  const { layoutSlide } = require('../native/engine/layout');
+  const laid = layoutSlide(cards.deck.slides[0], { width: 13.333, height: 7.5 }, cards.deck.theme || {}, {});
+  const elements = Array.isArray(laid) ? laid : (laid.elements || []);
+  const tagBox = elements.find((element) => JSON.stringify(element).includes('NEW'));
+  const copy = elements.find((element) => typeof element.text === 'string' && element.text.includes('body copy'));
+  assert.ok(tagBox && copy, 'both are emitted');
+  assert.ok(Math.abs(tagBox.x - (copy.x + 200 / 96)) < 0.004, 'shifted right of the copy: ' + tagBox.x);
+  // The tag follows the copy in the flow, so "up" means above its own slot.
+  assert.ok(tagBox.y < copy.y + copy.h, 'shifted up from its slot: ' + tagBox.y);
+});
+
+test('a border side can be recoloured by its longhand', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .card { width: 300px; height: 80px; background: #FFFFFF; border-top: 3px solid #EEEEEE; }',
+    '  .card.active { border-top-color: #123456; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="card"></div><div class="card active"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.report.unsupportedDetails, [], 'a per-side colour longhand is translated');
+  const strips = result.deck.slides[0].elements.filter((element) => element.edge);
+  assert.equal(strips.length, 2, 'both cards get an accent strip');
+  assert.equal(strips[0].edge.color, 'EEEEEE');
+  assert.equal(strips[1].edge.color, '123456', 'the longhand wins over the shorthand colour');
+  assert.ok(Math.abs(strips[1].edge.width - 2.25) < 0.01, 'the shorthand still supplies the width: ' + strips[1].edge.width);
+});
+

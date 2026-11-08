@@ -91,6 +91,7 @@ jobs:
           npm run pipeline:stress
           npm run pipeline:vertical
           npm run pipeline:float
+          npm run pipeline:relative
           npm run audit:pipeline
           # The converted table must keep its declared column proportions.
           python scripts/verify_native_ooxml.py pipeline-converted/pipeline-converted.pptx --require-table --require-uneven-columns
@@ -137,6 +138,7 @@ jobs:
           npm run render:pipeline-stress
           npm run render:pipeline-vertical
           npm run render:pipeline-float
+          npm run render:pipeline-relative
           npm run render:batch
           npm run render:theme
           npm run render:parity
@@ -155,13 +157,14 @@ jobs:
           python scripts/preview_deck.py pipeline-converted/pipeline-stress.pptx --output-dir preview/pipeline-stress --sheet preview/pipeline-stress-sheet.png
           python scripts/preview_deck.py pipeline-converted/pipeline-vertical.pptx --output-dir preview/pipeline-vertical --sheet preview/pipeline-vertical-sheet.png
           python scripts/preview_deck.py pipeline-converted/pipeline-float.pptx --output-dir preview/pipeline-float --sheet preview/pipeline-float-sheet.png
+          python scripts/preview_deck.py pipeline-converted/pipeline-relative.pptx --output-dir preview/pipeline-relative --sheet preview/pipeline-relative-sheet.png
       - name: Compare against reviewed golden slide images
         working-directory: pptx/native
         run: |
           set -e
           for deck in native-demo native-components-demo native-design-migration-demo \
                       native-design-parity-demo native-layouts-demo native-images-demo \
-                      native-stress-deck pipeline-converted pipeline-chart pipeline-decorations pipeline-grid pipeline-structural pipeline-indent pipeline-wrap pipeline-stress pipeline-vertical pipeline-float; do
+                      native-stress-deck pipeline-converted pipeline-chart pipeline-decorations pipeline-grid pipeline-structural pipeline-indent pipeline-wrap pipeline-stress pipeline-vertical pipeline-float pipeline-relative; do
             golden="golden/$deck"
             if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
               python scripts/visual_regression.py \

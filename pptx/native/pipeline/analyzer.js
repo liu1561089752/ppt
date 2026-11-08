@@ -56,6 +56,11 @@ const SUPPORTED_PROPERTIES = new Set([
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
   'borderTop', 'borderRight', 'borderBottom', 'borderLeft',
+  // Per-side longhands: `border-top: 3px solid` plus `border-top-color: x` is the
+  // usual way to recolour one edge, so they fold into the same side declaration.
+  'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+  'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
+  'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
@@ -377,15 +382,12 @@ function checkUnsupported(ctx, domNode, style) {
   // that edge (the accent bar on a card), which is a real editable object; any other
   // asymmetric combination is reported instead of silently losing sides.
   const isTableCell = domNode.tag === 'td' || domNode.tag === 'th';
-  if (!isTableCell && !uniformBorderSides(style)) {
-    const declared = BORDER_SIDES
-      .map((side) => ({ side, border: parseBorder({ border: borderSideValue(style, side) }) }))
-      .filter((entry) => entry.border && entry.border.width > 0);
-    if (declared.length !== 1) {
-      recordUnsupported(ctx, domNode, 'border',
-        BORDER_SIDES.map((side) => side + ': ' + String(borderSideValue(style, side) ?? '')).join('; '),
-        'A native shape outline is uniform; declare every side the same, or use a separate rule/shape');
-    }
+  // One declared side is enough to translate (see `singleBorderSide`); two different
+  // sides are reported rather than silently losing one.
+  if (!isTableCell && !uniformBorderSides(style) && !singleBorderSide(style)) {
+    recordUnsupported(ctx, domNode, 'border',
+      BORDER_SIDES.map((side) => side + ': ' + borderSideText(style, side)).join('; '),
+      'A native shape outline is uniform; declare every side the same, or use a separate rule/shape');
   }
 }
 
@@ -393,7 +395,7 @@ function checkUnsupported(ctx, domNode, style) {
 function singleBorderSide(style) {
   if (uniformBorderSides(style)) return null;
   const declared = BORDER_SIDES
-    .map((side) => ({ side, border: parseBorder({ border: borderSideValue(style, side) }) }))
+    .map((side) => ({ side, border: parseBorder(borderSideDeclaration(style, side)) }))
     .filter((entry) => entry.border && entry.border.width > 0);
   return declared.length === 1 ? declared[0] : null;
 }
@@ -964,6 +966,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     node.h = explicitHeight !== null
       ? explicitHeight
       : (Number.isFinite(boxHeight) && boxHeight > 0.2 ? boxHeight : Math.max(1.6, width * 0.5));
+    applyRelativeShift(node, style, parentWidth);
     return node;
   }
 
@@ -983,6 +986,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     // of it. The text itself still measures at the content width.
     node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : explicitHeight;
     applyWritingMode(node, domNode, style, measured, explicitHeight, ctx);
+    applyRelativeShift(node, style, parentWidth);
     return node;
   }
 
@@ -1012,11 +1016,13 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     node.objectFit = (style.objectFit || 'cover').toLowerCase();
     node.focus = descriptionFocus(style.objectPosition);
     node.radius = radiusOf(style);
+    applyRelativeShift(node, style, parentWidth);
     return node;
   }
 
   if (kind === 'line') {
     node.h = explicitHeight === null ? 0.02 : explicitHeight;
+    applyRelativeShift(node, style, parentWidth);
     return node;
   }
 
@@ -1026,6 +1032,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     node.columnCount = table.columns;
     node.colWidths = table.colWidths;
     node.h = explicitHeight === null ? Math.max(0.4, node.rows.length * 0.34) : explicitHeight;
+    applyRelativeShift(node, style, parentWidth);
     return node;
   }
 
@@ -1061,7 +1068,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   }
 
   const contentBottom = node.children.reduce((bottom, child) => {
-    const childBottom = child.absolute ? bottom : child.y + child.h;
+    const childBottom = child.absolute ? bottom : child.y - relativeDy(child) + child.h;
     return Math.max(bottom, childBottom);
   }, contentBox.y);
   const autoHeight = Math.max(0, Number((contentBottom - y + insetBottom).toFixed(4)));
@@ -1069,8 +1076,32 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   // when the content measures taller: CSS would let the content spill out, and hiding
   // that difference behind a taller box is how a clipped design stops being reported.
   node.h = explicitHeight === null ? autoHeight : explicitHeight;
+  applyRelativeShift(node, style, parentWidth);
   if (node.h <= 0) node.h = 0.02;
   return node;
+}
+
+/**
+ * `position: relative` moves the box and leaves a hole where it used to be, so the
+ * offset is applied after layout and the flow cursor reads the static position back.
+ * `sticky` is the same in a slide: there is nothing to scroll, so it never sticks.
+ */
+function applyRelativeShift(node, style, parentWidth) {
+  const position = String(style.position || 'static').toLowerCase();
+  if (position !== 'relative' && position !== 'sticky') return;
+  const options = { parentWidth, fontSizePx: 16 };
+  const offsetX = (inchesOf(style.left, 'x', options) || 0) - (inchesOf(style.right, 'x', options) || 0);
+  const offsetY = (inchesOf(style.top, 'y', options) || 0) - (inchesOf(style.bottom, 'y', options) || 0);
+  if (!offsetX && !offsetY) return;
+  node.staticX = node.x;
+  node.staticY = node.y;
+  node.x = Number((node.x + offsetX).toFixed(4));
+  node.y = Number((node.y + offsetY).toFixed(4));
+  node.relativeShift = { dx: Number(offsetX.toFixed(4)), dy: Number(offsetY.toFixed(4)) };
+}
+
+function relativeDy(node) {
+  return node && node.relativeShift ? node.relativeShift.dy : 0;
 }
 
 function childMargins(childStyle, context) {
@@ -1151,7 +1182,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     if (!node) continue;
     node.absolute = isAbsolute(childStyle);
     nodes.push(node);
-    if (!node.absolute) cursor = node.y + node.h + margins.bottom;
+    if (!node.absolute) cursor = node.y - relativeDy(node) + node.h + margins.bottom;
   }
   return nodes;
 }
@@ -1414,7 +1445,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
         const self = alignSelfOf(childStyle);
         if (self) node.alignSelf = self;
         if (declaresLength(ctx.styles.computed(child).width)) node.fixedWidth = true;
-        cursor = node.y + node.h + gap + margins.bottom;
+        cursor = node.y - relativeDy(node) + node.h + gap + margins.bottom;
       }
       return node;
     }).filter(Boolean);
@@ -1976,8 +2007,26 @@ function readChart(domNode, ctx) {
 const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
 const TABLE_CELL_BORDER_PROPERTIES = new Set(['borderTop', 'borderRight', 'borderBottom', 'borderLeft']);
 
-/** One declared border side, read literally so the supported-property guard sees it. */
-function borderSideValue(style, side) {
+/**
+ * One declared border side. `border-top: 3px solid` plus `border-top-color: x` has to
+ * reach the same parser as the shorthand, so the longhands are folded into the same
+ * declaration object and `parseBorder` resolves them in CSS order (longhand wins).
+ * Each longhand is read literally so the supported-property guard can see it.
+ */
+function borderSideDeclaration(style, side) {
+  const declaration = {};
+  const shorthand = borderSideShorthand(style, side);
+  if (shorthand !== undefined) declaration.border = shorthand;
+  const width = borderSideWidth(style, side);
+  if (width !== undefined) declaration.borderWidth = width;
+  const lineStyle = borderSideStyle(style, side);
+  if (lineStyle !== undefined) declaration.borderStyle = lineStyle;
+  const color = borderSideColor(style, side);
+  if (color !== undefined) declaration.borderColor = color;
+  return declaration;
+}
+
+function borderSideShorthand(style, side) {
   if (side === 'top') return style.borderTop;
   if (side === 'right') return style.borderRight;
   if (side === 'bottom') return style.borderBottom;
@@ -1985,12 +2034,46 @@ function borderSideValue(style, side) {
   return undefined;
 }
 
+function borderSideWidth(style, side) {
+  if (side === 'top') return style.borderTopWidth;
+  if (side === 'right') return style.borderRightWidth;
+  if (side === 'bottom') return style.borderBottomWidth;
+  if (side === 'left') return style.borderLeftWidth;
+  return undefined;
+}
+
+function borderSideStyle(style, side) {
+  if (side === 'top') return style.borderTopStyle;
+  if (side === 'right') return style.borderRightStyle;
+  if (side === 'bottom') return style.borderBottomStyle;
+  if (side === 'left') return style.borderLeftStyle;
+  return undefined;
+}
+
+function borderSideColor(style, side) {
+  if (side === 'top') return style.borderTopColor;
+  if (side === 'right') return style.borderRightColor;
+  if (side === 'bottom') return style.borderBottomColor;
+  if (side === 'left') return style.borderLeftColor;
+  return undefined;
+}
+
+/** A side as the author wrote it, for reports: `2px solid #123` plus any longhand. */
+function borderSideText(style, side) {
+  const declaration = borderSideDeclaration(style, side);
+  return ['border', 'borderWidth', 'borderStyle', 'borderColor']
+    .map((key) => declaration[key])
+    .filter((value) => value !== undefined && value !== null)
+    .join(' ');
+}
+
 /** A border declaration is uniform when every side names the same thing. */
 function uniformBorderSides(style) {
-  const values = BORDER_SIDES.map((side) => String(borderSideValue(style, side) ?? ''));
+  const values = BORDER_SIDES.map((side) => JSON.stringify(borderSideDeclaration(style, side)));
   return values.every((value) => value === values[0]);
 }
 
+/** A border declaration is uniform when every side names the same thing. */
 /**
  * The borders of one table cell, per side. A native table cell can carry four
  * independent lines, so `td { border-bottom: ... }` is translated instead of
@@ -1998,8 +2081,8 @@ function uniformBorderSides(style) {
  */
 function cellBorderOptions(style) {
   const sides = BORDER_SIDES.map((side) => {
-    const declaration = borderSideValue(style, side);
-    return declaration === undefined ? null : parseBorder({ border: declaration });
+    const declaration = borderSideDeclaration(style, side);
+    return Object.keys(declaration).length ? parseBorder(declaration) : null;
   });
   const option = (border) => (border
     ? { type: border.dash ? 'dash' : 'solid', color: border.color, pt: borderWidthPt(border.width) }

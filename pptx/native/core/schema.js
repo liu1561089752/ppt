@@ -366,6 +366,12 @@ function validateElement(p, element, errors) {
         if (element.fixedHeight !== undefined && typeof element.fixedHeight !== 'boolean') {
           errors.push(p + '.fixedHeight must be a boolean');
         }
+        if (element.relativeShift !== undefined) {
+          const shift = element.relativeShift;
+          if (!shift || typeof shift !== 'object' || !Number.isFinite(shift.dx) || !Number.isFinite(shift.dy)) {
+            errors.push(p + '.relativeShift must be an object with finite dx and dy');
+          }
+        }
         if (element.bullet !== undefined && typeof element.bullet !== 'boolean' &&
             (typeof element.bullet !== 'object' || element.bullet === null || Array.isArray(element.bullet))) {
           errors.push(p + '.bullet must be a boolean or options object');

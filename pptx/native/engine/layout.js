@@ -474,20 +474,25 @@ function edgeElements(element, box) {
 }
 
 function emitElement(source, box, theme, options, sink) {
+  // A relative offset moves the box after placement, so it never affects siblings.
+  const shift = source.relativeShift;
+  const placed = shift
+    ? { x: box.x + (shift.dx || 0), y: box.y + (shift.dy || 0), w: box.w, h: box.h }
+    : box;
   if (isContainer(source)) {
-    layoutContainer(source, { x: box.x, y: box.y, w: box.w, h: box.h === undefined ? source.h : box.h }, theme, options)
+    layoutContainer(source, { x: placed.x, y: placed.y, w: placed.w, h: placed.h === undefined ? source.h : placed.h }, theme, options)
       .elements.forEach((element) => sink.push(element));
     // Drawn after the container so the accent stays on top of its own surface.
-    const frameH = box.h === undefined ? source.h : box.h;
-    edgeElements(source, { x: box.x, y: box.y, w: box.w, h: frameH })
+    const frameH = placed.h === undefined ? source.h : box.h;
+    edgeElements(source, { x: placed.x, y: placed.y, w: placed.w, h: frameH })
       .forEach((strip) => sink.push(strip));
     return;
   }
   const { element } = prepareElement(source, box.w, theme, options);
-  element.x = box.x;
-  element.y = box.y;
-  element.w = box.w;
-  element.h = box.h === undefined ? element.h : box.h;
+  element.x = placed.x;
+  element.y = placed.y;
+  element.w = placed.w;
+  element.h = placed.h === undefined ? element.h : placed.h;
   sink.push(element);
   edgeElements(element, { x: element.x, y: element.y, w: element.w, h: element.h })
     .forEach((strip) => sink.push(strip));
