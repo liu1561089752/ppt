@@ -38,6 +38,7 @@ const {
 } = require('./css');
 const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
 const { flexWidths } = require('../engine/flex_size');
+const { flexLines } = require('../engine/flex_lines');
 const {
   placeGridItems,
   gridRowCount,
@@ -341,9 +342,8 @@ function checkUnsupported(ctx, domNode, style) {
         'Only rotate() has a native shape rotation');
     }
   }
-  if (style.flexWrap === 'wrap' && style.display === 'flex') {
-    recordUnsupported(ctx, domNode, 'flexWrap', 'wrap', 'Wrapping flex rows are laid out as a single line');
-  }
+  // `flex-wrap: wrap` is laid out in real lines by the row branch; a wrapping
+  // column still falls back to a single column, so it is reported there instead.
   // A native outline is uniform, so an asymmetric border (only `border-bottom`,
   // say) cannot be reproduced on a shape - but a table cell has four lines.
   const isTableCell = domNode.tag === 'td' || domNode.tag === 'th';
@@ -832,7 +832,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       node.textHeight = estimateTextHeight(node.text, Math.max(0.2, contentWidth), measured.fontSizePt,
         { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92, noWrap: measured.noWrap });
     }
-    node.h = explicitHeight === null ? node.textHeight : explicitHeight;
+    // Padding and border are part of the box: leaving them out of the height made a
+    // padded card shorter than it renders, so a wrapped row put the next line on top
+    // of it. The text itself still measures at the content width.
+    node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : explicitHeight;
     return node;
   }
 
@@ -1166,50 +1169,75 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   });
   const shrinks = flow.map((child) => flexShrinkOf(ctx.styles.computed(child)));
   const available = Math.max(0, contentBox.w - gap * (flow.length - 1));
-  const widths = flexWidths(flow.map((child, index) => ({
+  const items = flow.map((child, index) => ({
     base: bases[index] === null ? 0 : bases[index],
     grow: grows[index],
     shrink: shrinks[index]
-  })), available);
+  }));
+  const wrapValue = String(style.flexWrap || 'nowrap').toLowerCase();
+  const wraps = wrapValue.startsWith('wrap');
+  if (wrapValue && !wraps && wrapValue !== 'nowrap') {
+    recordUnsupported(ctx, domNode, 'flexWrap', style.flexWrap,
+      'Only flex-wrap: wrap and nowrap are translated');
+  }
+  // A wrapping row breaks into lines before growing; a single line is the same
+  // computation with one group, so both paths share the code below.
+  const lines = wraps
+    ? flexLines(items, contentBox.w, gap)
+    : [{
+      indices: flow.map((child, index) => index),
+      widths: flexWidths(items, available)
+    }];
 
-  const usedWidth = widths.reduce((sum, width) => sum + width, 0) + gap * (flow.length - 1);
-  const slack = Math.max(0, contentBox.w - usedWidth);
   const justify = String(style.justifyContent || 'flex-start').toLowerCase();
-  let startX = contentBox.x;
-  let extraGap = 0;
-  if (justify === 'center') startX += slack / 2;
-  else if (justify === 'flex-end' || justify === 'end') startX += slack;
-  else if (justify === 'space-between' && flow.length > 1) extraGap = slack / (flow.length - 1);
-  else if (justify === 'space-around') {
-    startX += slack / (flow.length * 2);
-    extraGap = slack / flow.length;
-  }
-
-  let cursor = startX;
   const nodes = [];
-  flow.forEach((child, index) => {
-    const node = analyzeNode(child, { x: cursor, y: contentBox.y, w: widths[index], h: null }, inherited, ctx);
-    if (node) {
-      const self = alignSelfOf(ctx.styles.computed(child));
-      if (self) node.alignSelf = self;
-      // The engine replays these three numbers instead of re-reading the cascade.
-      if (bases[index] !== null) node.flexBasis = bases[index];
-      node.flexGrow = grows[index];
-      node.flexShrink = shrinks[index];
-      nodes.push(node);
+  let lineTop = contentBox.y;
+  lines.forEach((line) => {
+    const widthsInLine = line.widths;
+    const count = line.indices.length;
+    const usedLine = widthsInLine.reduce((sum, width) => sum + width, 0) + gap * (count - 1);
+    const slack = Math.max(0, contentBox.w - usedLine);
+    let startX = contentBox.x;
+    let extraGap = 0;
+    if (justify === 'center') startX += slack / 2;
+    else if (justify === 'flex-end' || justify === 'end') startX += slack;
+    else if (justify === 'space-between' && count > 1) extraGap = slack / (count - 1);
+    else if (justify === 'space-around') {
+      startX += slack / (count * 2);
+      extraGap = slack / count;
     }
-    cursor += widths[index] + gap + extraGap;
-  });
-  // The row's cross size is its tallest item: stretch fills it, others align in it.
-  if (nodes.length) {
-    const tallest = nodes.reduce((max, node) => Math.max(max, node.h), 0);
-    nodes.filter((node) => !node.absolute).forEach((node) => {
-      const align = node.alignSelf || alignItems;
-      if (align === 'stretch') node.h = Math.max(node.h, tallest);
-      else if (align === 'center') node.y = contentBox.y + (tallest - node.h) / 2;
-      else if (align === 'end' || align === 'flex-end') node.y = contentBox.y + tallest - node.h;
+
+    let cursor = startX;
+    const lineNodes = [];
+    line.indices.forEach((index, position) => {
+      const child = flow[index];
+      const node = analyzeNode(child, { x: cursor, y: lineTop, w: widthsInLine[position], h: null }, inherited, ctx);
+      if (node) {
+        const self = alignSelfOf(ctx.styles.computed(child));
+        if (self) node.alignSelf = self;
+        // The engine replays these three numbers instead of re-reading the cascade.
+        // A wrapped row states the base explicitly (0 = no base) so the engine
+        // re-breaks the same lines instead of using the already distributed width.
+        if (bases[index] !== null) node.flexBasis = bases[index];
+        else if (wraps) node.flexBasis = 0;
+        node.flexGrow = grows[index];
+        node.flexShrink = shrinks[index];
+        nodes.push(node);
+        lineNodes.push(node);
+      }
+      cursor += widthsInLine[position] + gap + extraGap;
     });
-  }
+    // Each line's cross size is its own tallest item: stretch fills it, others
+    // align inside it, and the next line starts below it.
+    const tallestInLine = lineNodes.reduce((max, node) => Math.max(max, node.h), 0);
+    lineNodes.forEach((node) => {
+      const align = node.alignSelf || alignItems;
+      if (align === 'stretch') node.h = Math.max(node.h, tallestInLine);
+      else if (align === 'center') node.y = lineTop + (tallestInLine - node.h) / 2;
+      else if (align === 'end' || align === 'flex-end') node.y = lineTop + tallestInLine - node.h;
+    });
+    lineTop += tallestInLine + gap;
+  });
   return nodes.concat(absolute);
 }
 

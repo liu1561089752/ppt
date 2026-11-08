@@ -2854,3 +2854,74 @@ test('white-space: nowrap stays on one line and is written as wrap="none"', asyn
   ] }] }).some((error) => error.includes('nowrap')));
 });
 
+
+test('flex-wrap: wrap breaks a row into lines the engine reproduces', () => {
+  const build = (wrap) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .tags { display: flex; ' + (wrap ? 'flex-wrap: wrap; ' : '') + 'gap: 12px; width: 600px; }',
+    '  .tag { flex: 0 0 180px; padding: 6px 10px; font-size: 12px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="tags">',
+    [1, 2, 3, 4, 5].map((n) => '    <div class="tag"><div>' + n + '</div></div>').join('\n'),
+    '  </div></main></body></html>'
+  ].join('\n'));
+
+  const wrapped = build(true);
+  assert.deepEqual(wrapped.report.unsupportedDetails, []);
+  assert.ok(wrapped.report.maxBoxDelta < 0.002, 'engine must replay the wrapped geometry, got ' + wrapped.report.maxBoxDelta);
+  const row = wrapped.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.equal(row.wrap, true);
+  // 3 items of 180px + 2 gaps of 12px = 564px fit in 600px; two lines, so the
+  // container is two tag boxes plus one gap tall.
+  const single = build(false).deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.equal(single.wrap, undefined);
+  assert.ok(row.h > single.h + 0.3, 'the wrapped row must be two lines tall: ' + row.h + ' vs ' + single.h);
+
+  // An item without a base never forces a break, which keeps the intent predictable.
+  const autoBasis = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .row { display: flex; flex-wrap: wrap; gap: 10px; width: 400px; }',
+    '  .cell { flex: 1; height: 40px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="row"><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const autoRow = autoBasis.deck.slides[0].elements.find((element) => element.type === 'container');
+  const autoSingle = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .row { display: flex; gap: 10px; width: 400px; }',
+    '  .cell { flex: 1; height: 40px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="row"><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>',
+    '</main></body></html>'
+  ].join('\n')).deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(Math.abs(autoRow.h - autoSingle.h) < 0.01, 'auto items stay on one line');
+});
+
+test('a padded card is as tall as it renders, so a wrapped line does not overlap', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .card { width: 200px; padding: 10px 14px; font-size: 13px; line-height: 1.5; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="card">标签文字</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const card = result.deck.slides[0].elements.find((element) => element.type === 'text'
+    || (element.type === 'container' && element.children));
+  const textNode = card.type === 'container' ? card.children[0] : card;
+  const textHeight = textNode.h;
+  const pad = card.padding ? (card.padding.top + card.padding.bottom) / 2 : 0;
+  // The box height carries the vertical padding; the text box inside does not.
+  assert.ok(textHeight > 0.2, 'text height ' + textHeight);
+  if (card.type === 'container') {
+    assert.ok(card.h > textNode.h + 0.1, 'the container must add its padding back: ' + card.h + ' vs ' + textNode.h);
+  } else {
+    assert.ok(card.h > 0.3, 'a padded text box height must include the padding: ' + card.h);
+  }
+  assert.ok(pad >= 0);
+});
+

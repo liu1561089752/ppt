@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>flex-wrap · 换行由宽度决定</title>
+<style>
+  :root {
+    --page: #140f0b;
+    --ink: #f6f1e7;
+    --muted: #a99a86;
+    --card: #221a13;
+    --line: #3a2d21;
+    --accent: #e0a06a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+  .slide {
+    width: 1280px; height: 720px;
+    padding: 44px 56px;
+    background: var(--page);
+    color: var(--ink);
+  }
+  .kicker {
+    font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+    color: #d98a4b;
+  }
+  h1 { margin: 14px 0 6px; font-size: 34px; line-height: 1.25; font-weight: 600; }
+  .lede { margin: 0 0 22px; font-size: 14px; line-height: 1.9; color: var(--muted); width: 880px; }
+
+  /* 第一行：标签云，宽度不够时整条换到下一行 */
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    width: 1104px;
+    margin-bottom: 26px;
+  }
+  .tag {
+    flex: 0 0 200px;
+    padding: 10px 14px;
+    background: var(--card);
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .tag b { color: #d98a4b; font-weight: 600; }
+
+  /* 第二行：flex-basis 参与分行，换行后再按剩余空间放大 */
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    width: 700px;
+    margin-bottom: 24px;
+  }
+  .stat {
+    flex: 1 1 300px;
+    padding: 14px 16px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .stat .label { font-size: 12px; letter-spacing: 1px; color: var(--muted); }
+  .stat .value { margin-top: 6px; font-size: 24px; font-weight: 600; }
+  .stat .delta { margin-top: 4px; font-size: 12px; color: #8fc7a8; }
+
+  .foot { font-size: 12px; line-height: 1.8; color: #7d6f5f; width: 1000px; }
+</style>
+</head>
+<body>
+<main class="slide">
+  <div class="kicker">flex-wrap</div>
+  <h1>行数由容器宽度算出来，不靠手工分组</h1>
+  <p class="lede">每个标签声明固定宽度，容器一窄就整条换行；换行后每行再各自分配剩余空间。</p>
+
+  <div class="tags">
+    <div class="tag"><b>01</b> 现状 · 页面 → PPTX</div>
+    <div class="tag"><b>02</b> 原生可编辑对象</div>
+    <div class="tag"><b>03</b> 版式由 CSS 推导</div>
+    <div class="tag"><b>04</b> 表格与图表原生</div>
+    <div class="tag"><b>05</b> 文本仍是文本</div>
+    <div class="tag"><b>06</b> 每行独立对齐</div>
+    <div class="tag"><b>07</b> 溢出时收缩</div>
+    <div class="tag"><b>08</b> 回退有清单</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">第一行</div>
+      <div class="value">2 张卡片</div>
+      <div class="delta">flex-basis 300px · 换行后放大</div>
+    </div>
+    <div class="stat">
+      <div class="label">第二行</div>
+      <div class="value">1 张卡片</div>
+      <div class="delta">独占一行，撑满容器</div>
+    </div>
+    <div class="stat">
+      <div class="label">第三张</div>
+      <div class="value">换成第二行</div>
+      <div class="delta">行数按宽度算，不写死</div>
+    </div>
+  </div>
+
+  <div class="foot">换行的判据是每项的 flex-basis：没有声明宽度的项不会强行换行（它的 max-content 尺寸没有测量），所以统计条与标签云的布局可预期。</div>
+</main>
+</body>
+</html>

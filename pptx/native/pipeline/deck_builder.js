@@ -426,6 +426,7 @@ function containerPlan(node, state) {
   let direction = 'column';
   let columns = null;
   let tracks = null;
+  let wrap = false;
   if (display === 'grid') {
     columns = gridColumnCount(style);
     if (Array.isArray(node.gridTracks) && node.gridTracks.length) {
@@ -435,10 +436,13 @@ function containerPlan(node, state) {
       columns = tracks.length;
     }
   } else if (display === 'flex') {
-    if (String(style.flexWrap || 'nowrap').toLowerCase() === 'wrap') {
-      return { ok: false, reason: 'flex-wrap: wrap needs multiple lines' };
-    }
     direction = String(style.flexDirection || 'row').toLowerCase().startsWith('column') ? 'column' : 'row';
+    const wrapValue = String(style.flexWrap || 'nowrap').toLowerCase();
+    if (wrapValue.startsWith('wrap')) {
+      // A wrapping column would need column lines, which the engine does not model.
+      if (direction !== 'row') return { ok: false, reason: 'flex-wrap on a column needs column lines' };
+      wrap = true;
+    }
   }
 
   for (const child of children) {
@@ -452,7 +456,7 @@ function containerPlan(node, state) {
     if (spaced) return { ok: false, reason: display + ' child declares margins' };
   }
 
-  return { ok: true, direction, columns, display, tracks };
+  return { ok: true, direction, columns, display, tracks, wrap };
 }
 
 function containerPadding(node) {
@@ -500,6 +504,7 @@ function containerElement(node, plan, resolvedTheme, report) {
   } else if (plan.direction === 'row') {
     spec.direction = 'row';
     spec.gap = containerGap(style, 'row');
+    if (plan.wrap) spec.wrap = true;
   } else if (plan.display === 'flex') {
     spec.direction = 'column';
     spec.gap = containerGap(style, 'column');
@@ -552,14 +557,17 @@ function textWithSurface(node, resolvedTheme, report) {
   delete surface.h;
   delete text.x;
   delete text.y;
-  text.h = round4(node.h);
+  // The text box is the container's content box: the container adds the padding
+  // back, so giving the text the border-box height would double it.
+  const boxPadding = containerPadding(node);
+  text.h = round4(Math.max(0.02, node.h - boxPadding.top - boxPadding.bottom));
   const spec = {
     type: 'container',
     x: round4(node.x),
     y: round4(node.y),
     w: round4(node.w),
     h: round4(node.h),
-    padding: containerPadding(node),
+    padding: boxPadding,
     direction: 'column',
     gap: 0,
     align: 'stretch',
@@ -708,6 +716,12 @@ function containerChild(node, parentPlan, context) {
     if (Number.isFinite(node.flexBasis)) element.flexBasis = round4(node.flexBasis);
     if (Number.isFinite(node.flexShrink) && node.flexShrink !== 1) {
       element.flexShrink = node.flexShrink;
+    }
+    // The engine grows an item only when it declares a weight; without the
+    // declared weight a `flex: 1 1 300px` card would freeze at its basis.
+    const derivedGrow = Number.isFinite(node.flexBasis) && node.flexBasis > 0 ? 0 : 1;
+    if (Number.isFinite(node.flexGrow) && node.flexGrow !== derivedGrow) {
+      element.flex = node.flexGrow;
     }
   }
   // A grid child may span several tracks; the engine replays the same placement.

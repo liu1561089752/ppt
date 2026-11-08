@@ -2,6 +2,7 @@
 
 const { estimateTextHeight, estimateRichTextHeight, wrapText } = require('./text_measure');
 const { flexWidths } = require('./flex_size');
+const { flexLines } = require('./flex_lines');
 const {
   placeGridItems,
   gridRowCount,
@@ -243,6 +244,11 @@ function placeRow(container, box, theme, options, sink) {
   const contentWidth = Math.max(0, box.w - padding.left - padding.right);
   const children = container.children || [];
   if (!children.length) return padding.top + padding.bottom;
+  if (container.wrap) {
+    return placeWrappedRow(container, box, theme, options, sink, {
+      padding, gap, contentX, contentY, contentWidth, children
+    });
+  }
 
   const available = Math.max(0, contentWidth - gap * (children.length - 1));
   const widths = flexWidths(children.map((child) => {
@@ -287,6 +293,70 @@ function placeRow(container, box, theme, options, sink) {
   });
 
   return padding.top + Math.max(innerHeight, tallest) + padding.bottom;
+}
+
+/**
+ * A `flex-wrap: wrap` row: items break into lines before they grow, each line is
+ * distributed and cross-aligned on its own, and the container height is the sum of
+ * the line heights plus the gaps. Mirrors the analyzer's row branch so both sides
+ * agree by construction - the line groups come from the shared `flexLines`.
+ */
+function placeWrappedRow(container, box, theme, options, sink, frame) {
+  const { padding, gap, contentX, contentY, contentWidth, children } = frame;
+  const items = children.map((child) => {
+    // A wrapped row states its base explicitly (`flexBasis`, 0 = no base), because
+    // `w` already holds the width distributed inside its line: re-breaking on that
+    // would sum back to a full row and never wrap.
+    const base = Number.isFinite(child.flexBasis) ? child.flexBasis
+      : (Number.isFinite(child.w) ? child.w : 0);
+    const declaredGrow = Number.isFinite(child.flex) && child.flex > 0 ? child.flex : 0;
+    const grow = declaredGrow > 0 ? declaredGrow : (base > 0 ? 0 : 1);
+    const shrink = Number.isFinite(child.flexShrink) && child.flexShrink >= 0 ? child.flexShrink : 1;
+    return { base, grow, shrink };
+  });
+  const lines = flexLines(items, contentWidth, gap);
+  const justify = container.justify || 'start';
+  const align = container.align || 'stretch';
+  let lineTop = contentY;
+  let totalHeight = 0;
+
+  lines.forEach((line, lineIndex) => {
+    const widthsInLine = line.widths;
+    const count = line.indices.length;
+    const used = widthsInLine.reduce((sum, width) => sum + width, 0) + gap * (count - 1);
+    const free = Math.max(0, contentWidth - used);
+    let offset = 0;
+    let extraGap = 0;
+    if (justify === 'center') offset = free / 2;
+    else if (justify === 'end') offset = free;
+    else if (justify === 'space-between' && count > 1) extraGap = free / (count - 1);
+    else if (justify === 'space-around') {
+      offset = free / (count * 2);
+      extraGap = free / count;
+    }
+
+    const heights = line.indices.map((index, position) =>
+      measureElementHeight(children[index], widthsInLine[position], theme, options));
+    const tallestInLine = Math.max(...heights);
+    let cursorX = contentX + offset;
+    line.indices.forEach((index, position) => {
+      const child = children[index];
+      const childAlign = child.alignSelf || align;
+      let height = heights[position];
+      let y = lineTop;
+      if (childAlign === 'stretch') height = Math.max(height, tallestInLine);
+      else if (childAlign === 'center') y = lineTop + (tallestInLine - height) / 2;
+      else if (childAlign === 'end') y = lineTop + tallestInLine - height;
+      emitElement(child, { x: cursorX, y, w: widthsInLine[position], h: height }, theme, options, sink);
+      cursorX += widthsInLine[position] + gap + extraGap;
+    });
+    totalHeight += tallestInLine;
+    if (lineIndex < lines.length - 1) totalHeight += gap;
+    lineTop += tallestInLine + gap;
+  });
+
+  const inner = box.h === undefined ? totalHeight : Math.max(totalHeight, box.h - padding.top - padding.bottom);
+  return padding.top + inner + padding.bottom;
 }
 
 /** Fixed tracks keep their width; fractional tracks share what is left. */

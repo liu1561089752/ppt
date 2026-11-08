@@ -50,7 +50,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Cascade | stylesheet order + specificity (ids, classes, tags), then inline `style=""`, plus `var(--token, fallback)` |
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
-| Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), `position: fixed` (resolved against the slide, so a pinned footer is measured from the slide edge rather than from whatever container holds it), block flow, `display: flex` (row/column, `gap` including the two-value form, `flex`/`flex-grow`/`flex-basis`/`flex-shrink` including the shorthand's basis and shrink, `align-items`, `align-self`, `justify-content`, `order`; an overflowing row shrinks its items in proportion to `shrink × base`), `display: grid` with fractional/fixed/percentage tracks (`repeat()`, `minmax()` max, `order` too) plus `grid-column`/`grid-row` spans (`span N`, `A / span N`, `A / B`), `grid-template-rows` (fixed, percentage, `auto`, `fr`) and `grid-auto-rows` |
+| Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), `position: fixed` (resolved against the slide, so a pinned footer is measured from the slide edge rather than from whatever container holds it), block flow, `display: flex` (row/column, `gap` including the two-value form, `flex`/`flex-grow`/`flex-basis`/`flex-shrink` including the shorthand's basis and shrink, `align-items`, `align-self`, `justify-content`, `order`, and `flex-wrap: wrap` on a row — items break into lines by their declared width/`flex-basis`, each line is distributed and cross-aligned on its own; an overflowing single line shrinks its items in proportion to `shrink × base`), `display: grid` with fractional/fixed/percentage tracks (`repeat()`, `minmax()` max, `order` too) plus `grid-column`/`grid-row` spans (`span N`, `A / span N`, `A / B`), `grid-template-rows` (fixed, percentage, `auto`, `fr`) and `grid-auto-rows` |
 | Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring), `text-indent` (first-line indent in `em`/`px`/`%`, written as `<a:pPr indent>`; a negative value is reported), `white-space: nowrap` (written as `bodyPr wrap="none"` with autofit off, so a label never breaks and overflows instead of reflowing; the `pre*` values are reported because the DOM text walk has already collapsed whitespace) |
 | Transforms | `transform: rotate(<deg|rad|grad|turn>)` on a text box, shape or picture → native shape rotation (clockwise, about the centre). A rotation combined with `scale`/`skew`/`translate` is reported rather than half-applied; a rotated *group* is reported because a native container cannot carry a rotation |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
@@ -66,7 +66,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 - **Not a browser.** There is no UA default stylesheet, no inline formatting
   context (text and `<span>` do not share a line box), no floats, no margin
-  collapsing, no writing modes, no `flex-wrap`, no sticky positioning, no
+  collapsing, no writing modes, no wrapping *columns* (`flex-wrap` on a row is
+  supported, on a column it falls back), no sticky positioning, no
   `z-index` stacking contexts. `position: fixed` is anchored to the slide - which
   is what a slide deck means, since the viewport is the slide - so it does not
   scroll or repeat per fragment. `transform` supports rotation only: a rotated
@@ -109,6 +110,15 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   that declares its own `height` keeps it instead of stretching.
 - **Text measurement is an estimate**, not OpenType shaping. Wrapping can differ
   from the browser, especially with mixed scripts and unusual tracking.
+- **`flex-wrap: wrap` breaks on the declared basis.** An item with no width and no
+  `flex-basis` (a bare `flex: 1`) contributes zero to the break decision, because
+  its max-content width is not measured for a container - so such items stay on one
+  line instead of wrapping. Declared widths, `flex-basis` and the `flex` shorthand's
+  basis value are what drive lines, which is how tag rows and stat strips are
+  written.
+- **A padded box is as tall as it renders.** Vertical padding and border belong to
+  the box height (and to the text box's insets inside a card), so a wrapped line
+  starts below the card instead of on top of it.
 - **`text-indent` is a paragraph property, not a layout shift.** The box keeps its
   position and the indent is written to `<a:pPr indent="…">`, which is what
   PowerPoint's own "first line" paragraph setting edits. The measured height
