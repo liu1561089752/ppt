@@ -169,9 +169,10 @@ function placeColumn(container, box, theme, options, sink) {
   const align = container.align || 'stretch';
   let cursorY = contentY + offset;
   children.forEach((child, index) => {
+    const childAlign = child.alignSelf || align;
     let x = contentX + margins[index].left;
-    if (align === 'center') x = contentX + (contentWidth - widths[index]) / 2;
-    else if (align === 'end') x = contentX + (contentWidth - widths[index]);
+    if (childAlign === 'center') x = contentX + (contentWidth - widths[index]) / 2;
+    else if (childAlign === 'end') x = contentX + (contentWidth - widths[index]);
     const y = cursorY + margins[index].top;
     emitElement(child, { x, y, w: widths[index], h: heights[index] }, theme, options, sink);
     cursorY = y + heights[index] + margins[index].bottom + gap + extraGap;
@@ -222,11 +223,13 @@ function placeRow(container, box, theme, options, sink) {
   const align = container.align || 'stretch';
   let cursorX = contentX + offset;
   children.forEach((child, index) => {
+    // align-self overrides the container's cross-axis alignment for one child.
+    const childAlign = child.alignSelf || align;
     let height = heights[index];
     let y = contentY;
-    if (align === 'stretch') height = Math.max(height, innerHeight);
-    else if (align === 'center') y = contentY + (innerHeight - height) / 2;
-    else if (align === 'end') y = contentY + innerHeight - height;
+    if (childAlign === 'stretch') height = Math.max(height, innerHeight);
+    else if (childAlign === 'center') y = contentY + (innerHeight - height) / 2;
+    else if (childAlign === 'end') y = contentY + innerHeight - height;
     emitElement(child, { x: cursorX, y, w: widths[index], h: height }, theme, options, sink);
     cursorX += widths[index] + gap + extraGap;
   });
@@ -254,11 +257,12 @@ function placeGrid(container, box, theme, options, sink) {
     const heights = row.map((child) => measureElementHeight(child, cellWidth, theme, options));
     const rowHeight = Math.max(...heights);
     row.forEach((child, column) => {
+      const childAlign = child.alignSelf || align;
       let height = heights[column];
       let y = cursorY;
-      if (align === 'stretch') height = rowHeight;
-      else if (align === 'center') y = cursorY + (rowHeight - height) / 2;
-      else if (align === 'end') y = cursorY + rowHeight - height;
+      if (childAlign === 'stretch') height = rowHeight;
+      else if (childAlign === 'center') y = cursorY + (rowHeight - height) / 2;
+      else if (childAlign === 'end') y = cursorY + rowHeight - height;
       emitElement(child, {
         x: contentX + column * (cellWidth + columnGap),
         y,

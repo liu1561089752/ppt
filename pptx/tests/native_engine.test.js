@@ -1644,3 +1644,84 @@ test('html pipeline finds chart data inside a wrapper element', () => {
   assert.ok(Math.abs(charts[0].h - 320 / 96) < 0.02, 'chart height was ' + charts[0].h);
 });
 
+
+test('html pipeline honours align-self per child in rows and columns', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.row { position: absolute; left: 40px; top: 40px; width: 900px; display: flex; gap: 20px; align-items: stretch; }',
+    '.card { background: #EEEEEE; padding: 16px; font-size: 13px; }',
+    '.card.tall { height: 200px; }',
+    '.card.mid { align-self: center; height: 80px; }',
+    '.card.low { align-self: flex-end; height: 60px; }',
+    '.col { position: absolute; left: 40px; top: 400px; width: 600px; display: flex; flex-direction: column; gap: 12px; }',
+    '.col .a { background: #DDDDDD; height: 60px; }',
+    '.col .b { background: #CCCCCC; height: 60px; width: 200px; align-self: center; }',
+    '.col .c { background: #BBBBBB; height: 60px; width: 240px; align-self: flex-end; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row"><div class="card tall">高</div><div class="card mid">中</div><div class="card low">低</div></div>',
+    '<div class="col"><div class="a">A</div><div class="b">B</div><div class="c">C</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  // align-self is translated now, so it must not be reported as unsupported.
+  assert.equal(result.report.unsupportedDetails.filter((entry) => entry.property === 'alignSelf').length, 0);
+
+  const containers = result.deck.slides[0].elements.filter((element) => element.type === 'container');
+  const row = containers.find((element) => element.direction === 'row');
+  assert.ok(row, 'the flex row must stay declarative');
+  assert.equal(row.children.length, 3);
+  assert.deepEqual(row.children.map((child) => child.alignSelf), [undefined, 'center', 'end']);
+  // A stretching child keeps the row height; an aligned child keeps its own.
+  assert.ok(Math.abs(row.children[1].h - 80 / 96) < 0.01, 'center child height was ' + row.children[1].h);
+  assert.ok(Math.abs(row.children[2].h - 60 / 96) < 0.01, 'end child height was ' + row.children[2].h);
+
+  const column = containers.find((element) => element.direction === 'column');
+  assert.ok(column, 'the flex column must stay declarative');
+  assert.deepEqual(column.children.map((child) => child.alignSelf), [undefined, 'center', 'end']);
+  assert.ok(Math.abs(column.children[1].w - 200 / 96) < 0.01, 'center child width was ' + column.children[1].w);
+  assert.ok(Math.abs(column.children[2].w - 240 / 96) < 0.01, 'end child width was ' + column.children[2].w);
+
+  // The engine must re-resolve the same boxes, or the group would have to fall back.
+  assert.equal(result.report.containerFallbacks.length, 0);
+  assert.ok(result.report.maxBoxDelta < 0.012, 'engine/analyzer delta was ' + result.report.maxBoxDelta);
+});
+
+
+test('html pipeline applies CSS order inside flex and grid', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.row { position: absolute; left: 40px; top: 40px; width: 900px; display: flex; gap: 20px; }',
+    '.card { background: #EEEEEE; padding: 12px; font-size: 13px; }',
+    '.card.first { order: 2; }',
+    '.card.second { order: 1; }',
+    '.card.third { order: 3; }',
+    '.grid { position: absolute; left: 40px; top: 300px; width: 900px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }',
+    '.grid .g { background: #DDDDDD; padding: 10px; font-size: 12px; }',
+    '.grid .g.a { order: 3; }',
+    '.grid .g.b { order: 1; }',
+    '.grid .g.c { order: 2; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row"><div class="card first">一</div><div class="card second">二</div><div class="card third">三</div></div>',
+    '<div class="grid"><div class="g a">A</div><div class="g b">B</div><div class="g c">C</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.report.unsupportedDetails.filter((entry) => entry.property === 'order').length, 0);
+
+  const textOf = (element) => {
+    if (typeof element.text === 'string' && element.text) return element.text;
+    return (element.children || []).map(textOf).join('');
+  };
+  const containers = result.deck.slides[0].elements.filter((element) => element.type === 'container');
+  const row = containers.find((element) => element.direction === 'row');
+  const grid = containers.find((element) => element.columns > 1);
+  assert.ok(row && grid, 'both groups must stay declarative');
+  assert.deepEqual(row.children.map(textOf), ['二', '一', '三'], 'flex items follow order');
+  assert.deepEqual(grid.children.map(textOf), ['B', 'C', 'A'], 'grid items follow order');
+  assert.equal(result.report.containerFallbacks.length, 0);
+});
+

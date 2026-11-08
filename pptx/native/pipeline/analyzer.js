@@ -42,7 +42,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
   'flexWrap', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'alignItems',
-  'justifyContent', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  'justifyContent', 'alignSelf', 'order', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
@@ -57,9 +57,38 @@ const UNSUPPORTED_ALWAYS = new Set([
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
-  'gridTemplateRows', 'gridAutoRows', 'gridColumn', 'gridRow', 'order',
-  'flexBasis', 'flexGrow', 'flexShrink', 'alignSelf', 'justifySelf'
+  'gridTemplateRows', 'gridAutoRows', 'gridColumn', 'gridRow',
+  'flexBasis', 'flexGrow', 'flexShrink', 'justifySelf'
 ]);
+
+/** CSS align-self spelling → the native container's per-child alignment. */
+const ALIGN_SELF_NATIVE = {
+  stretch: 'stretch',
+  'flex-start': 'start',
+  start: 'start',
+  center: 'center',
+  'flex-end': 'end',
+  end: 'end'
+};
+
+/** CSS `order`; 0 when absent, and DOM order is the stable tiebreak. */
+function sortByOrder(kids, ctx) {
+  return kids
+    .map((child, index) => {
+      const style = ctx.styles.computed(child);
+      const order = Number(style.order);
+      return { child, index, order: Number.isFinite(order) ? order : 0 };
+    })
+    .sort((left, right) => (left.order - right.order) || (left.index - right.index))
+    .map((entry) => entry.child);
+}
+
+/** The child's align-self in native spelling, or undefined to inherit. */
+function alignSelfOf(style) {
+  const self = String(style.alignSelf || '').toLowerCase();
+  if (!self || self === 'auto') return undefined;
+  return ALIGN_SELF_NATIVE[self] || 'start';
+}
 
 const KIND_BY_TAG = {
   h1: 'text', h2: 'text', h3: 'text', h4: 'text', h5: 'text', h6: 'text',
@@ -646,10 +675,10 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   const style = ctx.styles.computed(domNode);
   const direction = String(style.flexDirection || 'row').startsWith('column') ? 'column' : 'row';
   const gap = flexGap(style, direction);
-  const kids = elementChildren(domNode).filter((child) => {
+  const kids = sortByOrder(elementChildren(domNode).filter((child) => {
     const childStyle = ctx.styles.computed(child);
     return childStyle.display !== 'none' && childStyle.visibility !== 'hidden';
-  });
+  }), ctx);
   if (!kids.length) return [];
 
   const alignItems = String(style.alignItems || 'stretch').toLowerCase();
@@ -668,14 +697,22 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
         h: null
       };
       const node = analyzeNode(child, slot, inherited, ctx);
-      if (node) cursor = node.y + node.h + gap + margins.bottom;
+      if (node) {
+        const self = alignSelfOf(childStyle);
+        if (self) node.alignSelf = self;
+        cursor = node.y + node.h + gap + margins.bottom;
+      }
       return node;
     }).filter(Boolean);
-    // Cross-axis alignment inside a column.
+    // Cross-axis alignment inside a column; align-self wins for one child.
     nodes.forEach((node) => {
-      if (alignItems === 'center') node.x = contentBox.x + (contentBox.w - node.w) / 2;
-      else if (alignItems === 'end' || alignItems === 'flex-end') node.x = contentBox.x + contentBox.w - node.w;
-      else if (alignItems === 'stretch') node.w = Math.max(node.w, contentBox.w);
+      const align = node.alignSelf || alignItems;
+      if (align === 'center') node.x = contentBox.x + (contentBox.w - node.w) / 2;
+      else if (align === 'end' || align === 'flex-end') node.x = contentBox.x + contentBox.w - node.w;
+      else if (align === 'stretch') {
+        node.x = contentBox.x;
+        node.w = Math.max(node.w, contentBox.w);
+      }
     });
     return nodes;
   }
@@ -713,13 +750,22 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   const nodes = [];
   kids.forEach((child, index) => {
     const node = analyzeNode(child, { x: cursor, y: contentBox.y, w: widths[index], h: null }, inherited, ctx);
-    if (node) nodes.push(node);
+    if (node) {
+      const self = alignSelfOf(ctx.styles.computed(child));
+      if (self) node.alignSelf = self;
+      nodes.push(node);
+    }
     cursor += widths[index] + gap + extraGap;
   });
-  // Default flex behaviour: every item stretches to the tallest item in the row.
-  if (alignItems === 'stretch' && nodes.length) {
+  // The row's cross size is its tallest item: stretch fills it, others align in it.
+  if (nodes.length) {
     const tallest = nodes.reduce((max, node) => Math.max(max, node.h), 0);
-    nodes.forEach((node) => { node.h = Math.max(node.h, tallest); });
+    nodes.forEach((node) => {
+      const align = node.alignSelf || alignItems;
+      if (align === 'stretch') node.h = Math.max(node.h, tallest);
+      else if (align === 'center') node.y = contentBox.y + (tallest - node.h) / 2;
+      else if (align === 'end' || align === 'flex-end') node.y = contentBox.y + tallest - node.h;
+    });
   }
   return nodes;
 }
@@ -731,7 +777,7 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   const columnGap = inchesOf(style.columnGap || style.gap, 'x', {}) || 0;
   const rowGap = inchesOf(style.rowGap || style.gap, 'x', {}) || 0;
   const cellWidth = Math.max(0, (contentBox.w - columnGap * (columns - 1)) / columns);
-  const kids = elementChildren(domNode);
+  const kids = sortByOrder(elementChildren(domNode), ctx);
   const nodes = [];
   let cursorY = contentBox.y;
   for (let start = 0; start < kids.length; start += columns) {

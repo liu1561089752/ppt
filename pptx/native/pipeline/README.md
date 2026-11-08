@@ -25,8 +25,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
    its role, so a converted deck can still be restyled by changing theme tokens.
    Subtrees with a container equivalent are emitted as native `container`
    elements — `direction`, `gap`, `padding`, `align`, `justify`, `columns` and
-   per-child `boxMargin`/`flex` — so a converted row of cards stays a row of
-   cards instead of eleven absolute boxes.
+   per-child `boxMargin`/`flex`/`alignSelf` — so a converted row of cards stays a
+   row of cards instead of eleven absolute boxes.
 2. **Declarative output is proven, not assumed.** The analyzer and the engine are
    two implementations of the same layout rules, so every declarative group is
    re-resolved by the engine and compared with the analyzed boxes. Anything above
@@ -50,7 +50,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Cascade | stylesheet order + specificity (ids, classes, tags), then inline `style=""`, plus `var(--token, fallback)` |
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
-| Layout | `position: absolute` with `left/top/right/bottom`, block flow, `display: flex` (row/column, `gap`, `flex`, `align-items`, `justify-content`), `display: grid` with equal tracks |
+| Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), block flow, `display: flex` (row/column, `gap`, `flex`, `align-items`, `align-self`, `justify-content`, `order`), `display: grid` with equal tracks (`order` too) |
 | Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring) |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
 | Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
@@ -63,7 +63,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 - **Not a browser.** There is no UA default stylesheet, no inline formatting
   context (text and `<span>` do not share a line box), no floats, no margin
-  collapsing, no writing modes, no `flex-wrap`, no `order`, no `position: fixed`
+  collapsing, no writing modes, no `flex-wrap`, no `position: fixed`
   stacking contexts.
 - **Cascade is simplified.** `@media`, pseudo-elements, attribute selectors,
   `:not()`, sibling combinators and `!important` are ignored. Custom properties

@@ -628,6 +628,7 @@ function containerChild(node, parentPlan, context) {
     }
     // Named boxMargin: the writer reads `margin` as text-box insets.
     if (parentPlan.display === 'block') element.boxMargin = marginsOf(node);
+    if (node.alignSelf) element.alignSelf = node.alignSelf;
   }
   delete element.x;
   delete element.y;
