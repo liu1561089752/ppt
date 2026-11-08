@@ -635,6 +635,18 @@ function textWithSurface(node, resolvedTheme, report) {
   // back, so giving the text the border-box height would double it.
   const boxPadding = containerPadding(node);
   text.h = round4(Math.max(0.02, node.h - boxPadding.top - boxPadding.bottom));
+  // The pill/button pattern: one line of text inside a box. CSS aligns it with the
+  // container's own `align-items` (block axis) and `justify-content` (inline axis).
+  // The wrapper is a column container, where `align` would mean the *inline* axis, so
+  // the block-axis alignment belongs on the text box's anchor instead.
+  const alignItemsValue = String((node.style && node.style.alignItems) || '').toLowerCase();
+  const justifyValue = String((node.style && node.style.justifyContent) || '').toLowerCase();
+  if (alignItemsValue === 'center') text.valign = 'middle';
+  else if (alignItemsValue === 'flex-end' || alignItemsValue === 'end') text.valign = 'bottom';
+  const inlineAlign = justifyValue === 'center' ? 'center'
+    : (justifyValue === 'flex-end' || justifyValue === 'end' || justifyValue === 'right') ? 'right'
+      : (justifyValue === 'flex-start' || justifyValue === 'start') ? 'left' : null;
+  if (inlineAlign) text.align = inlineAlign;
   const spec = {
     type: 'container',
     x: round4(xOf(node)),
@@ -775,17 +787,24 @@ function containerChild(node, parentPlan, context) {
     if (!element) return null;
     element.h = round4(node.h);
     const declaredWidth = node.style && node.style.width !== undefined;
-    if (parentPlan.columns || !declaredWidth) {
+    // The parent sizes a child whose CSS left the width free (stretch, or a flex share).
+    // A declared width is the child's own, in a row, a column and a grid cell alike.
+    if (!declaredWidth) {
       delete element.w;
       if (parentPlan.direction === 'row' && !parentPlan.columns) {
         const weight = Number(node.style && node.style.flex);
         if (Number.isFinite(weight) && weight > 0) element.flex = weight;
       }
+    } else {
+      element.fixedWidth = true;
     }
     // Named boxMargin: the writer reads `margin` as text-box insets.
     if (parentPlan.display === 'block') element.boxMargin = marginsOf(node);
-    if (node.alignSelf) element.alignSelf = node.alignSelf;
   }
+  // Alignment belongs to the child, not to its kind: a container child of a grid needs
+  // the same `align-self`/`justify-self` that a leaf does.
+  if (node.alignSelf) element.alignSelf = node.alignSelf;
+  if (node.justifySelf) element.justifySelf = node.justifySelf;
   // A row child keeps the base and the shrink factor the analyzer resolved, so
   // the engine sizes the row identically (a fixed width must not shrink).
   if (parentPlan.direction === 'row' && !parentPlan.columns) {

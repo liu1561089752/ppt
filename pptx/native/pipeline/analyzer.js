@@ -42,6 +42,8 @@ const { flexLines } = require('../engine/flex_lines');
 const {
   placeGridItems,
   gridRowCount,
+  gridItemWidth,
+  gridItemX,
   resolveRowHeights,
   rowTops,
   spannedHeight
@@ -52,7 +54,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
   'flexWrap', 'flexGrow', 'flexBasis', 'flexShrink', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
   'gridColumn', 'gridRow', 'gridColumnStart', 'gridColumnEnd', 'gridRowStart', 'gridRowEnd',
-  'gridArea', 'gridTemplateRows', 'gridAutoRows', 'alignItems',
+  'gridArea', 'gridTemplateRows', 'gridAutoRows', 'alignItems', 'justifyItems', 'justifySelf',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
@@ -79,8 +81,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   // writing-mode is translated (see applyWritingMode) or reported there.
   'animation', 'transition', 'columns', 'columnCount',
   'backgroundClip', 'textShadow',
-  'textOverflow', 'hyphens', 'inset',
-  'justifySelf'
+  'textOverflow', 'hyphens', 'inset'
 ]);
 
 /** CSS align-self spelling → the native container's per-child alignment. */
@@ -153,6 +154,17 @@ function alignSelfOf(style) {
   const self = String(style.alignSelf || '').toLowerCase();
   if (!self || self === 'auto') return undefined;
   return ALIGN_SELF_NATIVE[self] || 'start';
+}
+
+/** `justify-self` on the item, in the three shapes the resolver understands. */
+function justifyOf(style) {
+  const self = String(style.justifySelf || '').trim().toLowerCase();
+  if (!self || self === 'auto') return undefined;
+  if (self === 'center') return 'center';
+  if (self === 'end' || self === 'flex-end' || self === 'right') return 'end';
+  if (self === 'start' || self === 'flex-start' || self === 'left') return 'start';
+  if (self === 'stretch') return 'stretch';
+  return undefined;
 }
 
 const KIND_BY_TAG = {
@@ -1848,10 +1860,15 @@ function visibleChildren(domNode, ctx) {
 }
 
 /** Move a laid-out subtree vertically (heights never depend on y). */
-function shiftSubtree(node, deltaY) {
-  if (!node || !Number.isFinite(node.y) || !deltaY) return;
-  node.y += deltaY;
-  (node.children || []).forEach((child) => shiftSubtree(child, deltaY));
+/**
+ * Move a laid-out subtree. A height never depends on y and an inline offset is a
+ * constant, so children simply follow their container on both axes.
+ */
+function shiftSubtree(node, deltaY, deltaX = 0) {
+  if (!node) return;
+  if (Number.isFinite(node.y) && deltaY) node.y += deltaY;
+  if (Number.isFinite(node.x) && deltaX) node.x += deltaX;
+  (node.children || []).forEach((child) => shiftSubtree(child, deltaY, deltaX));
 }
 
 function layoutGrid(domNode, style, contentBox, inherited, ctx) {
@@ -1890,15 +1907,23 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   });
 
   const placements = placeGridItems(plans, columns);
-  const nodes = kids.map((child, index) => {
+  // A grid cell gives the item a width, but a declared width wins over the default
+  // `stretch`. The item has to be *measured* at that width, not at the cell's, or its
+  // own text would be wrapped against a box it does not have.
+  const cells = kids.map((child, index) => {
     const place = placements[index];
-    return analyzeNode(child, {
-      x: columnLeft(place.column),
-      y: contentBox.y,
-      w: spanWidth(place.column, place.columnSpan),
-      h: null
-    }, inherited, ctx);
+    const childStyle = ctx.styles.computed(child);
+    const cellLeft = columnLeft(place.column);
+    const cellWidth = spanWidth(place.column, place.columnSpan);
+    const declaredWidth = inchesOf(childStyle.width, 'x', { parentWidth: cellWidth, fontSizePx: inherited.fontPx });
+    return { childStyle, cellLeft, cellWidth, declaredWidth, width: gridItemWidth(cellWidth, declaredWidth) };
   });
+  const nodes = kids.map((child, index) => analyzeNode(child, {
+    x: cells[index].cellLeft,
+    y: contentBox.y,
+    w: cells[index].width,
+    h: null
+  }, inherited, ctx));
 
   // A declared height is authoritative: it neither grows nor gets stretched.
   const declared = kids.map((child) => ctx.styles.computed(child).height !== undefined);
@@ -1917,6 +1942,7 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   const rowHeights = resolveRowHeights(placements, heights, rows, rowGap, rowTracks, autoRowHeight, contentHeight);
   const tops = rowTops(rowHeights, contentBox.y, rowGap);
   const alignItems = String(style.alignItems || 'stretch').toLowerCase();
+  const justifyItems = justifyOf({ justifySelf: style.justifyItems }) || 'stretch';
   const aligned = [];
   nodes.forEach((node, index) => {
     if (!node) return;
@@ -1924,11 +1950,20 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
     const total = spannedHeight(rowHeights, place, rowGap);
     const top = tops[place.row] === undefined ? contentBox.y : tops[place.row];
     const childAlign = alignSelfOf(ctx.styles.computed(kids[index])) || alignItems;
-    // The child was measured at the top of the grid, so move its whole subtree.
-    shiftSubtree(node, top - node.y);
-    node.x = columnLeft(place.column);
-    node.w = spanWidth(place.column, place.columnSpan);
+    const childStyle = ctx.styles.computed(kids[index]);
+    // `justify-self` (then the container's `justify-items`) decides where the box sits in
+    // its cell on the inline axis, and a declared width beats the default `stretch`.
+    const justify = justifyOf(childStyle) || justifyItems || 'stretch';
+    const { cellLeft, cellWidth, declaredWidth, width: itemWidth } = cells[index];
+    // The child was measured at the cell's origin, so move its whole subtree to the
+    // place both axes actually resolve to (a justified box is not at the cell's left).
+    const targetX = gridItemX(cellLeft, cellWidth, itemWidth, justify);
+    shiftSubtree(node, top - node.y, targetX - node.x);
+    node.x = targetX;
+    node.w = itemWidth;
     node.y = top;
+    if (justify !== 'stretch') node.justifySelf = justify;
+    if (declaredWidth !== null) node.fixedWidth = true;
     if (!declared[index]) node.h = total;
     const height = node.h;
     if (childAlign === 'center') node.y = top + (total - height) / 2;

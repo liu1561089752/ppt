@@ -3723,3 +3723,76 @@ test('text that fits a float band becomes a two-column pair, and the rest stays 
   assert.deepEqual(absolute.report.unsupportedDetails, [], 'an absolute block is not shortened by a float');
 });
 
+
+test('a grid cell aligns its child, and a declared width beats stretch', () => {
+  const build = (childCss, containerCss = '') => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; width: 1000px; ' + containerCss + ' }',
+    '  .a { ' + childCss + ' }',
+    '</style></head><body><main class="slide">',
+    '  <div class="grid"><div class="a">x</div><div>b</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const gridOf = (result) => {
+    const flat = [];
+    const walk = (nodes) => (nodes || []).forEach((node) => { flat.push(node); walk(node.children); });
+    walk(result.analysis.slides[0].nodes);
+    return flat.find((node) => (node.classes || []).includes('grid'));
+  };
+
+  // Without an alignment a declared width still wins over the default stretch, and the
+  // box is measured at that width rather than at the cell's.
+  const plain = build('width: 200px; height: 60px');
+  assert.deepEqual(plain.report.unsupportedDetails, []);
+  const plainChild = gridOf(plain).children[0];
+  assert.ok(Math.abs(plainChild.w - 200 / 96) < 0.002, 'declared width survives: ' + plainChild.w);
+  assert.ok(Math.abs(plainChild.x - 40 / 96) < 0.002, 'and starts at the cell edge: ' + plainChild.x);
+
+  // `justify-self: center` centres it inside the cell it owns (500px wide here).
+  const centred = build('width: 200px; height: 60px; justify-self: center');
+  assert.deepEqual(centred.report.unsupportedDetails, [], 'justify-self is translated, not reported');
+  const centredChild = gridOf(centred).children[0];
+  assert.ok(Math.abs(centredChild.x - (40 / 96 + (500 / 96 - 200 / 96) / 2)) < 0.003,
+    'centred in its track: ' + centredChild.x);
+  assert.equal(centredChild.justifySelf, 'center');
+
+  // The container's `justify-items` supplies the same thing for every child.
+  const items = build('width: 200px; height: 60px', 'justify-items: center;');
+  assert.deepEqual(items.report.unsupportedDetails, []);
+  assert.ok(Math.abs(gridOf(items).children[0].x - (40 / 96 + (500 / 96 - 200 / 96) / 2)) < 0.003);
+
+  // `justify-self: end` pushes it to the far edge, and the spec carries the choice so
+  // the engine reaches the same x instead of demoting the container.
+  const ending = build('width: 200px; height: 60px; justify-self: end');
+  const endChild = gridOf(ending).children[0];
+  assert.ok(Math.abs(endChild.x - (40 / 96 + 500 / 96 - 200 / 96)) < 0.003, 'end: ' + endChild.x);
+  assert.deepEqual(ending.report.containerFallbacks, [], 'the engine agrees about the cell');
+});
+
+test('a pill centres its one line the way flex does', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .pill {',
+    '    width: 200px; height: 56px; background: #17332F; border-radius: 28px;',
+    '    display: flex; flex-direction: row; align-items: center; justify-content: center;',
+    '  }',
+    '  .pill span { font-size: 13px; font-weight: 700; color: #DFF3EF; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="pill"><span>标签</span></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const pill = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(pill, 'the pill is a container with a surface');
+  assert.equal(pill.children.length, 1);
+  const label = pill.children[0];
+  // A column wrapper would read `align` as the inline axis, so the block-axis centring
+  // has to be the text box's own anchor.
+  assert.equal(label.valign, 'middle', 'the line sits in the middle of the pill');
+  assert.equal(label.align, 'center', 'and is centred across it');
+  assert.ok(Math.abs(label.h - (56 - 0) / 96) < 0.01, 'the box still fills the pill: ' + label.h);
+});
+

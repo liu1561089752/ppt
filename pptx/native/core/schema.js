@@ -172,6 +172,10 @@ function validateContainer(prefix, element, errors) {
       errors.push(prefix + '.rowSpan must be a positive integer');
     }
   }
+  if (element.justifySelf !== undefined
+    && !['start', 'center', 'end', 'stretch'].includes(element.justifySelf)) {
+    errors.push(prefix + '.justifySelf must be one of: start, center, end, stretch');
+  }
   ['gridColumnStart', 'gridRowStart'].forEach((key) => {
     if (element[key] !== undefined
       && (!Number.isInteger(element[key]) || element[key] < 0)) {

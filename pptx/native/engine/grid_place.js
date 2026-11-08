@@ -149,6 +149,27 @@ function gridRowCount(placements) {
 }
 
 /**
+ * A grid item's width inside its cell.
+ *
+ * `justify-self` defaults to `stretch`, but a declared width wins: the box keeps the
+ * width its CSS asked for and the free space is distributed instead. Stretching a fixed
+ * card to the whole track was silently rewriting designed geometry.
+ */
+function gridItemWidth(cellWidth, declaredWidth) {
+  if (!Number.isFinite(declaredWidth) || declaredWidth <= 0) return cellWidth;
+  return Math.min(declaredWidth, cellWidth);
+}
+
+/** Where that box sits in the cell: `start`, `center` or `end`. */
+function gridItemX(cellLeft, cellWidth, itemWidth, justify) {
+  const free = Math.max(0, cellWidth - itemWidth);
+  const value = String(justify === undefined || justify === null ? '' : justify).toLowerCase();
+  if (value === 'center') return cellLeft + free / 2;
+  if (value === 'end' || value === 'flex-end' || value === 'right') return cellLeft + free;
+  return cellLeft;
+}
+
+/**
  * Classify the declared rows. A track is a fixed `height`, `auto` (sized by its
  * items) or `fr` (a share of the height left over); rows past the declared tracks
  * use `autoRowHeight` when `grid-auto-rows` set one, otherwise they fit content.
@@ -265,6 +286,8 @@ module.exports = {
   normalizeSpan,
   placeGridItems,
   gridRowCount,
+  gridItemWidth,
+  gridItemX,
   rowTrackHeights,
   resolveRowHeights,
   rowTops,

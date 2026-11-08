@@ -96,6 +96,26 @@
   .poster-note p { color: #8FB2B8; }
   .poster-meta h3 { color: #EAF1F0; }
   .poster-meta p { color: #9FC0BE; }
+
+  /* Alignment inside a cell: a declared width beats the default stretch, and
+     justify-self decides where the box sits in its track. */
+  .align-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    grid-template-rows: 176px 128px;
+    gap: 18px;
+    width: 1152px;
+    justify-items: center;
+  }
+  .badge { width: 220px; height: 112px; background: #14302F; border-radius: 12px; padding: 16px 18px; }
+  .badge h3 { font-size: 15px; color: #EAF1F0; margin: 0 0 6px; }
+  .badge p { font-size: 12px; line-height: 1.6; color: #9FC0BE; margin: 0; }
+  .chip-end { width: 168px; height: 56px; justify-self: end; background: #1F5B57; border-radius: 28px;
+    display: flex; flex-direction: row; align-items: center; justify-content: center; }
+  .chip-end span { font-size: 13px; font-weight: 700; color: #DFF3EF; }
+  .wide { justify-self: stretch; background: #F6F8F8; border-radius: 14px; padding: 20px 22px; }
+  .wide h3 { font-size: 15px; color: #12292C; margin: 0 0 8px; }
+  .wide p { font-size: 12px; line-height: 1.6; color: #5A6D72; margin: 0; }
 </style>
 </head>
 <body>
@@ -176,6 +196,28 @@
     <div class="panel">
       <h3>自动补位</h3>
       <p>没有声明位置的单元填进还空着的格子，文档顺序不变。</p>
+    </div>
+  </div>
+</main>
+
+<main class="slide">
+  <div class="kicker">native grid / alignment in a cell</div>
+  <h1>块在自己的格子里怎么对齐</h1>
+  <p class="lead">容器声明 <code>justify-items: center</code>，于是每个块在自己的轨道里居中；声明了宽度的块保留自己的宽度，而不是被拉伸成整条轨道；需要时单个块可以用 <code>justify-self</code> 改回 <code>end</code> 或 <code>stretch</code>。</p>
+
+  <div class="align-grid">
+    <div class="badge">
+      <h3>居中，220px 宽</h3>
+      <p>宽度由块自己声明，居中来自容器。</p>
+    </div>
+    <div class="badge">
+      <h3>同样的规则</h3>
+      <p>轨道宽度不同，居中结果也不同。</p>
+    </div>
+    <div class="chip-end"><span>justify-self: end</span></div>
+    <div class="wide">
+      <h3>justify-self: stretch</h3>
+      <p>显式拉伸的块仍然占满整条轨道：这是声明出来的，不是默认行为。</p>
     </div>
   </div>
 </main>

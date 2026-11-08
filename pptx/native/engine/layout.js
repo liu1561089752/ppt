@@ -5,6 +5,8 @@ const { flexWidths } = require('./flex_size');
 const { flexLines } = require('./flex_lines');
 const {
   placeGridItems,
+  gridItemWidth,
+  gridItemX,
   gridRowCount,
   resolveRowHeights,
   rowTops,
@@ -421,7 +423,10 @@ function placeGrid(container, box, theme, options, sink) {
   const declared = children.map((child) => child.h !== undefined);
   const heights = children.map((child, index) => {
     const place = placements[index];
-    return measureElementHeight(child, spanWidth(place.column, place.columnSpan), theme, options);
+    const cellWidth = spanWidth(place.column, place.columnSpan);
+    // A declared width wins over the cell, so the content has to be measured at it.
+    const ownWidth = child.fixedWidth && Number.isFinite(child.w) ? child.w : null;
+    return measureElementHeight(child, gridItemWidth(cellWidth, ownWidth), theme, options);
   });
   const rowHeights = resolveRowHeights(placements, heights, gridRowCount(placements), rowGap,
     container.rowTracks, container.autoRowHeight, container.rowContentHeight);
@@ -445,10 +450,16 @@ function placeGrid(container, box, theme, options, sink) {
     if (childAlign === 'stretch' && !declared[index]) height = total;
     else if (childAlign === 'center') y = top + (total - height) / 2;
     else if (childAlign === 'end') y = top + total - height;
+    // The inline axis mirrors the block axis: a declared width beats `stretch`, and
+    // `justify-self` says where the box sits in the cell.
+    const cellLeft = columnLeft(place.column);
+    const cellWidth = spanWidth(place.column, place.columnSpan);
+    const ownWidth = child.fixedWidth && Number.isFinite(child.w) ? child.w : null;
+    const width = gridItemWidth(cellWidth, ownWidth);
     emitElement(child, {
-      x: columnLeft(place.column),
+      x: gridItemX(cellLeft, cellWidth, width, child.justifySelf),
       y,
-      w: spanWidth(place.column, place.columnSpan),
+      w: width,
       h: height
     }, theme, options, sink);
   });
