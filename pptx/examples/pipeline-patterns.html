@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>patterns · 常见版式</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+  .slide { width: 1280px; height: 720px; padding: 56px 64px; background: #FCFBF8; color: #212B29; position: relative; }
+
+  .kicker { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: #7B8A85; }
+  h1 { margin: 10px 0 22px; font-size: 28px; line-height: 1.3; font-weight: 600; }
+
+  /* ---- 引用页 ---- */
+  /* 引号是一个单独的文本盒：固定高度，正文紧接在它下面，不靠负边距叠上去 */
+  .quote-mark { font-size: 150px; line-height: 118px; height: 118px; margin: 0; color: #D9D2C0; font-weight: 700; }
+  .quote { width: 900px; margin: 0; font-size: 26px; line-height: 1.7; color: #1D2A28; }
+  .quote-by { margin-top: 26px; font-size: 13px; color: #6E7F7A; }
+  .quote-by b { color: #1D2A28; }
+
+  /* ---- 数字页 ---- */
+  .stats { display: flex; gap: 28px; }
+  .stat { flex: 1; padding: 28px 26px; background: #FFFFFF; border: 1px solid #E4DECF; border-radius: 14px; }
+  .stat .num { font-size: 44px; line-height: 1.1; font-weight: 600; color: #17332F; }
+  .stat .num small { font-size: 16px; font-weight: 500; color: #7B8A85; }
+  .stat .label { margin-top: 10px; font-size: 13px; color: #55605C; }
+  .stat .note { margin-top: 6px; font-size: 11px; color: #93A09B; }
+
+  /* ---- 时间线 ---- */
+  .track { position: relative; margin-top: 26px; height: 2px; width: 1132px; background: #DCD6C8; }
+  .node { position: absolute; top: -6px; width: 14px; height: 14px; border-radius: 7px; background: #17332F; }
+  .step { position: absolute; width: 200px; }
+  .step .when { font-size: 12px; color: #8A9793; letter-spacing: 1px; }
+  .step .what { margin-top: 8px; font-size: 15px; font-weight: 600; }
+  .step .why { margin-top: 6px; font-size: 12px; line-height: 1.75; color: #55605C; }
+
+  /* ---- 对照表 ---- */
+  table { border-collapse: collapse; width: 1132px; font-size: 13px; }
+  /* 表注放在表格外面：PPT 的表格没有 caption 部位，写进去的字会消失 */
+  .tnote { margin: 0 0 10px; font-size: 12px; color: #8A9793; }
+  th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #E4DECF; }
+  thead th { background: #17332F; color: #F3F1E9; font-weight: 600; border-bottom: none; }
+  tbody tr:nth-child(even) td { background: #F5F2E9; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tfoot td { border-top: 2px solid #17332F; border-bottom: none; font-weight: 600; }
+
+  .foot { position: absolute; left: 64px; bottom: 36px; font-size: 11px; color: #9AA5A1; }
+</style>
+</head>
+<body>
+
+<main class="slide">
+  <div class="kicker">Quote</div>
+  <div class="quote-mark">“</div>
+  <div class="quote">如果一页幻灯片需要旁白才能读懂，那它先失败了一次；文字排版要替读者把顺序摆好，而不是把句子堆起来。</div>
+  <div class="quote-by"><b>排版笔记</b> · 第三版 · 2026</div>
+  <div class="foot">quote · 大引号是文本，引文与出处各有自己的样式</div>
+</main>
+
+<main class="slide">
+  <div class="kicker">Numbers</div>
+  <h1>四个数字，一行卡片，等高对齐</h1>
+  <div class="stats">
+    <div class="stat"><div class="num">12<small> 个夹具</small></div><div class="label">覆盖版式与文字规则</div><div class="note">每页都能逐项核对</div></div>
+    <div class="stat"><div class="num">393<small> 个文本框</small></div><div class="label">渲染后审计行数与字数</div><div class="note">0 个丢字</div></div>
+    <div class="stat"><div class="num">243<small> 次提交</small></div><div class="label">只在特性分支上推进</div><div class="note">主干不动</div></div>
+    <div class="stat"><div class="num">0<small> 张图片</small></div><div class="label">整页都是可编辑对象</div><div class="note">不是截图</div></div>
+  </div>
+  <div class="foot">flex 行 · 等高卡片 · 数字与说明各自成段</div>
+</main>
+
+<main class="slide">
+  <div class="kicker">Timeline</div>
+  <h1>一条线串起四个节点</h1>
+  <div class="track">
+    <div class="node" style="left: 0"></div>
+    <div class="node" style="left: 368px"></div>
+    <div class="node" style="left: 736px"></div>
+    <div class="node" style="left: 1118px"></div>
+  </div>
+  <div class="step" style="left: 64px; top: 300px"><div class="when">01 · 分析</div><div class="what">先读 DOM</div><div class="why">把 CSS 声明解析成盒子、行、字符三层的量，再决定能不能翻译。</div></div>
+  <div class="step" style="left: 432px; top: 300px"><div class="when">02 · 布局</div><div class="what">再算几何</div><div class="why">流式、flex、grid 共用一套尺寸求解，容器在写入时才展开。</div></div>
+  <div class="step" style="left: 800px; top: 300px"><div class="when">03 · 写入</div><div class="what">然后落成对象</div><div class="why">每个盒子对应一个原生形状或文本框，能被 PowerPoint 选中。</div></div>
+  <div class="step" style="left: 1016px; top: 300px"><div class="when">04 · 校验</div><div class="what">最后再读一遍</div><div class="why">跑 OOXML 检查、第二读取器和渲染审计，宁可报错也不静默。</div></div>
+  <div class="foot">绝对定位的节点与步骤 · 连接线是一条细长矩形</div>
+</main>
+
+<main class="slide">
+  <div class="kicker">Table</div>
+  <h1>表格：表头、斑马行、右对齐数字</h1>
+  <p class="tnote">2026 年各版式的渲染耗时（本机，单页）</p>
+  <table>
+    <thead>
+      <tr><th style="width: 300px">版式</th><th style="width: 220px">元素数</th><th>文本元素</th><th>耗时</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>封面</td><td class="num">18</td><td class="num">6</td><td class="num">41 ms</td></tr>
+      <tr><td>要点页</td><td class="num">34</td><td class="num">19</td><td class="num">57 ms</td></tr>
+      <tr><td>对照表</td><td class="num">52</td><td class="num">31</td><td class="num">88 ms</td></tr>
+      <tr><td>图表页</td><td class="num">27</td><td class="num">14</td><td class="num">63 ms</td></tr>
+    </tbody>
+    <tfoot>
+      <tr><td>合计</td><td class="num">131</td><td class="num">70</td><td class="num">249 ms</td></tr>
+    </tfoot>
+  </table>
+  <div class="foot">原生表格 · 表头、斑马行、右对齐数字都是单元格属性</div>
+</main>
+
+</body>
+</html>

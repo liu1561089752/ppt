@@ -4984,3 +4984,81 @@ test('clip-path: polygon becomes a native custom geometry', () => {
   assert.equal(clipGeometryXml({ points: [[0, 0]] }), null, 'two points are not a shape');
 });
 
+
+test('a run with its own size is measured at that size', () => {
+  const build = (markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .num { width: 200px; font-size: 44px; line-height: 1.1; }',
+    '  .num small { font-size: 16px; }',
+    '</style></head><body><main class="slide">',
+    markup,
+    '</main></body></html>'
+  ].join('\n'));
+
+  // Charging the small run to the 44px number reserved two lines for one: the box was a
+  // line too tall and the box below it slid down by that line.
+  const short = build('<div class="num">12<small> 个</small></div>').deck.slides[0].elements[0];
+  const lineBox = 44 * 1.1 / 72;
+  assert.equal(Math.round(short.h / lineBox), 1, 'one line, measured at both sizes');
+
+  // The same box with a long number still grows, which is the point of measuring at all.
+  const long = build('<div class="num">1200000000<small> 个</small></div>').deck.slides[0].elements[0];
+  assert.ok(long.h > short.h);
+});
+
+test('text on text is a collision even when it is positioned', () => {
+  const build = (markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; position: relative; }',
+    '  .a { position: absolute; left: 100px; top: 100px; width: 300px; height: 100px; font-size: 14px; }',
+    '  .b { position: absolute; left: 250px; top: 120px; width: 300px; height: 100px; font-size: 14px; }',
+    '  .bg { position: absolute; left: 100px; top: 300px; width: 300px; height: 100px; background: #eee; }',
+    '  .lbl { position: absolute; left: 120px; top: 320px; width: 200px; height: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    markup,
+    '</main></body></html>'
+  ].join('\n'));
+
+  // Two absolute text boxes over each other is unreadable, and absolute positioning was
+  // previously enough to hide it: only a shape under a text box is a layer.
+  const overlapped = build('<div class="a">AAAAAAAAAA</div><div class="b">BBBBBBBBBB</div>');
+  assert.equal(overlapped.report.layout.total, 1);
+  const collision = overlapped.report.layout.slides[0].collisions[0];
+  assert.match(collision.a, /AAAAAAAAAA/u);
+  assert.match(collision.b, /BBBBBBBBBB/u);
+
+  const layered = build('<div class="bg"></div><div class="lbl">label on card</div>');
+  assert.equal(layered.report.layout.total, 0, 'a label on a card is a layer, not a collision');
+
+  // A wrapper that holds text is a text block for this purpose: the common "step" layout
+  // puts the date, the title and the body in one absolutely positioned wrapper.
+  const wrapped = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; position: relative; }',
+    '  .step { position: absolute; top: 100px; width: 200px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="step" style="left: 0"><div>01</div><div>first</div></div>',
+    '<div class="step" style="left: 120px"><div>02</div><div>second</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(wrapped.report.layout.total, 1, 'two overlapping step wrappers are reported');
+});
+
+test('a table caption is reported because its words would be lost', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 800px; font-size: 13px; } td, th { padding: 8px; }',
+    '  caption { font-size: 12px; text-align: left; }',
+    '</style></head><body><main class="slide">',
+    '<table><caption>Rendering times</caption>',
+    '<thead><tr><th>Layout</th><th>ms</th></tr></thead>',
+    '<tbody><tr><td>Cover</td><td>41</td></tr></tbody></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const entry = (result.report.unsupportedDetails || []).find((item) => item.reason.includes('caption'));
+  assert.ok(entry, 'the caption is named, not dropped');
+  assert.match(entry.reason, /Rendering times/u);
+});
+

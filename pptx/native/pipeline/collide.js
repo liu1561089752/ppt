@@ -17,6 +17,18 @@ const MIN_AREA = 0.02;      // in²  - smaller touches are rounding, not design
 const MIN_RATIO = 0.1;      // share of the smaller box
 const TOLERANCE = 0.01;     // in
 
+/**
+ * A node that draws words. A container counts when it holds text anywhere inside it:
+ * two stacked text blocks are unreadable whether each one is a bare box or a wrapper
+ * around three rows, and the wrapper is the shape the common "step" layout produces.
+ */
+function isTextNode(node) {
+  if (!node) return false;
+  if (node.kind === 'text' || node.kind === 'list') return true;
+  if (!Array.isArray(node.children)) return false;
+  return node.children.some(isTextNode);
+}
+
 function boxOf(node) {
   if (!node) return null;
   const { x, y, w, h } = node;
@@ -67,10 +79,12 @@ function auditLayout(nodes, page) {
         const first = boxes[i];
         const second = boxes[j];
         if (!first.box || !second.box) continue;
-        // Layers are intentional: absolute positioning says so, and so does a relative
-        // nudge - the author moved the box onto its neighbour on purpose.
-        if (first.node.absolute || second.node.absolute) continue;
-        if (first.node.relativeShift || second.node.relativeShift) continue;
+        // A shape under a text box is a layer: absolute positioning says so, and so does a
+        // relative nudge. Text under text is not a layer - it is two strings drawn over each
+        // other, which no reader can read - so those pairs are checked either way.
+        const bothText = isTextNode(first.node) && isTextNode(second.node);
+        if (!bothText && (first.node.absolute || second.node.absolute)) continue;
+        if (!bothText && (first.node.relativeShift || second.node.relativeShift)) continue;
         const area = intersectionArea(first.box, second.box);
         if (area < MIN_AREA) continue;
         const smaller = Math.min(first.box.w * first.box.h, second.box.w * second.box.h);

@@ -89,7 +89,10 @@
     "render:columns": "python scripts/render_check.py pipeline-converted/pipeline-columns.pptx --output-dir render-check/pipeline-columns",
     "pipeline:clip": "node pipeline/cli.js ../examples/pipeline-clip.html --out pipeline-converted/clip.json --pptx pipeline-converted/pipeline-clip.pptx",
     "preview:clip": "python scripts/preview_deck.py pipeline-converted/pipeline-clip.pptx --output-dir preview/clip --sheet preview/clip-sheet.png",
-    "render:clip": "python scripts/render_check.py pipeline-converted/pipeline-clip.pptx --output-dir render-check/pipeline-clip"
+    "render:clip": "python scripts/render_check.py pipeline-converted/pipeline-clip.pptx --output-dir render-check/pipeline-clip",
+    "pipeline:patterns": "node pipeline/cli.js ../examples/pipeline-patterns.html --out pipeline-converted/patterns.json --pptx pipeline-converted/pipeline-patterns.pptx",
+    "preview:patterns": "python scripts/preview_deck.py pipeline-converted/pipeline-patterns.pptx --output-dir preview/patterns --sheet preview/patterns-sheet.png",
+    "render:patterns": "python scripts/render_check.py pipeline-converted/pipeline-patterns.pptx --output-dir render-check/pipeline-patterns"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

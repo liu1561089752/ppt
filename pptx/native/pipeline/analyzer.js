@@ -41,7 +41,7 @@ const {
   backgroundImageOf,
   parseBackgroundFocus
 } = require('./css');
-const { estimateTextHeight, measureTextPt, clampText } = require('../engine/text_measure');
+const { estimateTextHeight, estimateRichTextHeight, estimateLineCount, measureTextPt, clampText } = require('../engine/text_measure');
 const { flexWidths } = require('../engine/flex_size');
 const { flexLines, flexColumns, alignLines } = require('../engine/flex_lines');
 const {
@@ -291,10 +291,16 @@ function shrinkToFitWidth(domNode, style, options) {
     fontManager: options.fontManager,
     letterSpacingPt: options.letterSpacingPt
   }) / 72;
-  // The wrapper decides a line fits when `(width - 0.08) * 0.92 >= advance`, so a box
-  // that hugs its text has to undo exactly that: dividing instead of multiplying keeps
-  // a tracked label on one line, which a flat 1.06 did not.
-  const preferred = advance / 0.92 + 0.08 + 0.01;
+  // The wrapper charges a safety margin on every line, so a box that hugs its text has to
+  // undo exactly that margin - and the only reliable way to undo it is to ask the wrapper.
+  // A fixed divisor guessed the margin and left footers wrapping their last character,
+  // which is the one outcome shrink-to-fit exists to avoid.
+  const measureOptions = { safetyFactor: 0.9, letterSpacingPt: options.letterSpacingPt, fontManager: options.fontManager };
+  let preferred = advance / 0.9 + 0.08 + 0.01;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    if (estimateLineCount(raw, preferred, fontSizePt, measureOptions) <= 1) break;
+    preferred *= 1.03;
+  }
   const available = Math.max(0, options.availableWidth);
   return Math.min(available, preferred) + options.insetLeft + options.insetRight;
 }
@@ -754,7 +760,7 @@ function truncateWithEllipsis(rawText, maxWidthIn, fontSizePt, slack = 0.02) {
   return chars.slice(0, low).join('').replace(/\s+$/u, '') + tail;
 }
 
-function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx) {
+function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx, options = {}) {
   // The caller already resolved this element's own `font-size`; resolving it again
   // applied `120%` (and `1.2em`) twice and every relative size came out too large.
   const fontPx = resolvedFontPx;
@@ -794,6 +800,16 @@ function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx)
       'Only white-space: nowrap is translated; the pre* values also preserve whitespace, which the DOM text walk already collapsed');
   }
   if (noWrap) measureOptions.noWrap = true;
+  // A run with its own size is measured at that size: charging `12 个夹具` to the 33pt
+  // number reserved two lines for one, and every box below it slid down by a line.
+  const width = Math.max(0.2, availableWidth);
+  const sized = built.hasFormatting && (built.runs || []).some((run) => run.options
+    && Number.isFinite(Number(run.options.fontSize))
+    && Math.abs(Number(run.options.fontSize) - fontSizePt) > 0.5);
+  const lineBox = fontSizePt * multiple / 72;
+  const textHeight = sized && options.richHeight !== false
+    ? Math.max(estimateRichTextHeight(built.runs, width, fontSizePt, measureOptions), lineBox)
+    : estimateTextHeight(built.text, width, fontSizePt, measureOptions);
   return {
     fontPx,
     fontSizePt,
@@ -802,7 +818,7 @@ function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx)
     text: built.text.replace(/\s*\n\s*/gu, '\n').trim(),
     textIndent: textIndent && textIndent > 0 ? textIndent : undefined,
     noWrap: noWrap || undefined,
-    textHeight: estimateTextHeight(built.text, Math.max(0.2, availableWidth), fontSizePt, measureOptions)
+    textHeight
   };
 }
 
@@ -1360,7 +1376,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   }
 
   if (kind === 'text' || kind === 'list') {
-    const measured = measureTextElement(domNode, style, contentWidth, fontSizePx, ctx);
+    // A list item is measured on its flattened text: each item is its own paragraph, and the
+    // run array only decides which paragraph breaks where.
+    const measured = measureTextElement(domNode, style, contentWidth, fontSizePx, ctx,
+      { richHeight: kind !== 'list' });
     Object.assign(node, measured);
     if (kind === 'list') {
       const items = readListItems(domNode);
@@ -3297,6 +3316,13 @@ function readListItems(domNode, level = 0, out = []) {
 }
 
 function readTable(domNode, ctx, contentWidth) {
+  // A `<caption>` is not a row and a PowerPoint table has no caption part, so its words
+  // would simply disappear. Naming it is the only honest option this shape has.
+  const caption = (domNode.children || []).find((child) => child.type === 'element' && child.tag === 'caption');
+  if (caption) {
+    recordUnsupported(ctx, domNode, 'element', 'caption',
+      'A table caption has no native part, so its words are not translated: move the text to a paragraph above the table (\'' + String(textContent(caption) || '').replace(/\s+/gu, ' ').trim().slice(0, 24) + '\')');
+  }
   const rows = [];
   const rowNodes = [];
   // A row or section may carry the background a browser paints behind its cells -

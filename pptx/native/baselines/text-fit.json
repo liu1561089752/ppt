@@ -2,7 +2,7 @@
   "pipeline-chart.html": {
     "boxes": 13,
     "droppedByWindow": 0,
-    "extraLines": 1,
+    "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
@@ -37,7 +37,7 @@
   "pipeline-float.html": {
     "boxes": 41,
     "droppedByWindow": 0,
-    "extraLines": 2,
+    "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
@@ -55,6 +55,13 @@
     "missingWords": 0,
     "unmatched": 0
   },
+  "pipeline-patterns.html": {
+    "boxes": 38,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 1
+  },
   "pipeline-reference.html": {
     "boxes": 20,
     "droppedByWindow": 0,
@@ -65,7 +72,7 @@
   "pipeline-relative.html": {
     "boxes": 11,
     "droppedByWindow": 0,
-    "extraLines": 1,
+    "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
@@ -86,7 +93,7 @@
   "pipeline-vertical.html": {
     "boxes": 20,
     "droppedByWindow": 0,
-    "extraLines": 1,
+    "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
