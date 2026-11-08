@@ -36,8 +36,8 @@
 
   /* ---- 对照表 ---- */
   table { border-collapse: collapse; width: 1132px; font-size: 13px; }
-  /* 表注放在表格外面：PPT 的表格没有 caption 部位，写进去的字会消失 */
-  .tnote { margin: 0 0 10px; font-size: 12px; color: #8A9793; }
+  /* 表注是 caption：译成跨满整行的第一行，字仍然是可编辑的表格文字 */
+  caption { text-align: left; font-size: 12px; color: #8A9793; padding: 0 14px 8px; }
   th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #E4DECF; }
   thead th { background: #17332F; color: #F3F1E9; font-weight: 600; border-bottom: none; }
   tbody tr:nth-child(even) td { background: #F5F2E9; }
@@ -88,8 +88,8 @@
 <main class="slide">
   <div class="kicker">Table</div>
   <h1>表格：表头、斑马行、右对齐数字</h1>
-  <p class="tnote">2026 年各版式的渲染耗时（本机，单页）</p>
   <table>
+    <caption>2026 年各版式的渲染耗时（本机，单页）</caption>
     <thead>
       <tr><th style="width: 300px">版式</th><th style="width: 220px">元素数</th><th>文本元素</th><th>耗时</th></tr>
     </thead>

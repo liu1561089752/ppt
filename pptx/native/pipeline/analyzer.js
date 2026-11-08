@@ -1560,6 +1560,13 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     // their real padding and line boxes, so the box reserved here matches what is drawn.
     const estimatedRows = (table.rowHeights || []).reduce((sum, height) => sum + height, 0);
     node.h = explicitHeight === null ? Math.max(0.4, estimatedRows) : explicitHeight;
+    // The caption is a text box above the grid, so the table's height has to carry it:
+    // whatever follows the table starts below both.
+    const caption = captionOf(domNode, ctx, contentWidth);
+    if (caption) {
+      node.caption = caption;
+      node.h = Number((node.h + caption.height).toFixed(4));
+    }
     applyRelativeShift(node, style, parentWidth);
     return node;
   }
@@ -3315,14 +3322,48 @@ function readListItems(domNode, level = 0, out = []) {
   return out;
 }
 
+/**
+ * A `<caption>` as its own text box.
+ *
+ * CSS draws it above the table grid, and a PowerPoint table has no caption part. The other
+ * candidate - a merged first row - is schema-valid but LibreOffice lays the rest of the table
+ * out off the page when row 0 carries a gridSpan, so it cannot be verified anywhere here.
+ */
+function captionOf(domNode, ctx, contentWidth) {
+  const captionElement = (domNode.children || []).find((child) =>
+    child.type === 'element' && child.tag === 'caption' && String(normalizedText(child) || '').trim());
+  if (!captionElement) return null;
+  const style = ctx.styles.computed(captionElement);
+  if (style.display === 'none' || style.visibility === 'hidden') return null;
+  const text = String(normalizedText(captionElement) || '').replace(/\s+/gu, ' ').trim();
+  if (!text) return null;
+  const size = parseLength(style.fontSize);
+  const fontSizePt = size ? Number((toInches(size, {}) * 72).toFixed(2)) : 10.5;
+  const padding = boxShorthand(style, 'padding');
+  const lineHeight = lineSpacingOf(style, fontSizePt).multiple;
+  const height = estimateTextHeight(text, Math.max(0.2, contentWidth), fontSizePt, {
+    marginIn: 0,
+    lineHeight,
+    verticalInsetIn: padding.top + padding.bottom
+  });
+  const color = parseColor(style.color);
+  const weight = String(style.fontWeight || '').toLowerCase();
+  const caption = {
+    text,
+    fontSizePt,
+    lineHeight,
+    height: Number(height.toFixed(4)),
+    align: String(style.textAlign || 'left').toLowerCase(),
+    paddingTop: Number((padding.top * 72).toFixed(2)),
+    paddingBottom: Number((padding.bottom * 72).toFixed(2))
+  };
+  if (color && color.hex) caption.color = color.hex;
+  if (weight === 'bold' || Number(weight) >= 600) caption.bold = true;
+  if (String(style.fontStyle || '').toLowerCase() === 'italic') caption.italic = true;
+  return caption;
+}
+
 function readTable(domNode, ctx, contentWidth) {
-  // A `<caption>` is not a row and a PowerPoint table has no caption part, so its words
-  // would simply disappear. Naming it is the only honest option this shape has.
-  const caption = (domNode.children || []).find((child) => child.type === 'element' && child.tag === 'caption');
-  if (caption) {
-    recordUnsupported(ctx, domNode, 'element', 'caption',
-      'A table caption has no native part, so its words are not translated: move the text to a paragraph above the table (\'' + String(textContent(caption) || '').replace(/\s+/gu, ' ').trim().slice(0, 24) + '\')');
-  }
   const rows = [];
   const rowNodes = [];
   // A row or section may carry the background a browser paints behind its cells -

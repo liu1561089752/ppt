@@ -370,6 +370,32 @@ function tableColumnWidths(node, columns, total) {
   return rounded;
 }
 
+function captionElementFromNode(node, resolvedTheme) {
+  const caption = node.caption;
+  if (!caption || !caption.text) return null;
+  const element = {
+    type: 'text',
+    x: Number(xOf(node).toFixed(4)),
+    y: Number(yOf(node).toFixed(4)),
+    w: Number(Math.max(0.2, node.w).toFixed(4)),
+    h: Number(Math.max(0.05, caption.height).toFixed(4)),
+    text: caption.text,
+    fontSize: caption.fontSizePt,
+    fontFace: resolvedTheme.fonts.body,
+    align: caption.align,
+    // CSS puts the caption's own baseline just above the grid, which is a bottom anchor.
+    valign: 'bottom',
+    lineSpacingMultiple: caption.lineHeight
+  };
+  if (caption.color) element.color = caption.color;
+  if (caption.bold) element.bold = true;
+  if (caption.italic) element.italic = true;
+  if (caption.paddingTop || caption.paddingBottom) {
+    element.boxMargin = { top: caption.paddingTop / 72, right: 0, bottom: caption.paddingBottom / 72, left: 0 };
+  }
+  return element;
+}
+
 function tableElementFromNode(node, resolvedTheme) {
   if (!node.rows || !node.rows.length) return null;
   const columns = Math.max(
@@ -378,12 +404,13 @@ function tableElementFromNode(node, resolvedTheme) {
       (accumulator, cell) => accumulator + ((cell.options && cell.options.colspan) || 1), 0))
   );
   const width = Math.max(0.2, node.w);
+  const captionHeight = node.caption ? node.caption.height : 0;
   return {
     type: 'table',
     x: Number(xOf(node).toFixed(4)),
-    y: Number(yOf(node).toFixed(4)),
+    y: Number((yOf(node) + captionHeight).toFixed(4)),
     w: Number(width.toFixed(4)),
-    h: Number(Math.max(0.2, node.h).toFixed(4)),
+    h: Number(Math.max(0.2, node.h - captionHeight).toFixed(4)),
     rows: node.rows,
     options: {
       colW: tableColumnWidths(node, columns, width),
@@ -1013,6 +1040,17 @@ function emitAbsolute(node, context) {
     }
     emitLeafOverlays(node, context, elements);
     return;
+  }
+  // A table's caption is drawn before it in document order, so it is emitted first and a
+  // reader paints it under nothing. It is a plain text box: a merged first row would put the
+  // rest of the table off the page in LibreOffice, which could not be verified.
+  if (node.caption) {
+    const captionElement = captionElementFromNode(node, resolvedTheme);
+    if (captionElement) {
+      captionElement._z = zIndexOf(node);
+      elements.push(captionElement);
+      report.texts = (report.texts || 0) + 1;
+    }
   }
   element._probe = node.id;
   element._z = zIndexOf(node);

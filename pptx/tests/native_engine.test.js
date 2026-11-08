@@ -5045,20 +5045,26 @@ test('text on text is a collision even when it is positioned', () => {
   assert.equal(wrapped.report.layout.total, 1, 'two overlapping step wrappers are reported');
 });
 
-test('a table caption is reported because its words would be lost', () => {
+test('a table caption becomes its own text box above the table', () => {
   const result = pipeline.convertHtml([
     '<html><head><style>',
     '  .slide { width: 1280px; height: 720px; padding: 40px; }',
     '  table { width: 800px; font-size: 13px; } td, th { padding: 8px; }',
-    '  caption { font-size: 12px; text-align: left; }',
+    '  caption { font-size: 12px; text-align: left; color: #8A9793; padding: 0 8px 6px; }',
     '</style></head><body><main class="slide">',
     '<table><caption>Rendering times</caption>',
     '<thead><tr><th>Layout</th><th>ms</th></tr></thead>',
     '<tbody><tr><td>Cover</td><td>41</td></tr></tbody></table>',
     '</main></body></html>'
   ].join('\n'));
-  const entry = (result.report.unsupportedDetails || []).find((item) => item.reason.includes('caption'));
-  assert.ok(entry, 'the caption is named, not dropped');
-  assert.match(entry.reason, /Rendering times/u);
+  const elements = result.deck.slides[0].elements;
+  const caption = elements.find((element) => element.type === 'text' && element.text === 'Rendering times');
+  const table = elements.find((element) => element.type === 'table');
+  assert.ok(caption, 'the caption is a text box, not a lost row');
+  assert.equal(caption.color, '8A9793');
+  assert.equal(caption.align, 'left');
+  assert.ok(caption.y + caption.h <= table.y + 0.001, 'the caption sits above the grid');
+  assert.equal(table.rows.length, 2, 'the caption is not one of the table rows');
+  assert.equal(result.report.unsupported, 0, JSON.stringify(result.report.unsupportedDetails));
 });
 

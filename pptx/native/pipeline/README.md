@@ -63,6 +63,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 | Clip path | `clip-path: polygon(...)` on a box with a declared height becomes a `custGeom` path whose vertices are the polygon corners: the shape itself is the clip, so it stays editable and its outline follows the cut. Percentages and lengths both resolve; anything else (`circle()`, `ellipse()`, `inset()`, `url()`) is reported, and so is a clipped box that has children, because only the box's own paint is clipped here |
 
+| Table caption | `<caption>` is drawn as its own text box above the table (that is where CSS puts it) and the table box starts below it. It keeps the caption type, alignment and padding, and the words stay editable. A merged first row is not used: with a `gridSpan` in row 0, LibreOffice lays the rest of the table off the page, so it could not be verified |
+
 | Small caps | `font-variant: small-caps` becomes `cap="small"` on the runs of the block, patched into the part like columns. Inline spans are reported: one `cap` cannot cover part of a paragraph. `all-small-caps`/`petite-caps`/`unicase` have no native spelling |
 
 | Columns | `columns: N` / `column-count` on a block of paragraphs becomes one text box with `numCol` and `spcCol` on its `bodyPr` - the native columned body, so the reader splits the text and editing reflows. The reserved height is the balanced one (`ceil(lines / N)` rows), and the column width is the declaration minus the gaps. Inline runs keep their formatting; a child that paints its own box is reported, because a background would be cut at the column edge |
