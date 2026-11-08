@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Structural Selectors</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .slide { position: relative; width: 1280px; height: 720px; background: #0D1518; padding: 56px 64px; }
+  .kicker { font-size: 12px; font-weight: 700; letter-spacing: 3px; color: #2FA8A0; }
+  h1 { font-size: 34px; color: #F1F5F5; margin: 10px 0 26px 0; }
+
+  /* Cards: the first is highlighted, the last loses its right border. */
+  .row { display: flex; flex-direction: row; gap: 16px; width: 1152px; }
+  .card {
+    flex: 1;
+    height: 150px;
+    background: #F6F8F8;
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .card h3 { font-size: 15px; color: #12292C; margin: 0 0 8px 0; }
+  .card p { font-size: 12px; color: #5A6D72; margin: 0; }
+  .card:first-child { background: #F2A24C; }
+  .card:nth-child(3) { background: #2FA8A0; }
+  .card:last-child { background: #14282C; }
+  .card:last-child h3 { color: #EAF1F0; }
+  .card:last-child p { color: #9FC0BE; }
+
+  /* A striped list: even rows carry a tint. */
+  .list { margin-top: 34px; width: 1152px; }
+  .item {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #121E22;
+    border-radius: 8px;
+  }
+  .item:nth-child(even) { background: #1A2B30; }
+  .item .name { font-size: 13px; color: #D5E3E4; }
+  .item .value { font-size: 13px; font-weight: 700; color: #7FD6D0; }
+  .item:nth-child(3) .value { color: #F2A24C; }
+
+  .foot { margin-top: 22px; width: 1000px; font-size: 12px; line-height: 1.7; color: #8FA9AD; }
+</style>
+</head>
+<body>
+<main class="slide">
+  <div class="kicker">structural selectors</div>
+  <h1>第几个元素由结构决定，不靠手写类名</h1>
+
+  <div class="row">
+    <div class="card"><h3>首项高亮</h3><p><code>:first-child</code></p></div>
+    <div class="card"><h3>普通</h3><p>无额外规则</p></div>
+    <div class="card"><h3>第三项</h3><p><code>:nth-child(3)</code></p></div>
+    <div class="card"><h3>末项反色</h3><p><code>:last-child</code></p></div>
+  </div>
+
+  <div class="list">
+    <div class="item"><div class="name">华东</div><div class="value">1,284</div></div>
+    <div class="item"><div class="name">华南</div><div class="value">1,096</div></div>
+    <div class="item"><div class="name">华北</div><div class="value">938</div></div>
+    <div class="item"><div class="name">西南</div><div class="value">712</div></div>
+    <div class="item"><div class="name">华中</div><div class="value">604</div></div>
+  </div>
+
+  <div class="foot">高亮、条纹、以及第三行数值的橙色，全部来自 <code>:first-child</code> / <code>:nth-child()</code> / <code>:last-child</code>；导出的形状与文本仍然可编辑。</div>
+</main>
+</body>
+</html>

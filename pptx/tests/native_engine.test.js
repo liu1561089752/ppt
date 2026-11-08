@@ -2310,3 +2310,98 @@ test('the flex shorthand sets the base and the shrink factor', () => {
   assert.deepEqual(result.report.containerFallbacks, []);
 });
 
+
+test('structural pseudo-classes select the right siblings', () => {
+  const build = (selector) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; gap: 10px; width: 1200px; }',
+    '  .card { flex: 1; height: 80px; background: #EEEEEE; }',
+    '  .row > .card' + selector + ' { background: #FF0000; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row">' + [1, 2, 3, 4, 5, 6].map((n) => '<div class="card"><div>' + n + '</div></div>').join('') + '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const marks = (selector) => {
+    const result = build(selector);
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual(result.report.unsupportedDetails, [], selector + ' must not be reported');
+    const row = result.deck.slides[0].elements.find((element) => element.type === 'container' && element.children && element.children.length === 6);
+    assert.ok(row, 'the row must stay a declarative container');
+    return row.children.map((child) => ((child.background && child.background.fill) === 'FF0000' ? 'X' : '.')).join('');
+  };
+
+  assert.equal(marks(':first-child'), 'X.....');
+  assert.equal(marks(':last-child'), '.....X');
+  assert.equal(marks(':nth-child(2)'), '.X....');
+  assert.equal(marks(':nth-child(even)'), '.X.X.X');
+  assert.equal(marks(':nth-child(odd)'), 'X.X.X.');
+  assert.equal(marks(':nth-child(3n+1)'), 'X..X..');
+  assert.equal(marks(':nth-child(-n+2)'), 'XX....');
+  assert.equal(marks(':nth-last-child(1)'), '.....X');
+  // The nth expression may contain spaces.
+  assert.equal(marks(':nth-child(2n + 1)'), 'X.X.X.');
+});
+
+test('of-type pseudo-classes count only siblings of the same tag', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box p:first-of-type { color: #FF0000; }',
+    '  .box p:nth-of-type(2) { color: #00FF00; }',
+    '  .box p:nth-child(1) { font-size: 99px; }',
+    '  .solo:only-child { color: #0000FF; }',
+    '</style></head><body><main class="slide">',
+    '<div class="box"><h3>h</h3><p>one</p><p>two</p><span>s</span></div>',
+    '<div class="box"><span class="solo">only</span></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const texts = [];
+  const walk = (nodes) => nodes.forEach((node) => {
+    if (node.type === 'text') texts.push(node);
+    if (node.children) walk(node.children);
+  });
+  walk(result.deck.slides[0].elements);
+
+  // A one-run text box may carry the run styling instead of top-level colour.
+  const textOf = (element) => (typeof element.text === 'string'
+    ? element.text
+    : (Array.isArray(element.text) ? element.text.map((run) => run.text).join('') : ''));
+  const colorOf = (element) => {
+    if (Array.isArray(element.text)) {
+      const run = element.text.find((entry) => entry.options && entry.options.color);
+      if (run) return run.options.color;
+    }
+    return element.color;
+  };
+  const byText = (value) => texts.find((element) => textOf(element) === value);
+
+  assert.ok(byText('one'), 'the first paragraph must be emitted');
+  assert.equal(colorOf(byText('one')), 'FF0000', 'first <p> in its parent');
+  assert.equal(colorOf(byText('two')), '00FF00', 'second <p> in its parent');
+  // `p:nth-child(1)` cannot match: the first child is the <h3>.
+  assert.ok(!texts.some((element) => Number(element.fontSize) === 99), 'nth-child(1) must not match the first <p>');
+  assert.equal(colorOf(byText('only')), '0000FF', 'the only child');
+});
+
+test('pseudo-classes that cannot be translated are still reported', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  :root { --accent: #123456; }',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .card { background: var(--accent); }',
+    '  .card:hover { background: #FFFFFF; }',
+    '</style></head><body><main class="slide">',
+    '<div class="card"><div>x</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  // `:root` only declares variables, so it is not an untranslated selector...
+  const selectors = result.report.unsupportedDetails.filter((entry) => entry.property === 'selector');
+  assert.equal(selectors.length, 1, JSON.stringify(result.report.unsupportedDetails));
+  assert.equal(selectors[0].value, '.card:hover');
+  // ...and its variables still resolve.
+  const card = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.equal(card.background.fill, '123456');
+});
+

@@ -4,8 +4,10 @@
  * A deliberately small CSS subset for the HTML → Native pipeline.
  *
  * Supported: type/class/id selectors (with descendant and child combinators
- * treated alike), simple compound selectors, CSS custom properties via `var()`,
- * inline styles, and a declared-value cascade with specificity.
+ * treated alike), structural pseudo-classes (`:first-child`, `:last-child`,
+ * `:only-child`, `:nth-child()`, `:nth-of-type()`, and their `-last-`/`-of-type`
+ * forms), simple compound selectors, CSS custom properties via `var()`, inline
+ * styles, and a declared-value cascade with specificity.
  *
  * Not supported (recorded as unsupported by the analyzer): @media queries,
  * pseudo-elements, attribute selectors, `:not()`, sibling combinators, shorthands
@@ -191,10 +193,11 @@ function collectRules(css, viewport, state) {
 }
 
 function parseSimpleSelector(segment) {
-  const simple = { tag: null, id: null, classes: [] };
+  const simple = { tag: null, id: null, classes: [], universal: false };
   let rest = segment;
   const tagMatch = /^(\*|[a-zA-Z][\w-]*)/u.exec(rest);
   if (tagMatch) {
+    simple.universal = tagMatch[1] === '*';
     simple.tag = tagMatch[1] === '*' ? null : tagMatch[1].toLowerCase();
     rest = rest.slice(tagMatch[1].length);
   }
@@ -209,28 +212,133 @@ function parseSimpleSelector(segment) {
 }
 
 /**
+ * Split a selector into compound segments on combinators and whitespace, without
+ * splitting inside `nth-child(2n + 1)`.
+ */
+function selectorSegments(text) {
+  const segments = [];
+  let current = '';
+  let depth = 0;
+  for (const char of String(text || '')) {
+    if (char === '(') depth += 1;
+    else if (char === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && /[\s>+~]/u.test(char)) {
+      if (current) segments.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current) segments.push(current);
+  return segments;
+}
+
+const STRUCTURAL_PSEUDO = /:(first-child|last-child|only-child|first-of-type|last-of-type|only-of-type|nth-child|nth-of-type|nth-last-child|nth-last-of-type)(?:\(([^)]*)\))?/giu;
+
+/** `an+b` from an nth expression; `odd`/`even` and plain integers included. */
+function parseNth(text) {
+  const value = String(text === null || text === undefined ? '' : text).replace(/\s+/gu, '').toLowerCase();
+  if (!value) return null;
+  if (value === 'odd') return { a: 2, b: 1 };
+  if (value === 'even') return { a: 2, b: 0 };
+  const match = /^([+-]?\d*)n([+-]\d+)?$/u.exec(value);
+  if (match) {
+    const head = match[1];
+    const a = head === '' || head === '+' ? 1 : (head === '-' ? -1 : Number(head));
+    const b = match[2] ? Number(match[2]) : 0;
+    return { a, b };
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? { a: 0, b: number } : null;
+}
+
+function matchesNth(position, nth) {
+  if (!nth) return false;
+  if (nth.a === 0) return position === nth.b;
+  const difference = position - nth.b;
+  return difference % nth.a === 0 && difference / nth.a >= 0;
+}
+
+/** Element siblings of a node, used by the structural pseudo-classes. */
+function elementSiblings(node) {
+  const parent = node && node.parent;
+  if (!parent || !Array.isArray(parent.children)) return node ? [node] : [];
+  return parent.children.filter((child) => child && child.type === 'element');
+}
+
+function matchesStructural(node, test) {
+  const siblings = elementSiblings(node);
+  const list = test.kind.endsWith('of-type')
+    ? siblings.filter((child) => child.tag === node.tag)
+    : siblings;
+  const position = list.indexOf(node) + 1;
+  if (position < 1) return false;
+  switch (test.kind) {
+    case 'first-child':
+    case 'first-of-type':
+      return position === 1;
+    case 'last-child':
+    case 'last-of-type':
+      return position === list.length;
+    case 'only-child':
+    case 'only-of-type':
+      return list.length === 1;
+    default:
+      break;
+  }
+  const nth = parseNth(test.arg);
+  if (test.kind.startsWith('nth-last')) return matchesNth(list.length - position + 1, nth);
+  return matchesNth(position, nth);
+}
+
+/**
+ * Read one compound segment: structural pseudo-classes become match tests, every
+ * other pseudo-class is left to the caller to report.
+ */
+function readSegment(segment) {
+  const structural = [];
+  let rest = String(segment || '').replace(STRUCTURAL_PSEUDO, (whole, kind, arg) => {
+    structural.push({ kind: String(kind).toLowerCase(), arg: arg === undefined ? null : arg });
+    return '';
+  });
+  const others = rest.match(/::?[\w-]+(?:\([^)]*\))?/gu) || [];
+  rest = rest.replace(/::?[\w-]+(?:\([^)]*\))?/gu, '');
+  const simple = parseSimpleSelector(rest.trim());
+  simple.structural = structural;
+  return { simple, others };
+}
+
+/**
  * Parse a selector into right-to-left parts. `>` and `+`/`~` collapse to a
  * descendant relationship, which over-matches slightly but never under-matches.
  */
 function parseSelector(rawSelector) {
   const raw = String(rawSelector || '');
-  const pseudo = /::?[\w-]+/u.test(raw);
-  const pseudoMatch = /::?([\w-]+)(?:\([^)]*\))?\s*$/u.exec(raw);
-  const pseudoName = pseudoMatch ? pseudoMatch[1].toLowerCase() : null;
-  const cleaned = raw
-    .replace(/::[\w-]+(\([^)]*\))?/gu, '')
-    .replace(/:[\w-]+(\([^)]*\))?/gu, '')
-    .trim();
-  if (!cleaned) return null;
-  const segments = cleaned.split(/\s*[>+~]\s*|\s+/u).filter(Boolean);
+  const segments = selectorSegments(raw);
   if (!segments.length) return null;
-  const parts = segments.map(parseSimpleSelector).reverse();
+  const reads = segments.map(readSegment);
+  const parts = reads.map((read) => read.simple).reverse();
+  const others = reads.flatMap((read) => read.others);
+  const pseudoName = others.length
+    ? (/:{1,2}([\w-]+)/u.exec(others[others.length - 1]) || [])[1] || null
+    : null;
+  const structuralCount = parts.reduce((sum, part) => sum + (part.structural ? part.structural.length : 0), 0);
+  // A selector that names nothing (`:root { --x: ... }`, a lone `:hover`) cannot
+  // describe an element, so it is not reported as an untranslated selector.
+  const identifies = parts.some((part) => part.tag || part.id || part.classes.length
+    || part.universal || (part.structural && part.structural.length));
+  if (!identifies) return null;
   const specificity = parts.reduce((accumulator, part) => ({
     ids: accumulator.ids + (part.id ? 1 : 0),
     classes: accumulator.classes + part.classes.length,
     tags: accumulator.tags + (part.tag ? 1 : 0)
-  }), { ids: 0, classes: 0, tags: 0 });
-  return { parts, specificity, pseudo, pseudoName };
+  }), { ids: 0, classes: structuralCount, tags: 0 });
+  return {
+    parts,
+    specificity,
+    pseudo: others.length > 0,
+    pseudoName: pseudoName ? pseudoName.toLowerCase() : null
+  };
 }
 
 function matchesSimple(node, simple) {
@@ -240,6 +348,11 @@ function matchesSimple(node, simple) {
   if (simple.classes.length) {
     const classes = String(node.attrs.class || '').split(/\s+/u);
     if (!simple.classes.every((name) => classes.includes(name))) return false;
+  }
+  if (simple.structural && simple.structural.length) {
+    for (const test of simple.structural) {
+      if (!matchesStructural(node, test)) return false;
+    }
   }
   return true;
 }
