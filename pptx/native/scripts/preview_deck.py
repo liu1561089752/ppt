@@ -161,6 +161,45 @@ def fill_color_of(shape):
 _ALPHA_TAG = "{http://schemas.openxmlformats.org/drawingml/2006/main}alpha"
 
 
+def fill_alpha_of(shape) -> float:
+    """Read <a:alpha> from a solid fill.
+
+    The writer expresses "no fill" as white at 100% transparency, so without this
+    the preview painted outline-only frames as solid white boxes over gradients.
+    """
+    try:
+        element = shape._element
+    except AttributeError:
+        return 1.0
+    solid = element.find(".//" + A_NS + "solidFill")
+    if solid is None:
+        return 1.0
+    alpha = solid.find(".//" + _ALPHA_TAG)
+    if alpha is None:
+        return 1.0
+    try:
+        return max(0.0, min(1.0, int(alpha.get("val", "100000")) / 100000))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def paint_solid(canvas, box, colour, alpha: float = 1.0, radius: int = 0) -> None:
+    """Composite a (possibly translucent, possibly rounded) solid fill."""
+    if not colour or alpha <= 0.004:
+        return
+    width = max(1, box[2] - box[0])
+    height = max(1, box[3] - box[1])
+    layer = Image.new("RGBA", (width, height), colour + (int(round(alpha * 255)),))
+    if radius:
+        mask = Image.new("L", (width, height), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            (0, 0, width - 1, height - 1), radius=radius, fill=255)
+        if alpha < 1:
+            mask = mask.point(lambda value: int(round(value * alpha)))
+        layer.putalpha(mask)
+    canvas.alpha_composite(layer, (box[0], box[1]))
+
+
 def line_alpha(line) -> float:
     """Read <a:alpha> from a line, so 'no outline' (100% transparent) stays invisible."""
     try:
@@ -493,6 +532,7 @@ def render_slide(slide, width: int, height: int, warnings: list[str]) -> Image.I
             shape_box = (box[2] - box[0], box[3] - box[1])
             gradient = gradient_of(shape)
             fill = None if gradient else fill_color_of(shape)
+            fill_alpha = 1.0 if gradient else fill_alpha_of(shape)
             outline, outline_width = line_of(shape)
             radius = corner_radius(shape, shape_box[0], shape_box[1])
             if gradient and shape_box[0] > 0 and shape_box[1] > 0:
@@ -508,11 +548,13 @@ def render_slide(slide, width: int, height: int, warnings: list[str]) -> Image.I
                 if outline:
                     draw.rectangle(box, outline=outline, width=outline_width or 1)
             elif fill or outline:
-                if radius:
-                    draw.rounded_rectangle(box, radius=radius, fill=fill,
-                                           outline=outline, width=outline_width or 1)
-                else:
-                    draw.rectangle(box, fill=fill, outline=outline, width=outline_width or 1)
+                paint_solid(canvas, box, fill, fill_alpha, radius)
+                if outline:
+                    if radius:
+                        draw.rounded_rectangle(box, radius=radius,
+                                               outline=outline, width=outline_width or 1)
+                    else:
+                        draw.rectangle(box, outline=outline, width=outline_width or 1)
             if shape.has_text_frame and shape.text_frame.text.strip():
                 draw_text(draw, shape.text_frame, box, warnings)
         except Exception as error:  # noqa: BLE001 - a preview must never abort

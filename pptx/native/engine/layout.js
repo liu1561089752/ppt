@@ -61,6 +61,27 @@ function normalizePadding(padding) {
   };
 }
 
+/**
+ * Optional per-child margins. The engine reserves them only where they can be
+ * honoured exactly: columns use top/bottom/left/right, rows use left/right, and
+ * grids ignore them (a grid track must stay aligned to its cell).
+ *
+ * The field is `boxMargin`, deliberately not `margin`: the PPTX writer already
+ * interprets `margin` as text-box insets, so overloading that name silently
+ * insets (or shifts) converted text.
+ */
+function normalizeMargin(child) {
+  const margin = child && child.boxMargin;
+  if (margin === undefined || margin === null) return { top: 0, right: 0, bottom: 0, left: 0 };
+  if (typeof margin === 'number') return { top: margin, right: margin, bottom: margin, left: margin };
+  return {
+    top: margin.top || 0,
+    right: margin.right || 0,
+    bottom: margin.bottom || 0,
+    left: margin.left || 0
+  };
+}
+
 function resolveGap(value, theme, fallback) {
   if (value !== undefined) return value;
   if (fallback !== undefined) return fallback;
@@ -112,10 +133,6 @@ function measureElementHeight(source, width, theme, options) {
   return prepareElement(source, width, theme, options).element.h;
 }
 
-function childWidth(child, availableWidth) {
-  return child.w === undefined ? availableWidth : child.w;
-}
-
 function placeColumn(container, box, theme, options, sink) {
   const padding = normalizePadding(container.padding);
   const gap = resolveGap(container.gap, theme);
@@ -125,9 +142,14 @@ function placeColumn(container, box, theme, options, sink) {
   const children = container.children || [];
   if (!children.length) return padding.top + padding.bottom;
 
-  const widths = children.map((child) => childWidth(child, contentWidth));
+  const margins = children.map((child) => normalizeMargin(child));
+  const widths = children.map((child, index) => {
+    if (child.w !== undefined) return child.w;
+    return Math.max(0, contentWidth - margins[index].left - margins[index].right);
+  });
   const heights = children.map((child, index) => measureElementHeight(child, widths[index], theme, options));
-  const totalContent = heights.reduce((sum, height) => sum + height, 0) + gap * (children.length - 1);
+  const totalContent = heights.reduce((sum, height, index) =>
+    sum + height + margins[index].top + margins[index].bottom, 0) + gap * (children.length - 1);
   const availableInner = box.h === undefined
     ? totalContent
     : Math.max(totalContent, box.h - padding.top - padding.bottom);
@@ -147,11 +169,12 @@ function placeColumn(container, box, theme, options, sink) {
   const align = container.align || 'stretch';
   let cursorY = contentY + offset;
   children.forEach((child, index) => {
-    let x = contentX;
+    let x = contentX + margins[index].left;
     if (align === 'center') x = contentX + (contentWidth - widths[index]) / 2;
     else if (align === 'end') x = contentX + (contentWidth - widths[index]);
-    emitElement(child, { x, y: cursorY, w: widths[index], h: heights[index] }, theme, options, sink);
-    cursorY += heights[index] + gap + extraGap;
+    const y = cursorY + margins[index].top;
+    emitElement(child, { x, y, w: widths[index], h: heights[index] }, theme, options, sink);
+    cursorY = y + heights[index] + margins[index].bottom + gap + extraGap;
   });
 
   return padding.top + availableInner + padding.bottom;
@@ -328,6 +351,7 @@ module.exports = {
   flattenElements,
   containerBackgroundSpec,
   normalizePadding,
+  normalizeMargin,
   prepareElement,
   measureElementHeight,
   layoutContainer,

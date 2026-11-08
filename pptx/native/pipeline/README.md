@@ -23,13 +23,23 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 1. **Semantic output, not a coordinate dump.** Every node is classified
    (`title` / `heading` / `body` / `caption`, card, list, image, table) and keeps
    its role, so a converted deck can still be restyled by changing theme tokens.
-2. **No rasterization.** Text stays text (with rich-text runs), cards stay
+   Subtrees with a container equivalent are emitted as native `container`
+   elements — `direction`, `gap`, `padding`, `align`, `justify`, `columns` and
+   per-child `boxMargin`/`flex` — so a converted row of cards stays a row of
+   cards instead of eleven absolute boxes.
+2. **Declarative output is proven, not assumed.** The analyzer and the engine are
+   two implementations of the same layout rules, so every declarative group is
+   re-resolved by the engine and compared with the analyzed boxes. Anything above
+   `0.012in` is demoted to explicit coordinates for that subtree, and
+   `report.json` records the container count, the fallback count, the reasons and
+   the worst residual delta.
+3. **No rasterization.** Text stays text (with rich-text runs), cards stay
    editable rounded rectangles plus their own text boxes, images stay native
    pictures with an editable crop rectangle, and tables stay native tables.
-3. **Honest gaps.** Anything outside the supported subset is listed in
+4. **Honest gaps.** Anything outside the supported subset is listed in
    `report.unsupportedDetails` with the element, the property and the reason.
    Nothing is silently dropped.
-4. **Shared measurement.** Text heights come from the same estimator the Native
+5. **Shared measurement.** Text heights come from the same estimator the Native
    writer uses, so the two paths agree.
 
 ## Supported CSS subset

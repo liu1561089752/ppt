@@ -75,6 +75,9 @@ async function main(argv) {
     ' | images: ' + result.report.images +
     ' | tables: ' + result.report.tables +
     ' | lines: ' + result.report.lines + '\n');
+  process.stdout.write('Layout: ' + result.report.declarativeContainers + ' declarative container(s), ' +
+    result.report.absoluteGroups + ' absolutely positioned group(s)' +
+    ' | engine/analyzer max delta ' + Number(result.report.maxBoxDelta).toFixed(4) + 'in\n');
   if (result.output) process.stdout.write('PPTX:   ' + result.output.pptx + '\n');
   if (options.out) process.stdout.write('Deck:   ' + path.resolve(options.out) + '\n');
   printUnsupported(result.report);

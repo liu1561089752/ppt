@@ -760,6 +760,7 @@ Behaviour worth knowing:
 - `align: 'stretch'` is the default, matching CSS `align-items: stretch`, so siblings share the tallest height — this is what makes card rows line up without manual heights.
 - `background` is emitted as a normal editable shape *before* the children, so a card is still "one surface plus its own text boxes".
 - Nested containers resolve recursively; a container without `h` measures its own content, including estimated text height.
+- A child may declare `boxMargin: { top, right, bottom, left }`. Columns honour all four (they also shrink the child's slot), rows honour left/right, and grids ignore margins so a track stays aligned to its cell. The field is **not** called `margin` because the PPTX writer already reads `margin` as text-box insets; passing a margin object under that name silently renders converted text inset by 0.1in.
 - Text inside a container is wrapped against the cell width, so `h` can be omitted entirely for text.
 
 `pptx/examples/native_stress_deck.js` is the reference for the intended usage: twelve designed pages built mostly from containers.
@@ -804,6 +805,8 @@ node pipeline/cli.js ../examples/pipeline-reference.html \
 ```
 
 The CLI prints how many nodes became text / shapes / images / tables, and lists every CSS feature it could not translate. Text keeps semantic roles (`title` / `heading` / `body` / `caption`), cards become editable shapes plus their own text boxes, `<img>` and `background-image: url(...)` both become native pictures with an editable crop rectangle (honouring `object-fit` / `background-size` and `background-position`), `<table>` becomes a native table, and `<ul>` becomes a bulleted native text box.
+
+Subtree layout is emitted **declaratively** wherever the CSS intent has a container equivalent: a flex row, an equal-track grid, or a block-flow stack (spacing carried by per-child `boxMargin`) becomes a native `container` with nested children instead of a pile of coordinates. Because the analyzer and the engine both implement the layout rules, every declarative group is then re-resolved by the engine and compared with the analyzed boxes; a disagreement over 0.012in demotes that subtree to explicit coordinates, and the report records how many groups are declarative, how many fell back, why, and the worst residual delta. The shipped fixtures convert with 7 containers, 0 fallbacks and a 0.0001in worst delta.
 
 Scope discipline: the pipeline covers absolute positioning, block flow, single-line flex (row/column) and equal-track grid. It is **not** a browser — see `pptx/native/pipeline/README.md` for the exact supported subset and the reported gaps (`filter`, `clip-path`, `mask`, `flex-wrap`, media queries, pseudo-elements, transforms, and more). Unsupported visuals are reported for deliberate human translation; the pipeline never rasterizes a slide.
 

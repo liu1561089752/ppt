@@ -8,17 +8,25 @@
  *
  *   text          → native text box (role-aware) with optional rich-text runs
  *   list          → native text box with PowerPoint bullets
- *   block/card    → editable rounded-rectangle shape + its children
+ *   group / card  → native `container` (row / column / grid) + optional surface
  *   image         → native picture with an editable crop rectangle
  *   table         → native PowerPoint table (rows/cells stay editable)
  *   line / hr     → native connector
  *
- * Cards remain a shape *plus* its own text boxes; no node is rasterized.
+ * Design decision: a subtree whose CSS intent is expressible as a container is
+ * emitted *declaratively* (`direction`, `gap`, `padding`, `align`, `justify`,
+ * `columns`, per-child `margin`/`flex`), so its layout is described once and can
+ * be re-resolved. Because the analyzer and the engine are two implementations of
+ * the same rules, every declarative group is then re-resolved by the engine and
+ * compared with the analyzer's boxes; any disagreement above `BOX_TOLERANCE`
+ * demotes that subtree to explicit coordinates. That keeps the conversion
+ * geometry-preserving while removing the duplicated flex/grid math wherever it
+ * is provably safe.
  */
 
 const defaultTheme = require('../themes/default');
 const { resolveTheme } = require('../themes/design_system');
-const { isBoldWeight } = require('../engine/native_pptx');
+const { layoutSlide } = require('../engine/layout');
 const {
   parseColor,
   parseBoxShadow,
@@ -35,18 +43,6 @@ const GENERIC_FAMILIES = {
   '-apple-system': null
 };
 
-/** CSS gradient angle (0deg = to top) -> DrawingML angle (0 = left-to-right). */
-function toDrawingMlAngle(cssAngle) {
-  const value = Number(cssAngle);
-  if (!Number.isFinite(value)) return 180;
-  return Math.round(((value - 90) % 360 + 360) % 360 * 100) / 100;
-}
-
-function nativeGradient(gradient) {
-  if (!gradient) return null;
-  return Object.assign({}, gradient, { angle: toDrawingMlAngle(gradient.angle) });
-}
-
 const FIT_BY_OBJECT_FIT = {
   cover: 'cover',
   contain: 'contain',
@@ -54,6 +50,35 @@ const FIT_BY_OBJECT_FIT = {
   none: 'contain',
   'scale-down': 'contain'
 };
+
+/** Maximum tolerated deviation (inches) between analyzer and engine boxes. */
+const BOX_TOLERANCE = 0.012;
+const MAX_LAYOUT_ATTEMPTS = 4;
+
+const ZERO_MARGIN = { top: 0, right: 0, bottom: 0, left: 0 };
+
+const ALIGN_BY_CSS = {
+  stretch: 'stretch',
+  'flex-start': 'start',
+  start: 'start',
+  center: 'center',
+  'flex-end': 'end',
+  end: 'end'
+};
+
+const JUSTIFY_BY_CSS = {
+  'flex-start': 'start',
+  start: 'start',
+  center: 'center',
+  'flex-end': 'end',
+  end: 'end',
+  'space-between': 'space-between',
+  'space-around': 'space-around'
+};
+
+function round4(value) {
+  return Number(Number(value).toFixed(4));
+}
 
 function firstFontFamily(value) {
   if (!value) return null;
@@ -73,6 +98,19 @@ function transparencyOf(parsed) {
   if (!parsed || parsed.alpha === undefined || parsed.alpha === null) return undefined;
   const transparency = Math.round((1 - parsed.alpha) * 100);
   return transparency > 0 ? transparency : undefined;
+}
+
+function marginsOf(node) {
+  return (node && node.margins) || ZERO_MARGIN;
+}
+
+function hasMargin(node) {
+  const margin = marginsOf(node);
+  return margin.top !== 0 || margin.right !== 0 || margin.bottom !== 0 || margin.left !== 0;
+}
+
+function isGroup(node) {
+  return !!node && (node.children || []).length > 0;
 }
 
 /** Derive a Native theme from CSS custom properties when the source declares them. */
@@ -119,8 +157,7 @@ function deriveTheme(variables = {}, baseTheme) {
   if (body) theme.fonts.body = body;
   const cjk = fontPick('font-cjk', 'font-chinese');
   if (cjk) theme.fonts.cjk = cjk;
-  const merged = resolveTheme(Object.assign({}, baseTheme || defaultTheme, theme));
-  return merged;
+  return resolveTheme(Object.assign({}, baseTheme || defaultTheme, theme));
 }
 
 function textElementFromNode(node, theme, resolvedTheme) {
@@ -264,45 +301,248 @@ function lineElementFromNode(node, resolvedTheme) {
   };
 }
 
-function emitNode(node, resolvedTheme, elements, report) {
-  if (!node || node.w <= 0.01 || node.h <= 0.01) return;
+/** CSS gradient angles are clockwise from north; DrawingML measures clockwise from east. */
+function toDrawingMlAngle(cssAngle) {
+  const value = Number(cssAngle);
+  if (!Number.isFinite(value)) return 180;
+  return Math.round(((value - 90) % 360 + 360) % 360 * 100) / 100;
+}
 
+function nativeGradient(gradient) {
+  if (!gradient) return null;
+  return Object.assign({}, gradient, { angle: toDrawingMlAngle(gradient.angle) });
+}
+
+function gridColumnCount(style) {
+  const text = String((style && style.gridTemplateColumns) || '');
+  const repeat = /repeat\(\s*(\d+)\s*,/u.exec(text);
+  if (repeat) return Number(repeat[1]);
+  const count = text.split(/\s+/u).filter(Boolean).length;
+  return Math.max(1, count || 1);
+}
+
+function inchesOfGap(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const match = /^(-?[\d.]+)(px|pt|in|cm|mm|em|rem|%)?$/u.exec(String(value).trim());
+  if (!match) return null;
+  const magnitude = Number(match[1]);
+  if (!Number.isFinite(magnitude)) return null;
+  const unit = match[2] || 'px';
+  if (unit === 'px') return magnitude / 96;
+  if (unit === 'pt') return magnitude / 72;
+  if (unit === 'in') return magnitude;
+  if (unit === 'cm') return magnitude / 2.54;
+  if (unit === 'mm') return magnitude / 25.4;
+  if (unit === 'em' || unit === 'rem') return (magnitude * 16) / 96;
+  return null;
+}
+
+function containerGap(style, axis) {
+  const primary = axis === 'row' ? (style.columnGap || style.gap) : (style.rowGap || style.gap);
+  const value = inchesOfGap(primary);
+  return value === null ? 0 : value;
+}
+
+function emptyCounters() {
+  return {
+    slides: 0,
+    textElements: 0,
+    richTextElements: 0,
+    shapes: 0,
+    images: 0,
+    backgroundImages: 0,
+    tables: 0,
+    lines: 0,
+    declarativeContainers: 0,
+    absoluteGroups: 0,
+    containerFallbacks: [],
+    layoutAttempts: 0,
+    maxBoxDelta: 0
+  };
+}
+
+function noteFallback(report, reason) {
+  if (report.containerFallbacks.length >= 12) return;
+  if (report.containerFallbacks.some((entry) => entry.reason === reason)) return;
+  report.containerFallbacks.push({ reason });
+}
+
+/**
+ * Decide whether a group can be expressed as a native container.
+ * Purely structural: numeric agreement is proven later by `verifySlide`.
+ */
+function containerPlan(node, state) {
+  if (!isGroup(node)) return { ok: false, reason: 'no children' };
+  if (state && state.blocked && state.blocked.has(node.id)) {
+    return { ok: false, reason: 'engine geometry disagreed' };
+  }
+  if (node.backgroundImage) return { ok: false, reason: 'group paints a background image' };
+
+  const style = node.style || {};
+  const display = String(style.display || 'block').toLowerCase();
+  const children = node.children || [];
+  if (children.some((child) => child.absolute)) {
+    return { ok: false, reason: 'child uses absolute positioning' };
+  }
+
+  let direction = 'column';
+  let columns = null;
+  if (display === 'grid') {
+    columns = gridColumnCount(style);
+  } else if (display === 'flex') {
+    if (String(style.flexWrap || 'nowrap').toLowerCase() === 'wrap') {
+      return { ok: false, reason: 'flex-wrap: wrap needs multiple lines' };
+    }
+    direction = String(style.flexDirection || 'row').toLowerCase().startsWith('column') ? 'column' : 'row';
+  }
+
+  for (const child of children) {
+    if (!isGroup(child)) continue;
+    const nested = containerPlan(child, state);
+    if (!nested.ok) return { ok: false, reason: 'nested group: ' + nested.reason };
+  }
+
+  if (display === 'flex' || display === 'grid') {
+    const spaced = children.find((child) => hasMargin(child));
+    if (spaced) return { ok: false, reason: display + ' child declares margins' };
+  }
+
+  return { ok: true, direction, columns, display };
+}
+
+function containerPadding(node) {
+  const padding = node.padding || ZERO_MARGIN;
+  const inset = node.border ? node.border.width / 72 : 0;
+  return {
+    top: padding.top + inset,
+    right: padding.right + inset,
+    bottom: padding.bottom + inset,
+    left: padding.left + inset
+  };
+}
+
+/** Build the declarative container descriptor for a group. */
+function containerElement(node, plan, resolvedTheme, report) {
+  const style = node.style || {};
+  const spec = { type: 'container', w: round4(node.w), h: round4(node.h) };
+  if (Number.isFinite(node.x)) spec.x = round4(node.x);
+  if (Number.isFinite(node.y)) spec.y = round4(node.y);
+
+  spec.padding = containerPadding(node);
+
+  if (plan.columns) {
+    spec.columns = Math.max(1, plan.columns);
+    spec.gap = containerGap(style, 'row');
+    spec.columnGap = style.columnGap !== undefined ? containerGap(style, 'row') : spec.gap;
+    spec.rowGap = style.rowGap !== undefined ? containerGap(style, 'column') : spec.gap;
+  } else if (plan.direction === 'row') {
+    spec.direction = 'row';
+    spec.gap = containerGap(style, 'row');
+  } else if (plan.display === 'flex') {
+    spec.direction = 'column';
+    spec.gap = containerGap(style, 'column');
+  } else {
+    // Block flow: spacing lives on the children's margins, not on a gap.
+    spec.direction = 'column';
+    spec.gap = 0;
+  }
+
+  const align = ALIGN_BY_CSS[String(style.alignItems || 'stretch').toLowerCase()];
+  if (align) spec.align = align;
+  const justify = JUSTIFY_BY_CSS[String(style.justifyContent || '').toLowerCase()];
+  if (justify && plan.display !== 'block' && !plan.columns) spec.justify = justify;
+
+  const surface = surfaceElementFromNode(node, resolvedTheme);
+  if (surface) {
+    delete surface.x;
+    delete surface.y;
+    delete surface.w;
+    delete surface.h;
+    spec.background = surface;
+    if (report) report.shapes += 1;
+  }
+  return spec;
+}
+
+/** Leaf element (text / image / table / line) for a node, with counters bumped. */
+function leafElement(node, resolvedTheme, report) {
   if (node.kind === 'text' || node.kind === 'list') {
-    if (!node.text && !node.runs) return;
-    elements.push(textElementFromNode(node, null, resolvedTheme));
+    if (!node.text && !node.runs) return null;
     report.textElements += 1;
     if (node.runs) report.richTextElements += 1;
-    return;
+    return textElementFromNode(node, null, resolvedTheme);
   }
   if (node.kind === 'image') {
     const element = imageElementFromNode(node);
-    if (element) {
-      elements.push(element);
-      report.images += 1;
-    }
-    return;
+    if (element) report.images += 1;
+    return element;
   }
   if (node.kind === 'table') {
     const element = tableElementFromNode(node, resolvedTheme);
-    if (element) {
-      elements.push(element);
-      report.tables += 1;
-    }
-    return;
+    if (element) report.tables += 1;
+    return element;
   }
   if (node.kind === 'line') {
-    elements.push(lineElementFromNode(node, resolvedTheme));
     report.lines += 1;
-    return;
+    return lineElementFromNode(node, resolvedTheme);
   }
-
-  // Block / card / group. CSS paints the colour first, then the background
-  // image, then the children, so the order below matches browser stacking.
+  // A childless group contributes only its surface, if it has one.
   const surface = surfaceElementFromNode(node, resolvedTheme);
-  if (surface) {
-    elements.push(surface);
-    report.shapes += 1;
+  if (surface) report.shapes += 1;
+  return surface;
+}
+
+function boxOf(node) {
+  return { x: node.x, y: node.y, w: node.w, h: node.h };
+}
+
+function emitContainerChildren(spec, node, plan, context) {
+  const children = [];
+  (node.children || []).forEach((child) => {
+    const element = containerChild(child, plan, Object.assign({}, context, { ownerId: node.id }));
+    if (element) children.push(element);
+  });
+  spec.children = children;
+}
+
+/** Emit one child positioned by its parent container. */
+function containerChild(node, parentPlan, context) {
+  const { resolvedTheme, report, state, probes, owners, ownerId } = context;
+  let element;
+  if (isGroup(node)) {
+    const plan = containerPlan(node, state);
+    if (!plan.ok) return null;
+    element = containerElement(node, plan, resolvedTheme, report);
+    report.declarativeContainers += 1;
+    emitContainerChildren(element, node, plan, context);
+  } else {
+    element = leafElement(node, resolvedTheme, report);
+    if (!element) return null;
+    element.h = round4(node.h);
+    const declaredWidth = node.style && node.style.width !== undefined;
+    if (parentPlan.columns || !declaredWidth) {
+      delete element.w;
+      if (parentPlan.direction === 'row' && !parentPlan.columns) {
+        const weight = Number(node.style && node.style.flex);
+        if (Number.isFinite(weight) && weight > 0) element.flex = weight;
+      }
+    }
+    // Named boxMargin: the writer reads `margin` as text-box insets.
+    if (parentPlan.display === 'block') element.boxMargin = marginsOf(node);
   }
+  delete element.x;
+  delete element.y;
+  element._probe = node.id;
+  probes.set(node.id, boxOf(node));
+  owners.set(node.id, ownerId);
+  return element;
+}
+
+/** Emit a node (and its subtree) at explicit coordinates. */
+function emitAbsolute(node, context) {
+  const { resolvedTheme, elements, report, state, probes, owners, ownerId } = context;
+  if (!node || node.w <= 0.01 || node.h <= 0.01) return;
+
   if (node.backgroundImage) {
     const picture = imageElementFromNode({
       src: node.backgroundImage.src,
@@ -316,12 +556,98 @@ function emitNode(node, resolvedTheme, elements, report) {
       alt: ''
     });
     if (picture) {
+      picture._probe = 'bg-' + node.id;
+      probes.set(picture._probe, boxOf(node));
+      owners.set(picture._probe, ownerId);
       elements.push(picture);
       report.images += 1;
       report.backgroundImages += 1;
     }
   }
-  (node.children || []).forEach((child) => emitNode(child, resolvedTheme, elements, report));
+
+  if (isGroup(node)) {
+    const plan = containerPlan(node, state);
+    if (plan.ok) {
+      const spec = containerElement(node, plan, resolvedTheme, report);
+      report.declarativeContainers += 1;
+      if (spec.background) {
+        spec.background._probe = 'surface-' + node.id;
+        probes.set(spec.background._probe, boxOf(node));
+        owners.set(spec.background._probe, ownerId);
+      }
+      emitContainerChildren(spec, node, plan, Object.assign({}, context, { ownerId: node.id }));
+      elements.push(spec);
+      return;
+    }
+    report.absoluteGroups += 1;
+    noteFallback(report, plan.reason);
+    const surface = surfaceElementFromNode(node, resolvedTheme);
+    if (surface) {
+      surface._probe = node.id;
+      probes.set(node.id, boxOf(node));
+      owners.set(node.id, ownerId);
+      elements.push(surface);
+      report.shapes += 1;
+    }
+    (node.children || []).forEach((child) =>
+      emitAbsolute(child, Object.assign({}, context, { ownerId: node.id })));
+    return;
+  }
+
+  const element = leafElement(node, resolvedTheme, report);
+  if (!element) return;
+  element._probe = node.id;
+  probes.set(node.id, boxOf(node));
+  owners.set(node.id, ownerId);
+  elements.push(element);
+}
+
+/**
+ * Re-resolve a slide through the engine and report boxes that disagree with the
+ * analyzer. Returns the set of owning container ids that must fall back.
+ */
+function verifySlide(elements, pageSize, theme, probes, owners) {
+  const mismatched = new Set();
+  let maxDelta = 0;
+  let resolved;
+  try {
+    resolved = layoutSlide(
+      { elements: JSON.parse(JSON.stringify(elements)), margin: 0, gap: 0 },
+      pageSize,
+      theme,
+      {}
+    );
+  } catch (error) {
+    owners.forEach((ownerId) => { if (ownerId !== undefined) mismatched.add(ownerId); });
+    return { mismatched, maxDelta: Number.POSITIVE_INFINITY, error };
+  }
+  resolved.forEach((element) => {
+    const probe = element._probe;
+    if (probe === undefined) return;
+    const expected = probes.get(probe);
+    if (!expected) return;
+    const delta = Math.max(
+      Math.abs(element.x - expected.x),
+      Math.abs(element.y - expected.y),
+      Math.abs(element.w - expected.w),
+      Math.abs(element.h - expected.h)
+    );
+    if (delta > maxDelta) maxDelta = delta;
+    if (delta > BOX_TOLERANCE) {
+      const owner = owners.get(probe);
+      if (owner !== undefined && owner !== null) mismatched.add(owner);
+    }
+  });
+  return { mismatched, maxDelta };
+}
+
+function stripProbes(elements) {
+  elements.forEach((element) => {
+    delete element._probe;
+    if (element.background) delete element.background._probe;
+    (element.children || []).forEach((child) => delete child._probe);
+  });
+  return elements;
 }
 
 /** Convert an analyzed document into a Native Deck Spec plus a mapping report. */
@@ -330,36 +656,64 @@ function buildDeckSpec(analysis, options = {}) {
     ? resolveTheme(options.theme)
     : deriveTheme(analysis.variables || {}, options.baseTheme);
 
-  const report = {
-    slides: analysis.slides.length,
-    textElements: 0,
-    richTextElements: 0,
-    shapes: 0,
-    images: 0,
-    tables: 0,
-    lines: 0,
-    backgroundImages: 0,
-    unsupported: analysis.unsupported.length
-  };
+  const report = emptyCounters();
+  report.slides = analysis.slides.length;
+  report.unsupported = analysis.unsupported.length;
 
   const slides = analysis.slides.map((slide) => {
-    const elements = [];
-    if (slide.gradient) {
-      elements.push({
-        type: 'shape',
-        x: 0, y: 0,
-        w: analysis.pageSize.width,
-        h: analysis.pageSize.height,
-        fill: slide.gradient.stops[0].color,
-        gradient: nativeGradient(slide.gradient),
-        line: false
-      });
-      report.shapes += 1;
+    const state = { blocked: new Set() };
+    let elements = [];
+    let attemptReport = emptyCounters();
+
+    for (let attempt = 0; attempt < MAX_LAYOUT_ATTEMPTS; attempt += 1) {
+      attemptReport = emptyCounters();
+      const probes = new Map();
+      const owners = new Map();
+      elements = [];
+      if (slide.gradient) {
+        attemptReport.shapes += 1;
+        elements.push({
+          type: 'shape',
+          x: 0,
+          y: 0,
+          w: analysis.pageSize.width,
+          h: analysis.pageSize.height,
+          fill: slide.gradient.stops[0].color,
+          gradient: nativeGradient(slide.gradient),
+          line: false
+        });
+      }
+      const context = {
+        resolvedTheme,
+        elements,
+        report: attemptReport,
+        state,
+        probes,
+        owners,
+        ownerId: null
+      };
+      slide.nodes.forEach((node) => emitAbsolute(node, context));
+
+      const verification = verifySlide(elements, analysis.pageSize, resolvedTheme, probes, owners);
+      attemptReport.layoutAttempts = attempt + 1;
+      attemptReport.maxBoxDelta = verification.maxDelta;
+      if (!verification.mismatched.size) break;
+      const newlyBlocked = [...verification.mismatched].filter((id) => !state.blocked.has(id));
+      if (!newlyBlocked.length) break;
+      newlyBlocked.forEach((id) => state.blocked.add(id));
     }
-    slide.nodes.forEach((node) => emitNode(node, resolvedTheme, elements, report));
+
+    [
+      'textElements', 'richTextElements', 'shapes', 'images', 'backgroundImages',
+      'tables', 'lines', 'declarativeContainers', 'absoluteGroups'
+    ].forEach((key) => { report[key] += attemptReport[key]; });
+    attemptReport.containerFallbacks.forEach((entry) => noteFallback(report, entry.reason));
+    report.layoutAttempts = Math.max(report.layoutAttempts, attemptReport.layoutAttempts);
+    report.maxBoxDelta = Math.max(report.maxBoxDelta, attemptReport.maxBoxDelta);
+
     return {
       background: slide.background,
-      elements
+      elements: stripProbes(elements)
     };
   });
 
@@ -381,5 +735,9 @@ module.exports = {
   surfaceElementFromNode,
   imageElementFromNode,
   tableElementFromNode,
+  containerPlan,
+  containerElement,
+  verifySlide,
+  BOX_TOLERANCE,
   FIT_BY_OBJECT_FIT
 };

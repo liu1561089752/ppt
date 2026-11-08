@@ -1063,17 +1063,39 @@ test('html pipeline maps flex rows, grid tracks, lists, tables, and images to na
   assert.equal(result.report.images, 2);
   assert.equal(result.report.tables, 1);
 
-  const flexSlide = result.deck.slides[1].elements;
-  const cards = flexSlide.filter((element) => element.type === 'shape' && element.fill === 'FFFFFF');
+  // Resolve the declarative spec exactly like the writer does, so the assertions
+  // below prove what the containers actually produce.
+  const { layoutSlide } = require('../native/engine/layout');
+  const resolveSlide = (index) => layoutSlide(
+    { elements: result.deck.slides[index].elements, margin: 0, gap: 0 },
+    result.deck.pageSize,
+    result.deck.theme,
+    {}
+  );
+
+  // The flex row must be declared, not flattened into coordinates.
+  const row = result.deck.slides[1].elements.find((element) => element.type === 'container');
+  assert.ok(row, 'the flex row must become a native container');
+  assert.equal(row.direction, 'row');
+  assert.ok(Math.abs(row.gap - 24 / 96) < 1e-6, 'row gap was ' + row.gap);
+  assert.equal(row.children.length, 3);
+  assert.ok(row.children.every((child) => child.type === 'container'),
+    'each card stays a nested container');
+  assert.ok(result.report.declarativeContainers >= 4, 'row + cards must be declarative');
+  assert.equal(result.report.absoluteGroups, 0, 'nothing should need to fall back');
+  assert.ok(result.report.maxBoxDelta < 0.002,
+    'engine and analyzer must agree, delta was ' + result.report.maxBoxDelta);
+
+  const cards = resolveSlide(1).filter((element) => element.type === 'shape' && element.fill === 'FFFFFF');
   assert.equal(cards.length, 3);
   // flex: 1 with a 24px gap inside a 1152px row.
   assert.ok(Math.abs(cards[0].w - 368 / 96) < 0.01, 'card width was ' + cards[0].w);
   assert.ok(Math.abs(cards[1].x - cards[0].x - (368 + 24) / 96) < 0.01);
   // align-items defaults to stretch, so every card shares one height.
-  assert.ok(cards.every((card) => Math.abs(card.h - cards[0].h) < 1e-9));
+  assert.ok(cards.every((card) => Math.abs(card.h - cards[0].h) < 1e-6));
   assert.ok(cards[0].shadow, 'box-shadow must survive as an editable shadow');
 
-  const gridSlide = result.deck.slides[2].elements;
+  const gridSlide = resolveSlide(2);
   const image = gridSlide.find((element) => element.type === 'image');
   assert.ok(image, 'the grid slide must keep a native picture');
   assert.equal(image.fit, 'cover');
@@ -1084,7 +1106,7 @@ test('html pipeline maps flex rows, grid tracks, lists, tables, and images to na
   assert.ok(list.text.split('\n').length >= 4);
   assert.ok(list.h > 0.9, 'list height must cover all items, was ' + list.h);
 
-  const tableSlide = result.deck.slides[3].elements;
+  const tableSlide = resolveSlide(3);
   const table = tableSlide.find((element) => element.type === 'table');
   assert.equal(table.rows.length, 5);
   assert.equal(table.rows[0][0].options.bold, true);
@@ -1230,4 +1252,63 @@ test('html pipeline turns a CSS background image into a native picture', async (
     assert.equal(audit.totals.pictures, 2);
     assert.equal(audit.errors, 0);
   });
+});
+
+test('html pipeline declares block-flow cards as containers and falls back when CSS is not expressible', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.row { position: absolute; left: 40px; top: 40px; width: 1000px; display: flex; gap: 20px; }',
+    '.card { flex: 1; padding: 16px; background: #FFFFFF;',
+    '  border: 1px solid #DCE2DE; border-radius: 12px; }',
+    '.card h3 { margin: 0 0 8px 0; font-size: 16px; }',
+    '.card p { margin: 0; font-size: 12px; }',
+    '.spaced { position: absolute; left: 40px; top: 420px; width: 1000px; display: flex; gap: 20px; }',
+    '.spaced div { flex: 1; margin: 6px; padding: 8px; background: #EEEEEE; font-size: 12px; }',
+    '</style></head><body><main class="slide">',
+    '<section class="row">',
+    '  <article class="card"><h3>甲</h3><p>说明一</p></article>',
+    '  <article class="card"><h3>乙</h3><p>说明二</p></article>',
+    '</section>',
+    '<div class="spaced"><div>一</div><div>二</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const row = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(row, 'the card row must be declarative');
+  assert.equal(row.direction, 'row');
+
+  // A card has a border, so the border inset must be folded into its padding,
+  // and its block-flow children keep their CSS margins.
+  const card = row.children[0];
+  assert.equal(card.direction, 'column');
+  assert.equal(card.gap, 0, 'block flow spaces children with margins, not a gap');
+  assert.ok(Math.abs(card.padding.top - (16 / 96 + 0.75 / 72)) < 1e-6,
+    'padding must include the 1px border inset, was ' + card.padding.top);
+  assert.ok(Math.abs(card.children[0].boxMargin.bottom - 8 / 96) < 1e-6,
+    'the h3 bottom margin must be preserved, was ' + JSON.stringify(card.children[0].boxMargin));
+  // `margin` is the writer's text-inset option, so layout margins must never use
+  // that name or converted text renders inset by 0.1in.
+  assert.equal(card.children[0].margin, undefined,
+    'layout margins must be emitted as boxMargin, not margin');
+
+  // Resolving the spec must reproduce the analysed boxes.
+  const { layoutSlide } = require('../native/engine/layout');
+  const resolved = layoutSlide(
+    { elements: result.deck.slides[0].elements, margin: 0, gap: 0 },
+    result.deck.pageSize, result.deck.theme, {}
+  );
+  const headings = resolved.filter((element) => element.type === 'text' && (element.text === '甲' || element.text === '乙'));
+  assert.equal(headings.length, 2);
+  assert.ok(headings[0].x > 0 && headings[0].y > 0);
+  assert.ok(Math.abs(headings[0].y - headings[1].y) < 1e-6, 'both cards start at the same y');
+
+  // A flex row whose children declare margins has no container equivalent: it
+  // must stay on explicit coordinates instead of silently dropping the margins.
+  assert.ok(result.report.absoluteGroups >= 1, 'the margin-flex row must fall back');
+  assert.ok(result.report.containerFallbacks.some((entry) => /margins/u.test(entry.reason)),
+    'the fallback reason must name the margins: ' + JSON.stringify(result.report.containerFallbacks));
+  assert.ok(result.report.maxBoxDelta < 0.002);
 });

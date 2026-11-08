@@ -49,7 +49,7 @@ function textOptions(el, theme) {
     lineSpacingMultiple: el.lineSpacingMultiple || theme.typography.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22,
     paraSpaceBeforePt: el.paraSpaceBeforePt,
     bullet: el.bullet,
-    margin: el.margin === undefined ? 0 : el.margin,
+    margin: Number.isFinite(el.margin) ? el.margin : 0,
     valign: el.valign || 'mid',
     align: el.align || 'left',
     paraSpaceAfterPt: el.paraSpaceAfterPt || 0,

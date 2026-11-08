@@ -134,6 +134,7 @@ function createContext(html, options = {}) {
     root,
     stylesheet,
     styles: createStyleResolver(stylesheet),
+    nextId: 1,
     unsupported: [],
     notes: [],
     options
@@ -338,10 +339,12 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   const elementKids = elementChildren(domNode);
   const kind = resolveKind(domNode, style, elementKids);
   const node = {
+    id: ctx.nextId++,
     tag: domNode.tag,
     classes: classList(domNode),
     kind,
     style,
+    margins: boxShorthand(style, 'margin'),
     radius: radiusOf(style),
     x,
     y,
