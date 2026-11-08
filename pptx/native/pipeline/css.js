@@ -707,49 +707,71 @@ function expandBoxShorthand(value) {
   return [parts[0], parts[1], parts[2], parts[3]];
 }
 
+/**
+ * Which properties a style object has already taken from an `!important` declaration.
+ * Kept beside the style instead of on it: the resolver hands plain objects to the rest of
+ * the pipeline, and a bookkeeping key inside one would leak into the cascade.
+ */
+const IMPORTANT_PROPERTIES = new WeakMap();
+
 function applyDeclarations(style, declarations, variables) {
-  declarations.forEach(({ property, value }) => {
+  let locked = IMPORTANT_PROPERTIES.get(style);
+  if (!locked) {
+    locked = new Set();
+    IMPORTANT_PROPERTIES.set(style, locked);
+  }
+  declarations.forEach((declaration) => {
+    const { property, value } = declaration;
+    const important = Boolean(declaration.important);
+    // An `!important` declaration outranks every normal one no matter where it sits, so a
+    // later normal declaration cannot take the property back. Between two important ones
+    // the usual order applies, which is what the ascending-specificity walk gives us.
+    const set = (name, next) => {
+      if (!important && locked.has(name)) return;
+      style[name] = next;
+      if (important) locked.add(name);
+    };
     const resolvedValue = expandVariables(value, variables);
     if (property.startsWith('--')) {
-      style[property] = resolvedValue;
+      set(property, resolvedValue);
       return;
     }
     if (property === 'gap' || property === 'grid-gap') {
       // `gap: <row> <column>`; a single value applies to both axes.
       const parts = splitTopLevelSpaces(resolvedValue);
-      style.rowGap = parts[0];
-      style.columnGap = parts.length > 1 ? parts[1] : parts[0];
+      set('rowGap', parts[0]);
+      set('columnGap', parts.length > 1 ? parts[1] : parts[0]);
       return;
     }
     if (property === 'border') {
       // Keep the shorthand, but expand it into the four sides so a later or more
       // specific `border-bottom` (and a `border` that clears it) cascades the way
       // CSS says instead of always losing to the longhand.
-      style.border = resolvedValue;
+      set('border', resolvedValue);
       ['Top', 'Right', 'Bottom', 'Left'].forEach((side) => {
-        style['border' + side] = resolvedValue;
+        set('border' + side, resolvedValue);
       });
       return;
     }
     if (property === 'padding' || property === 'margin') {
       const [top, right, bottom, left] = expandBoxShorthand(resolvedValue);
       const suffix = property === 'padding' ? 'padding' : 'margin';
-      style[suffix + 'Top'] = top;
-      style[suffix + 'Right'] = right;
-      style[suffix + 'Bottom'] = bottom;
-      style[suffix + 'Left'] = left;
+      set(suffix + 'Top', top);
+      set(suffix + 'Right', right);
+      set(suffix + 'Bottom', bottom);
+      set(suffix + 'Left', left);
       return;
     }
     if (property === 'border-radius') {
       const [topLeft, topRight, bottomRight, bottomLeft] = expandBoxShorthand(resolvedValue);
-      style.borderTopLeftRadius = topLeft;
-      style.borderTopRightRadius = topRight;
-      style.borderBottomRightRadius = bottomRight;
-      style.borderBottomLeftRadius = bottomLeft;
-      style.borderRadius = topLeft;
+      set('borderTopLeftRadius', topLeft);
+      set('borderTopRightRadius', topRight);
+      set('borderBottomRightRadius', bottomRight);
+      set('borderBottomLeftRadius', bottomLeft);
+      set('borderRadius', topLeft);
       return;
     }
-    style[camelCase(property)] = resolvedValue;
+    set(camelCase(property), resolvedValue);
   });
   return style;
 }

@@ -203,9 +203,8 @@ with Office installed.
   whole rule reported instead of silently matching too much. Attribute selectors
   support `[attr]`, `=`, `~=`, `|=`, `^=`, `$=`, `*=` and the `i` flag; an operator
   we cannot evaluate (`[data-x!=y]`) leaves the rule reported rather than matching
-  every element with the class. Other pseudo-classes and pseudo-elements and
-  `!important`
-  are ignored, and a rule whose selector is ignored is listed in the report. A
+  every element with the class. Other pseudo-classes and pseudo-elements are
+  ignored, and a rule whose selector is ignored is listed in the report. A
   selector that names no element at all (`:root { --x: ... }`) is not listed,
   because its declarations are only custom properties. Custom properties are
   resolved globally rather than per-subtree.
@@ -294,9 +293,9 @@ with Office installed.
   can only fade its own fill.
 - **`!important` marks the declaration, it is not part of the value.** It is stripped
   before the value is read (so `width: 600px !important` is 600px) and recorded on the
-  declaration; priority between an important and a normal declaration of equal
-  specificity still follows source order, which is the one place the cascade is
-  simplified.
+  declaration, and it really outranks a normal declaration: a later normal rule cannot
+  take the property back, an important one still beats an inline `style` property, and
+  between two important declarations the usual specificity and order decide.
 - **`font-size` is resolved once.** A relative size (`120%`, `1.2em`) used to be applied
   twice, once when the box was sized and again when its text was measured, so every
   relative size came out about 20% too large.

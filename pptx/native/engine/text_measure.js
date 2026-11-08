@@ -39,20 +39,36 @@ function measureTextPt(text, fontSizePt, options = {}) {
 function normalizeCjkLineBreaks(lines) {
   const leadingPunctuation = new Set(Array.from('，。！？：；、）》】」』〕〉〗〙〛,.!?;:%)]}'));
   const trailingOpening = new Set(Array.from('（【「『〔〈〖〘〚([{'));
-  for (let i = 1; i < lines.length; i += 1) {
-    const current = graphemes(lines[i]);
-    const previous = graphemes(lines[i - 1]);
-    if (current.length && leadingPunctuation.has(current[0]) && previous.length > 1) {
-      current.unshift(previous.pop());
+  if (lines.length < 2) return lines;
+  // Repeat until nothing moves. One pass is not enough: carrying a mark back can leave the
+  // previous line ending with an opening bracket, and that has to be pushed forward again.
+  // Every mark has to be carried, not just the first: `。」` and `」，` are two marks, and
+  // carrying one left the second sitting at the start of the next line. A line that is
+  // nothing but a mark is dropped after the mark joins the line above it.
+  for (let pass = 0; pass < 8; pass += 1) {
+    let changed = false;
+    for (let i = 1; i < lines.length; i += 1) {
+      const previous = graphemes(lines[i - 1]);
+      const current = graphemes(lines[i]);
+      while (current.length && previous.length > 1 && leadingPunctuation.has(current[0])) {
+        previous.push(current.shift());
+        changed = true;
+      }
+      while (current.length > 1 && previous.length > 1
+        && trailingOpening.has(previous[previous.length - 1])) {
+        current.unshift(previous.pop());
+        changed = true;
+      }
       lines[i - 1] = previous.join('');
+      if (current.length === 0) {
+        lines.splice(i, 1);
+        i -= 1;
+        changed = true;
+        continue;
+      }
       lines[i] = current.join('');
     }
-    const adjustedPrevious = graphemes(lines[i - 1]);
-    if (adjustedPrevious.length && trailingOpening.has(adjustedPrevious[adjustedPrevious.length - 1]) && current.length > 1) {
-      current.unshift(adjustedPrevious.pop());
-      lines[i - 1] = adjustedPrevious.join('');
-      lines[i] = current.join('');
-    }
+    if (!changed) break;
   }
   return lines;
 }

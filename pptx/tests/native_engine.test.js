@@ -4673,3 +4673,71 @@ test('every unsupported declaration is reported exactly once, by name', () => {
   assert.deepEqual(quiet.report.unsupportedDetails, []);
 });
 
+
+test('CJK line breaking never starts a line with a closing mark or ends one with an opening bracket', () => {
+  const { wrapText } = require('../native/engine/text_measure');
+  const closing = new Set(Array.from('，。！？：；、）》】」』〕〉,.!?;:%)]}'));
+  const opening = new Set(Array.from('（【「『〔〈〖([{'));
+  const patterns = ['一（。」', '一。」」', '一，（」', '一（（。', '一。」，', '一」。、', '一（「。'];
+  const sentences = ['中文排版里标点不能出现在行首这是常识。', '一二三四五六七，后续内容继续排版。'];
+  const violations = [];
+  patterns.forEach((pattern) => {
+    sentences.forEach((sentence) => {
+      const sample = '一二三四五' + pattern + sentence;
+      for (let width = 1.0; width <= 2.6; width += 0.05) {
+        const lines = String(wrapText(sample, width, 12, {})).split('\n');
+        lines.slice(1).forEach((line) => {
+          if (closing.has(Array.from(line)[0])) {
+            violations.push({ sample, width: width.toFixed(2), line, kind: 'starts with a mark' });
+          }
+        });
+        lines.slice(0, -1).forEach((line) => {
+          if (opening.has(Array.from(line).slice(-1)[0])) {
+            violations.push({ sample, width: width.toFixed(2), line, kind: 'ends with an opening bracket' });
+          }
+        });
+      }
+    });
+  });
+  assert.deepEqual(violations.slice(0, 5), [], JSON.stringify(violations.length) + ' violation(s)');
+
+  // The case that exposed it: two marks in a row left the second one at the start of a line.
+  const lines = String(wrapText('一二三四五。」」后续文字继续排版', 1.0, 12, {})).split('\n');
+  assert.ok(!/^[。」]/u.test(lines[1]), JSON.stringify(lines));
+  // And nothing may vanish while the marks are carried.
+  assert.equal(lines.join(''), '一二三四五。」」后续文字继续排版');
+});
+
+
+test('!important outranks a normal declaration wherever it appears', () => {
+  const width = (css, inline) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    '  <div class="box" style="' + (inline || '') + '">x</div>',
+    '</main></body></html>'
+  ].join('\n')).deck.slides[0].elements[0].w;
+
+  assert.equal(width('.box { width: 400px; } .box { width: 300px; }'), 3.125, 'later normal wins');
+  assert.equal(width('.box { width: 400px !important; } .box { width: 300px; }'), 4.1667,
+    'a later normal declaration cannot take an important property back');
+  assert.equal(width('.box { width: 400px; } .box { width: 300px !important; }'), 3.125,
+    'an important declaration wins from further down');
+  assert.equal(width('.box { width: 400px !important; } .box { width: 200px !important; }'), 2.0833,
+    'between two important ones, order still decides');
+  assert.equal(width('.box { width: 400px !important; }', 'width: 100px'), 4.1667,
+    'an inline style is normal priority, so an important rule beats it');
+  assert.equal(width('.box { width: 400px !important; }', 'width: 100px !important'), 1.0417,
+    'an inline important declaration is the most specific normal case and wins');
+  // The shorthand carries its priority into the longhands it expands to.
+  const padded = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: 200px; font-size: 16px; padding: 20px !important; }',
+    '  .box { padding: 0; }',
+    '</style></head><body><main class="slide"><div class="box">x</div></main></body></html>'
+  ].join('\n')).deck.slides[0].elements[0];
+  assert.ok(padded.h > 0.5, 'the important padding survives a later reset: ' + padded.h);
+});
+
