@@ -1,0 +1,19 @@
+# Node dependencies
+node_modules/
+
+# Generated decks and render artifacts (never commit generated output;
+# reviewed baselines under pptx/native/golden/ are the exception and are tracked)
+*.pptx
+*.pdf
+render-check/
+visual-regression/
+batch-dist/
+design-profile/
+pipeline-converted/
+native-theme-profile/
+native-image-assets/
+native-stress-assets/
+
+# Python
+__pycache__/
+*.pyc

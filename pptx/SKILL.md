@@ -595,7 +595,7 @@ Always render generated decks in the target Office environment and inspect text 
 
 ### Migration status
 
-The Native engine now includes Deck Spec validation, unit conversion, role-aware text measurement, optional font-file metrics, CJK wrapping and punctuation handling, shared design tokens, reusable templates/components, editable text/shapes/images/tables/charts, gradient/shadow/transparency OOXML support, East Asian font properties, batch generation, LibreOffice render checks, and pixel-regression tooling. It is the default for new presentations but is not a universal CSS renderer or a guarantee of pixel-identical output across Office renderers. Remaining release gates are human review of paired HTML/Native slides, approved Golden PNGs, and spot checks in Microsoft PowerPoint on supported platforms.
+The Native engine now includes Deck Spec validation, unit conversion, role-aware text measurement (including per-run rich text), optional font-file metrics, CJK wrapping and punctuation handling, a declarative container layout engine, shared design tokens, reusable templates/components, editable text/shapes/images/tables/charts, image cover/contain/crop with focal points and zoom, rounded picture corners, picture outlines and shadows, gradient/shadow/transparency OOXML support, East Asian font properties, batch generation, a staged HTML to Native pipeline, an editability audit, LibreOffice render checks, and pixel-regression tooling. It is the default for new presentations but is not a universal CSS renderer or a guarantee of pixel-identical output across Office renderers. Remaining release gates are human review of paired HTML/Native slides, approved Golden PNGs, and spot checks in Microsoft PowerPoint on supported platforms.
 
 Do not remove or change the legacy HTML engine as part of Native mode development. Both paths are intentionally kept side by side during migration.
 
@@ -622,7 +622,7 @@ const deck = {
 
 The optional metrics layer uses `fontkit` glyph advance widths when a configured font file is available. If a font is missing or a glyph is unavailable, the estimator falls back to conservative CJK/Latin width classes. The metrics layer does not yet perform full OpenType shaping, kerning, variable-font axis selection, or exact PowerPoint line breaking. It improves measurement but does not eliminate the need for rendering checks.
 
-Rich-text run arrays are kept editable and are currently measured as plain text; add explicit line breaks to rich-text content when precise wrapping is required.
+Rich-text run arrays stay editable and are now measured per run: each run is measured at its own declared font size and the line height comes from the largest size in the paragraph. It is still a greedy character-level wrap rather than shaping, so add explicit line breaks when precise wrapping matters.
 
 ### Reusable native components and templates
 
@@ -693,10 +693,114 @@ The original `extract_pptx_style.py` remains available for the legacy HTML/CSS w
 The HTML compatibility batch converter now pre-creates slide slots in the sorted source-file order, then lets workers render into their assigned slide. Failed or severe-warning slides are removed after workers finish, in descending source order. This preserves the original HTML slide order even when concurrent render tasks finish out of order.
 
 
+### Image fit, cropping, and picture surfaces
+
+Images no longer rely on PptxGenJS `sizing`: the engine computes the geometry itself and patches the slide XML, because `contain` in PptxGenJS 3.12 emits negative crop rectangles for every non-matching aspect ratio and `crop` shrinks the picture frame.
+
+```js
+{
+  type: 'image',
+  path: 'photo.jpg',            // or data: 'data:image/png;base64,...'
+  x: 1.2, y: 1.6, w: 4.4, h: 3.0,   // the frame you designed
+  fit: 'cover',                 // 'cover' | 'contain' | 'crop' | 'stretch' (default)
+  focus: 'center',              // 'top' | 'bottom' | 'top left' | ... | { x: 0.5, y: 0.2 }
+  zoom: 1.4,                    // >= 1, tightens the cover framing without distorting
+  crop: { left: 0.1, right: 0, top: 0, bottom: 0.15 },  // fit: 'crop' only
+  transparency: 15,
+  radius: 0.18,                 // rounded corners via a:prstGeom roundRect
+  lineColor: 'DCE2DE', lineWidth: 1, lineTransparency: 20, lineDash: 'dash',
+  shadow: { color: '000000', opacity: 0.2, blur: 8, angle: 45, distance: 4 },
+  flipH: true, altText: '图表示意',
+  naturalSize: { width: 1600, height: 900 }   // required only when the size cannot be read
+}
+```
+
+| `fit` | Result |
+|---|---|
+| `stretch` | Fills the frame, no crop. Legacy behaviour; distortion is possible. |
+| `cover` | Fills the frame and writes `<a:srcRect>` for the overflow, around `focus`, tightened by `zoom`. |
+| `contain` | Shrinks the *picture frame* to the source aspect ratio inside the slot; no crop, no letterbox artifacts. |
+| `crop` | Draws the explicit source sub-rectangle into the frame. |
+
+`cover`/`contain` need the natural pixel size, which is read from `path` or a `data:` URI with `image-size`; pass `naturalSize` for remote URLs. All four modes keep an editable picture frame: cropping, rounding, outline, and shadow can be re-edited in PowerPoint. Nothing is promoted to a slide background or a rasterized snapshot.
+
+Unit and OOXML coverage lives in `pptx/tests/native_engine.test.js`; the visual tour is `pptx/examples/native_images_demo.js` (`npm run demo:images`).
+
+
+### Declarative layout containers
+
+Element arrays still support the historical single-column flow, but real layouts should use `container` elements. A container is a layout-only type: it never reaches the writer, it resolves to absolute, still-editable geometry.
+
+```js
+{
+  type: 'container',
+  x: 0.66, y: 1.8, w: 12.0,        // omit h to size to content
+  direction: 'row',                // 'row' | 'column' (default 'column')
+  gap: 0.3, rowGap: 0.24, columnGap: 0.3,
+  padding: 0.26,                   // number or { top, right, bottom, left }
+  align: 'stretch',                // cross axis: start | center | end | stretch
+  justify: 'start',                // main axis: start | center | end | space-between | space-around
+  columns: 4,                      // turn it into an equal-width grid instead of a single line
+  background: {                    // optional editable card surface behind the children
+    fill: 'FFFFFF', radius: 0.18, lineColor: 'DCE2DE', lineWidth: 0.75,
+    shadow: { color: '000000', opacity: 0.16, blur: 10, angle: 45, distance: 3 },
+    gradient: { angle: 135, stops: [{ position: 0, color: '183B3A' }, { position: 1, color: 'D36B45' }] }
+  },
+  children: [
+    { type: 'text', text: '指标', fontSize: 10, bold: true },   // width follows the cell
+    { type: 'text', text: '¥12.8 亿', fontSize: 24, bold: true },
+    { type: 'shape', w: 1.2, h: 0.06, fill: 'D36B45', line: false }  // fixed width, flex-free
+  ]
+}
+```
+
+Behaviour worth knowing:
+
+- A child without `w` fills the cross axis; inside a `row` it claims an equal share of the remaining width unless it declares `flex` (a weight) or `w`.
+- `align: 'stretch'` is the default, matching CSS `align-items: stretch`, so siblings share the tallest height — this is what makes card rows line up without manual heights.
+- `background` is emitted as a normal editable shape *before* the children, so a card is still "one surface plus its own text boxes".
+- Nested containers resolve recursively; a container without `h` measures its own content, including estimated text height.
+- Text inside a container is wrapped against the cell width, so `h` can be omitted entirely for text.
+
+`pptx/examples/native_stress_deck.js` is the reference for the intended usage: twelve designed pages built mostly from containers.
+
+### Editability audit
+
+`node scripts/audit_deck.js <deck.pptx>` reads the package and reports, per slide, editable text shapes, characters, pictures, charts and tables, plus findings such as `TEXT_AS_IMAGE`, `NO_EDITABLE_TEXT` and `POSSIBLE_FULL_SLIDE_RASTER`.
+
+```bash
+node scripts/audit_deck.js native-stress-deck.pptx --min-text-shapes 1 --fail-on-warning
+node scripts/audit_deck.js deck.pptx --json --max-picture-coverage 0.6
+```
+
+Use `--fail-on-warning` in CI for fixtures that must stay clean. A full-bleed hero picture is reported as `info` (`FULL_BLEED_PICTURE`) because it is still a croppable native picture, not a raster.
+
+### HTML → Native conversion pipeline
+
+`pptx/native/pipeline/` implements the staged conversion described in the migration plan:
+
+```
+HTML → DOM Analyzer → Layout Analyzer → Style Mapper → Native Deck Spec → PPTX
+```
+
+```bash
+cd pptx/native
+node pipeline/cli.js ../examples/pipeline-reference.html \
+  --out converted/deck.json --report converted/report.json --pptx converted/deck.pptx
+```
+
+The CLI prints how many nodes became text / shapes / images / tables, and lists every CSS feature it could not translate. Text keeps semantic roles (`title` / `heading` / `body` / `caption`), cards become editable shapes plus their own text boxes, images keep an editable crop rectangle, `<table>` becomes a native table, and `<ul>` becomes a bulleted native text box.
+
+Scope discipline: the pipeline covers absolute positioning, block flow, single-line flex (row/column) and equal-track grid. It is **not** a browser — see `pptx/native/pipeline/README.md` for the exact supported subset and the reported gaps (`filter`, `clip-path`, `mask`, `flex-wrap`, media queries, pseudo-elements, transforms, and more). Unsupported visuals are reported for deliberate human translation; the pipeline never rasterizes a slide.
+
+
 ### Current Native quality gates
 
-- The CI suite runs Node engine tests, creates editable sample decks, inspects DrawingML for gradients/shadows/alpha, renders through LibreOffice/Poppler, and uploads previews.
+- The CI suite runs Node engine tests (73 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
 - The visual comparator is active, but it only performs real deck comparisons when reviewed PNGs exist under `pptx/native/golden/<deck>/`. Its self-test is not a substitute for a real baseline.
 - Never add generated PNGs to Golden directories merely to make CI green. A human must review each paired HTML/Native slide and approve the baseline first.
 - LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.
+- Image `cover`/`contain`/`crop`, rounded corners, picture outlines and picture shadows are asserted at the OOXML level, not only visually.
+- The editability audit (`scripts/audit_deck.js`) is the machine check for "content stays editable". It cannot judge aesthetics.
 - CSS token extraction is best-effort. It supports a limited set of colors, font tokens, spacing, simple linear gradients, one simple box shadow, and explicit opacity. Complex CSS cascade, Grid/Flex composition, filters, masks, blend modes, pseudo-elements, and animation require deliberate manual translation.
+- The HTML pipeline's layout solver is not a browser engine. Its output must be reviewed against the HTML reference before it is treated as a delivered design.

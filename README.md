@@ -22,6 +22,33 @@ Native mode now also includes configurable font-file metrics (via fontkit), CJK-
 
 Native output now sets East Asian font properties in OOXML, supports editable PowerPoint charts, and includes process-flow, timeline, comparison, and KPI templates. CI uses LibreOffice plus Poppler to render both demo decks and upload PPTX/PDF/PNG previews as artifacts.
 
+### Layout, images, and editability
+
+Declarative `container` elements provide real layout instead of a single cursor flow: `row` / `column` directions, `gap`, `padding`, `align`, `justify`, equal-width `columns` grids, nested containers, and content-sized heights. A container can paint its own card `background`, emitted as a normal editable shape behind its children.
+
+Images support `fit: 'cover' | 'contain' | 'crop' | 'stretch'`, focal points, `zoom`, opacity, rounded corners, outlines and shadows. The engine computes the geometry itself and patches `<a:srcRect>` / `<a:prstGeom>` / `<a:ln>` / `<a:effectLst>`, because the PptxGenJS 3.12 `sizing` API cannot express `contain` without emitting invalid negative crop rectangles. Every mode keeps an editable picture frame — no slide is ever rasterized into a background image.
+
+```bash
+cd pptx/native
+npm run demo:images     # cover / contain / stretch / focus / zoom / rounded / shadow
+npm run demo:stress     # twelve designed pages exercising the whole engine
+npm run audit:stress    # per-slide editability audit, fails on warnings
+```
+
+`node scripts/audit_deck.js <deck.pptx>` is the machine check for "content is still editable": it reports editable text shapes, characters, pictures, charts and tables per slide and flags `TEXT_AS_IMAGE`, `NO_EDITABLE_TEXT` and `POSSIBLE_FULL_SLIDE_RASTER`.
+
+### HTML → Native pipeline
+
+`pptx/native/pipeline/` implements the staged migration: **HTML → DOM Analyzer → Layout Analyzer → Style Mapper → Native Deck Spec → PPTX**. Text keeps semantic roles, cards stay editable surfaces plus their own text boxes, `<table>` becomes a native table, `<ul>` becomes bulleted native text, and images keep an editable crop rectangle.
+
+```bash
+cd pptx/native
+node pipeline/cli.js ../examples/pipeline-reference.html \
+  --out converted/deck.json --report converted/report.json --pptx converted/deck.pptx
+```
+
+The pipeline reports every CSS feature it could not translate instead of dropping it silently. See `pptx/native/pipeline/README.md` for the supported subset and the explicit limitations — it is a deliberate subset translator, not a browser engine.
+
 Batch conversion is available through `node pptx/batch_native_pptx.js --input-dir <deck-spec-directory> --output-dir <output-directory>`. Each JSON Deck Spec is rendered to a separate editable PPTX; see `pptx/SKILL.md` for options.
 Reference PPTX analysis for Native mode is available with `python pptx/scripts/extract_native_design.py reference.pptx extracted-design/`; it samples all slides and exports design tokens, layout geometry, repeated component signatures, and font usage.
 The legacy HTML batch converter also now preserves source slide order under concurrent rendering by assigning each job a pre-created slide slot.

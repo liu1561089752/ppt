@@ -11,6 +11,7 @@ on:
       - "pptx/scripts/extract_native_design.py"
       - "pptx/scripts/extract_html_design_tokens.py"
       - "pptx/native/parity/**"
+      - "pptx/native/pipeline/**"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
@@ -24,6 +25,7 @@ on:
       - "pptx/scripts/extract_native_design.py"
       - "pptx/scripts/extract_html_design_tokens.py"
       - "pptx/native/parity/**"
+      - "pptx/native/pipeline/**"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
@@ -63,17 +65,41 @@ jobs:
           npm run demo
           npm run demo:components
           npm run demo:layouts
+          npm run demo:images
+          npm run demo:stress
           npm run batch:example
+      - name: Audit generated decks for editability
+        working-directory: pptx/native
+        run: |
+          node scripts/audit_deck.js native-demo.pptx --min-text-shapes 1
+          node scripts/audit_deck.js native-components-demo.pptx --min-text-shapes 1
+          node scripts/audit_deck.js native-images-demo.pptx --min-text-shapes 1
+          node scripts/audit_deck.js native-stress-deck.pptx --min-text-shapes 1 --fail-on-warning
+      - name: Convert the HTML fixtures through the native pipeline
+        working-directory: pptx/native
+        run: |
+          npm run pipeline:pptx
+          npm run pipeline:parity
+          npm run audit:pipeline
       - name: Verify editable OOXML visual effects
         working-directory: pptx/native
         run: |
           python scripts/verify_native_ooxml.py native-design-migration-demo.pptx --require-gradient --require-shadow --require-alpha
+      - name: Verify editable picture crops, outlines, and shadows
+        working-directory: pptx/native
+        run: |
+          python scripts/verify_native_ooxml.py native-images-demo.pptx --require-image-crop --require-picture-effects
+          python scripts/verify_native_ooxml.py native-stress-deck.pptx --require-image-crop --require-table --require-gradient --require-shadow
       - name: Extract design profile from generated deck
         working-directory: pptx/native
         run: python ../scripts/extract_native_design.py native-components-demo.pptx design-profile
       - name: Compile and test design extraction scripts
         working-directory: pptx/native
         run: |
+          node --check pipeline/cli.js
+          node --check pipeline/analyzer.js
+          node --check pipeline/deck_builder.js
+          node --check scripts/audit_deck.js
           python -m py_compile ../scripts/extract_native_design.py ../scripts/extract_html_design_tokens.py scripts/render_check.py scripts/visual_regression.py scripts/verify_native_ooxml.py
           python ../scripts/extract_html_design_tokens.py --self-test
           python scripts/visual_regression.py --self-test
@@ -83,6 +109,9 @@ jobs:
           npm run render:demo
           npm run render:components
           npm run render:layouts
+          npm run render:images
+          npm run render:stress
+          npm run render:pipeline
           npm run render:batch
           npm run render:theme
           npm run render:parity
@@ -110,13 +139,19 @@ jobs:
             pptx/native/native-demo.pptx
             pptx/native/native-components-demo.pptx
             pptx/native/native-layouts-demo.pptx
+            pptx/native/native-images-demo.pptx
+            pptx/native/native-stress-deck.pptx
             pptx/native/native-design-migration-demo.pptx
             pptx/native/native-design-parity-demo.pptx
-            pptx/native/native-theme-profile/\n            pptx/native/parity/
+            pptx/native/native-image-assets/
+            pptx/native/native-stress-assets/
+            pptx/native/native-theme-profile/
+            pptx/native/parity/
             pptx/native/batch-dist/
             pptx/native/render-check/
             pptx/native/visual-regression/
             pptx/native/design-profile/
+            pptx/native/pipeline-converted/
             pptx/native/themes/
             pptx/scripts/extract_html_design_tokens.py
             pptx/native/scripts/visual_regression.py
