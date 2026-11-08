@@ -13,6 +13,7 @@ const path = require('node:path');
 
 const { analyzeHtml } = require('./analyzer');
 const { buildDeckSpec, deriveTheme } = require('./deck_builder');
+const { auditAnalysis } = require('./collide');
 const htmlParser = require('./html_parser');
 const css = require('./css');
 const { generatePptx } = require('../engine/native_pptx');
@@ -42,13 +43,15 @@ function convertHtml(html, options = {}) {
   const analysis = analyzeHtml(html, options);
   analysis.title = collectTitle(analysis);
   const { deck, report } = buildDeckSpec(analysis, options);
+  const layout = auditAnalysis(analysis);
   const errors = validateDeck(deck);
   return {
     deck,
     report: Object.assign({}, report, {
       notes: analysis.notes,
       unsupportedDetails: analysis.unsupported,
-      stats: analysis.stats
+      stats: analysis.stats,
+      layout
     }),
     analysis,
     errors

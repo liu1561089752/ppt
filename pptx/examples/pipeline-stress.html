@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>多页压力测试</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+  .slide { position: relative; width: 1280px; height: 720px; padding: 44px 56px; background: #F7F5F1; overflow: hidden; }
+
+  /* 1 · 深色首屏：绝对定位色块 + 流式文字 */
+  .cover { background: #10303A; }
+  .cover .band { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; background: #10303A; }
+  .cover .glow { position: absolute; right: -120px; top: -160px; width: 520px; height: 520px; border-radius: 260px; background: #1C4B57; }
+  .kicker { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: #86AFA4; }
+  .cover h1 { margin: 16px 0 0; font-size: 40px; line-height: 1.25; color: #FFFFFF; width: 900px; }
+  .cover .lede { margin: 18px 0 0; width: 720px; font-size: 15px; line-height: 1.9; color: #CFE0DA; }
+  .cover .meta { position: fixed; left: 56px; bottom: 40px; font-size: 12px; letter-spacing: 1px; color: #7E9C95; }
+
+  /* 2 · 弹性两列 + 换行标签 + 原生表格 */
+  .cols { display: flex; flex-direction: row; gap: 24px; width: 1168px; margin-top: 8px; }
+  .side { flex: 0 0 320px; padding: 16px; background: #FFFFFF; border-radius: 12px; }
+  .side h2 { margin: 0 0 10px; font-size: 17px; color: #1D2A2E; }
+  .side p { margin: 0 0 10px; font-size: 13px; line-height: 1.8; color: #4A5A5E; }
+  .main { flex: 1 1 auto; }
+  .cards { display: flex; flex-direction: row; flex-wrap: wrap; gap: 14px; }
+  .card { flex: 0 0 250px; padding: 14px; background: #FFFFFF; border-radius: 10px; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; color: #1D2A2E; }
+  .card p { margin: 0; font-size: 12px; line-height: 1.75; color: #566; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 14px; }
+  .tag { flex: 0 0 150px; padding: 6px 10px; background: #E7EFEC; border-radius: 6px; font-size: 12px; color: #2C444A; white-space: nowrap; }
+  table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 8px 6px; color: #566; border-bottom: 1px solid #DCD7CE; }
+  td { padding: 7px 6px; border-bottom: 1px solid #ECE7DF; color: #2B3B3F; }
+
+  /* 3 · 流程行：等宽步骤 + 序号 */
+  h2.title { margin: 0 0 6px; font-size: 30px; color: #1D2A2E; }
+  .sub { margin: 0 0 20px; font-size: 14px; line-height: 1.9; color: #6B7B7F; width: 900px; }
+  .steps { display: flex; flex-direction: row; gap: 16px; width: 1168px; }
+  .step { flex: 1; padding: 16px; background: #FFFFFF; border-radius: 12px; border-top: 3px solid #D98A4B; }
+  .step .num { font-size: 12px; letter-spacing: 2px; color: #D98A4B; }
+  .step h3 { margin: 8px 0 6px; font-size: 16px; color: #1D2A2E; }
+  .step p { margin: 0; font-size: 12px; line-height: 1.75; color: #566; }
+  .foot { margin-top: 18px; font-size: 11px; color: #8A9A9E; }
+</style>
+</head>
+<body>
+
+<main class="slide cover">
+  <div class="band"></div>
+  <div class="glow"></div>
+  <div class="kicker">Native Pipeline · 多页</div>
+  <h1>一次 HTML，一条流水线，三页可编辑幻灯片</h1>
+  <p class="lede">每页都在 1280×720 的画布内结算：深色首屏用绝对定位色块，中页用弹性两列加换行标签与原生表格，末页用等宽流程行。分页、主题与几何都由同一份 CSS 推导。</p>
+  <div class="meta">2026 · native-ppt-engine</div>
+</main>
+
+<main class="slide">
+  <div class="kicker" style="color:#D98A4B">02 · 版式</div>
+  <h2 class="title">两列、换行与表格同页共存</h2>
+  <div class="cols">
+    <div class="side">
+      <h2>侧栏固定 320px</h2>
+      <p>侧栏是普通流：标题加三段说明。文字较长时自然折行，并且不会越过白色卡片的边界。</p>
+      <p>第二段用来验证多段文本的行高与段间距是否一致。</p>
+      <p>第三段收尾。</p>
+    </div>
+    <div class="main">
+      <div class="cards">
+        <div class="card"><h3>卡片一</h3><p>声明固定宽度，容器一窄就换行；文字略长，用来验证卡片高度按内容增长。</p></div>
+        <div class="card"><h3>卡片二</h3><p>第二张卡片。</p></div>
+        <div class="card"><h3>卡片三</h3><p>第三张，内容比第二张长，用来观察同一行里不同高度如何对齐。</p></div>
+        <div class="card"><h3>卡片四</h3><p>第四张。</p></div>
+      </div>
+      <div class="tags">
+        <div class="tag">标签 A</div>
+        <div class="tag">标签 B</div>
+        <div class="tag">标签 C</div>
+        <div class="tag">标签 D</div>
+        <div class="tag">标签 E</div>
+      </div>
+      <table>
+        <thead><tr><th>区域</th><th>门店</th><th>本月</th><th>环比</th></tr></thead>
+        <tbody>
+          <tr><td>华东</td><td>128</td><td>1,284</td><td>+4.2%</td></tr>
+          <tr><td>华南</td><td>104</td><td>1,096</td><td>-2.8%</td></tr>
+          <tr><td>华北</td><td>92</td><td>938</td><td>-1.1%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<main class="slide">
+  <div class="kicker" style="color:#D98A4B">03 · 流程</div>
+  <h2 class="title">四个等宽步骤</h2>
+  <p class="sub">流程行用弹性等分，标题与正文都保持可编辑文本；不需要为每一步单独摆放坐标。</p>
+  <div class="steps">
+    <div class="step">
+      <div class="num">STEP 01</div>
+      <h3>解析 DOM</h3>
+      <p>读取结构与样式，识别标题、正文、卡片、表格与图表。</p>
+    </div>
+    <div class="step">
+      <div class="num">STEP 02</div>
+      <h3>求解版式</h3>
+      <p>绝对定位、块流、弹性行与网格都解成绝对几何。</p>
+    </div>
+    <div class="step">
+      <div class="num">STEP 03</div>
+      <h3>映射样式</h3>
+      <p>颜色、字号、行距、圆角、阴影与渐变映射为 DrawingML。</p>
+    </div>
+    <div class="step">
+      <div class="num">STEP 04</div>
+      <h3>写出原生对象</h3>
+      <p>每个元素都是可编辑对象，没有任何整页栅格化。</p>
+    </div>
+  </div>
+  <div class="foot">原生 PowerPoint 对象 · 可在 PowerPoint 中直接改字改色</div>
+</main>
+
+</body>
+</html>

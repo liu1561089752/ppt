@@ -22,6 +22,7 @@ function parseArgs(argv) {
     else if (token === '--language') options.language = argv[++index];
     else if (token === '--page-size') options.pageSize = argv[++index];
     else if (token === '--json') options.json = true;
+    else if (token === '--allow-layout-issues') options.allowLayoutIssues = true;
     else if (token === '--help' || token === '-h') options.help = true;
     else if (!token.startsWith('--') && !options.input) options.input = token;
     else throw new Error('Unknown argument: ' + token);
@@ -46,6 +47,30 @@ function printUnsupported(report) {
     process.stdout.write('  - ' + key + ' · ' + entries.length + ' occurrence(s)' +
       (sample.tag ? ' · e.g. <' + sample.tag + '>' : '') + '\n');
   });
+}
+
+function printLayoutIssues(report) {
+  const layout = report.layout;
+  if (!layout || !layout.total) {
+    process.stdout.write('No box collisions or content overflows detected.\n');
+    return 0;
+  }
+  process.stdout.write('Layout issues (boxes that collide or content that spills out):\n');
+  layout.slides.forEach((slide) => {
+    slide.collisions.forEach((entry) => {
+      process.stdout.write('  - slide ' + slide.slide + ': ' + entry.a + ' overlaps ' + entry.b
+        + ' (' + entry.area + 'in², inside ' + entry.parent + ')\n');
+    });
+    (slide.overflows || []).forEach((entry) => {
+      process.stdout.write('  - slide ' + slide.slide + ': ' + entry.node + ' content exceeds its box by '
+        + entry.over + 'in on ' + entry.axis + '\n');
+    });
+    (slide.beyond || []).forEach((entry) => {
+      process.stdout.write('  - slide ' + slide.slide + ': ' + entry.node + ' runs ' + entry.over
+        + 'in past the ' + entry.side + ' edge of the slide\n');
+    });
+  });
+  return layout.total;
 }
 
 async function main(argv) {
@@ -90,10 +115,17 @@ async function main(argv) {
   if (result.output) process.stdout.write('PPTX:   ' + result.output.pptx + '\n');
   if (options.out) process.stdout.write('Deck:   ' + path.resolve(options.out) + '\n');
   printUnsupported(result.report);
+  const layoutIssues = printLayoutIssues(result.report);
   (result.report.notes || []).forEach((note) => process.stdout.write('Note: ' + note + '\n'));
   if (result.errors.length) {
     process.stdout.write('Deck spec validation failed:\n');
     result.errors.forEach((error) => process.stdout.write('  - ' + error + '\n'));
+    return 1;
+  }
+  // A colliding box is a real defect that a wrong measurement produced, so the
+  // pipeline fails on it instead of shipping it. `--allow-layout-issues` opts out.
+  if (layoutIssues && !options.allowLayoutIssues) {
+    process.stdout.write('FAIL: ' + layoutIssues + ' layout issue(s); pass --allow-layout-issues to ignore.\n');
     return 1;
   }
   process.stdout.write('OK: deck spec is valid.\n');

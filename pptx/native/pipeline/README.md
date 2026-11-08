@@ -49,7 +49,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Selectors | type, `.class`, `#id`, compound (`tag.class`), `*`, every combinator with its real meaning — descendant, child (`>`), adjacent (`+`) and general sibling (`~`), matched right to left with backtracking — attribute selectors (`[attr]`, `[attr=value]`, `[attr~=]`, `[attr\|=]`, `[attr^=]`, `[attr$=]`, `[attr*=]`, quoted or bare values, optional `i` flag), the structural pseudo-classes `:first-child`, `:last-child`, `:only-child`, `:nth-child()`, `:nth-last-child()`, `:first-of-type`, `:last-of-type`, `:only-of-type`, `:nth-of-type()`, `:nth-last-of-type()` (with `an+b`, `odd`, `even`), and `:not()`, `:is()`, `:where()` over simple selectors — arguments may contain attribute and structural selectors (`:not([data-kind="chart"])`), `:where()` adds no specificity, and a comma inside `:is()`/`:not()` does not end the rule |
 | Cascade | stylesheet order + specificity (ids, classes, tags), then inline `style=""`, plus `var(--token, fallback)` |
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
-| Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
+| Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height`. A single declared side (`border-top: 3px solid …`) becomes a thin filled shape on that edge — a real editable object — because a native outline is uniform; two or more differing sides are reported |
 | Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), `position: fixed` (resolved against the slide, so a pinned footer is measured from the slide edge rather than from whatever container holds it), block flow, `display: flex` (row/column, `gap` including the two-value form, `flex`/`flex-grow`/`flex-basis`/`flex-shrink` including the shorthand's basis and shrink, `align-items`, `align-self`, `justify-content`, `order`, and `flex-wrap: wrap` on a row — items break into lines by their declared width/`flex-basis`, each line is distributed and cross-aligned on its own; an overflowing single line shrinks its items in proportion to `shrink × base`), `display: grid` with fractional/fixed/percentage tracks (`repeat()`, `minmax()` max, `order` too) plus `grid-column`/`grid-row` spans (`span N`, `A / span N`, `A / B`), `grid-template-rows` (fixed, percentage, `auto`, `fr`) and `grid-auto-rows` |
 | Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring), `text-indent` (first-line indent in `em`/`px`/`%`, written as `<a:pPr indent>`; a negative value is reported), `white-space: nowrap` (written as `bodyPr wrap="none"` with autofit off, so a label never breaks and overflows instead of reflowing; the `pre*` values are reported because the DOM text walk has already collapsed whitespace) |
 | Transforms | `transform: rotate(<deg|rad|grad|turn>)` on a text box, shape or picture → native shape rotation (clockwise, about the centre). A rotation combined with `scale`/`skew`/`translate` is reported rather than half-applied; a rotated *group* is reported because a native container cannot carry a rotation |
@@ -61,6 +61,25 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Stacking | `z-index` decides paint order among siblings; equal or missing values keep document order |
 | Anchoring | An absolutely positioned *text* child of a container becomes an overlay (so the group stays declarative); `right`/`bottom`-only boxes hug their measured content and resolve against the container's padding box. A more complex absolute child demotes the group to absolute coordinates, which the report counts |
 | Surfaces on text | An element that paints a fill/border/shadow *and* holds text becomes a container whose background is the surface, so badges and overlay captions keep their fill and their editable text |
+
+## Layout audit
+
+The solver reports what it cannot lay out cleanly; it does not hide it. Every
+conversion runs `auditLayout` over the analyzed tree and the CLI **fails** on a
+finding (`--allow-layout-issues` opts out for a deliberate exception):
+
+- **collision** — two boxes that are siblings in the same parent and are not
+  absolutely positioned overlap by more than 0.02in² and more than 10% of the
+  smaller box. Absolute positioning is a layer by definition, so layers are silent.
+- **overflow** — a container's content reaches past its own box by more than
+  0.01in, which means a height was measured too small.
+- **beyond** — flow content runs past the slide edge (left/right/top/bottom), i.e.
+  the page does not fit. `nowrap` text is exempt (overflowing is its meaning) and so
+  are absolutely positioned layers that bleed off the canvas on purpose.
+
+This exists because a wrong text measurement is invisible until something stacks:
+the fixture that produced it looked fine in isolation and had a second card row
+sitting on top of the stat cards.
 
 ## Known limitations (by design, not oversights)
 
@@ -119,6 +138,11 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 - **A padded box is as tall as it renders.** Vertical padding and border belong to
   the box height (and to the text box's insets inside a card), so a wrapped line
   starts below the card instead of on top of it.
+- **One border side is a shape, several are a report.** A single side becomes a thin
+  strip; `border-top` + `border-bottom` at different widths cannot be one native
+  outline, so it is reported instead of half-applied. There is no clipping either:
+  `overflow: hidden` is reported, so a decoration that bleeds past the slide edge is
+  drawn past the edge rather than cut off.
 - **`text-indent` is a paragraph property, not a layout shift.** The box keeps its
   position and the indent is written to `<a:pPr indent="…">`, which is what
   PowerPoint's own "first line" paragraph setting edits. The measured height

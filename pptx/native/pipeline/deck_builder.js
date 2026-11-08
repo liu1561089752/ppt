@@ -252,6 +252,43 @@ function surfaceElementFromNode(node, resolvedTheme) {
   return element;
 }
 
+/**
+ * Containers are layout-only, so a container's own single-side border travels as
+ * `edge` and the engine draws the strip once the box is resolved.
+ */
+function attachEdge(element, node) {
+  if (!node.edge) return element;
+  element.edge = Object.assign({}, node.edge);
+  return element;
+}
+
+/**
+ * A box that paints nothing of its own (a bare `<div>` whose only style is one
+ * border side) still has an edge to draw, so the strip is emitted on its own
+ * instead of being dropped with the invisible box.
+ */
+function standaloneEdgeElement(node) {
+  const edge = node.edge;
+  if (!edge) return null;
+  const thickness = Math.max(0.01, Number((edge.width / 72).toFixed(4)));
+  const round = (value) => Number(value.toFixed(4));
+  const element = { type: 'shape', fill: edge.color, line: false };
+  if (edge.side === 'top') {
+    Object.assign(element, { x: round(node.x), y: round(node.y), w: round(node.w), h: thickness });
+  } else if (edge.side === 'bottom') {
+    Object.assign(element, {
+      x: round(node.x), y: round(node.y + node.h - thickness), w: round(node.w), h: thickness
+    });
+  } else if (edge.side === 'left') {
+    Object.assign(element, { x: round(node.x), y: round(node.y), w: thickness, h: round(node.h) });
+  } else {
+    Object.assign(element, {
+      x: round(node.x + node.w - thickness), y: round(node.y), w: thickness, h: round(node.h)
+    });
+  }
+  return element;
+}
+
 function imageElementFromNode(node) {
   if (!node.src) return null;
   const element = {
@@ -478,6 +515,7 @@ function containerElement(node, plan, resolvedTheme, report) {
   const spec = { type: 'container', w: round4(node.w), h: round4(node.h) };
   if (Number.isFinite(node.x)) spec.x = round4(node.x);
   if (Number.isFinite(node.y)) spec.y = round4(node.y);
+  attachEdge(spec, node);
 
   spec.padding = containerPadding(node);
 
@@ -574,6 +612,7 @@ function textWithSurface(node, resolvedTheme, report) {
     background: surface,
     children: [text]
   };
+  attachEdge(spec, node);
   if (node.rotate !== undefined) {
     // The wrapper is layout-only, so the rotation goes on the surface (emitted
     // from `background` as a leading shape of the container's own box) and on the
@@ -590,6 +629,7 @@ function leafElement(node, resolvedTheme, report) {
   // A decoration needs a container to overlay; a plain leaf cannot carry one.
   if (node.overlays && node.overlays.length) report.droppedDecorations += node.overlays.length;
   const element = leafElementRotationFree(node, resolvedTheme, report);
+  if (element) attachEdge(element, node);
   if (!element || node.rotate === undefined) return element;
   if (element.type === 'container') {
     // A surface + text wrapper: rotate every leaf inside it, since the wrapper
@@ -806,7 +846,14 @@ function emitAbsolute(node, context) {
   }
 
   const element = leafElement(node, resolvedTheme, report);
-  if (!element) return;
+  if (!element) {
+    const strip = standaloneEdgeElement(node);
+    if (strip) {
+      elements.push(strip);
+      report.shapes += 1;
+    }
+    return;
+  }
   element._probe = node.id;
   element._z = zIndexOf(node);
   probes.set(node.id, boxOf(node));

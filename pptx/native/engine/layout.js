@@ -444,10 +444,36 @@ function placeGrid(container, box, theme, options, sink) {
   return padding.top + contentHeight + padding.bottom;
 }
 
+/**
+ * A single declared border side as a thin filled shape along that edge. The box is
+ * the resolved frame of the element the edge belongs to, so the strip lands exactly
+ * on its edge whatever the layout decided.
+ */
+function edgeElements(element, box) {
+  const edge = element && element.edge;
+  if (!edge || !Number.isFinite(box.x) || !Number.isFinite(box.y)) return [];
+  const w = Number.isFinite(box.w) ? box.w : element.w;
+  const h = Number.isFinite(box.h) ? box.h : element.h;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return [];
+  const thickness = Math.max(0.01, Number(edge.width) / 72);
+  const strip = { type: 'shape', fill: edge.color, line: false };
+  if (edge.side === 'top') Object.assign(strip, { x: box.x, y: box.y, w, h: thickness });
+  else if (edge.side === 'bottom') {
+    Object.assign(strip, { x: box.x, y: box.y + h - thickness, w, h: thickness });
+  } else if (edge.side === 'left') {
+    Object.assign(strip, { x: box.x, y: box.y, w: thickness, h });
+  } else Object.assign(strip, { x: box.x + w - thickness, y: box.y, w: thickness, h });
+  return [strip];
+}
+
 function emitElement(source, box, theme, options, sink) {
   if (isContainer(source)) {
     layoutContainer(source, { x: box.x, y: box.y, w: box.w, h: box.h === undefined ? source.h : box.h }, theme, options)
       .elements.forEach((element) => sink.push(element));
+    // Drawn after the container so the accent stays on top of its own surface.
+    const frameH = box.h === undefined ? source.h : box.h;
+    edgeElements(source, { x: box.x, y: box.y, w: box.w, h: frameH })
+      .forEach((strip) => sink.push(strip));
     return;
   }
   const { element } = prepareElement(source, box.w, theme, options);
@@ -456,6 +482,8 @@ function emitElement(source, box, theme, options, sink) {
   element.w = box.w;
   element.h = box.h === undefined ? element.h : box.h;
   sink.push(element);
+  edgeElements(element, { x: element.x, y: element.y, w: element.w, h: element.h })
+    .forEach((strip) => sink.push(strip));
 }
 
 /**

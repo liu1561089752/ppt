@@ -98,6 +98,25 @@ function validateImageFit(prefix, element, errors) {
   }
 }
 
+function validateEdge(prefix, element, errors) {
+  const edge = element && element.edge;
+  if (edge === undefined) return;
+  const at = prefix + '.edge';
+  if (!edge || typeof edge !== 'object' || Array.isArray(edge)) {
+    errors.push(at + ' must be an object');
+    return;
+  }
+  if (!['top', 'right', 'bottom', 'left'].includes(edge.side)) {
+    errors.push(at + '.side must be one of: top, right, bottom, left');
+  }
+  if (!Number.isFinite(edge.width) || edge.width <= 0) {
+    errors.push(at + '.width must be a finite positive number of points');
+  }
+  if (typeof edge.color !== 'string' || !edge.color) {
+    errors.push(at + '.color must be a color string');
+  }
+}
+
 function validateDeck(deck) {
   const errors = [];
   if (!deck || typeof deck !== 'object' || Array.isArray(deck)) return ['Deck spec must be an object'];
@@ -264,7 +283,14 @@ function validateElement(p, element, errors) {
       if (!ELEMENT_TYPES.has(element.type)) errors.push(p + '.type must be one of: ' + Array.from(ELEMENT_TYPES).join(', '));
       if (element.type === 'container') {
         validateContainer(p, element, errors);
-        ['x', 'y', 'w', 'h'].forEach((key) => {
+        // A shape may bleed off the canvas (CSS `right: -120px` on a decoration),
+        // so only the sizes are non-negative; a position is any finite number.
+        ['x', 'y'].forEach((key) => {
+          if (element[key] !== undefined && !Number.isFinite(element[key])) {
+            errors.push(p + '.' + key + ' must be a finite number');
+          }
+        });
+        ['w', 'h'].forEach((key) => {
           if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0)) {
             errors.push(p + '.' + key + ' must be a finite non-negative number');
           }
@@ -336,6 +362,7 @@ function validateElement(p, element, errors) {
           errors.push(p + '.bullet must be a boolean or options object');
         }
       }
+      validateEdge(p, element);
       if (element.type === 'line' && element.transparency !== undefined &&
           (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
         errors.push(p + '.transparency must be between 0 and 100');
@@ -379,7 +406,12 @@ function validateElement(p, element, errors) {
           });
         }
       }
-      ['x', 'y', 'w', 'h'].forEach((key) => {
+      ['x', 'y'].forEach((key) => {
+        if (element[key] !== undefined && !Number.isFinite(element[key])) {
+          errors.push(p + '.' + key + ' must be a finite number');
+        }
+      });
+      ['w', 'h'].forEach((key) => {
         if (element[key] !== undefined && (!Number.isFinite(element[key]) || element[key] < 0)) {
           errors.push(p + '.' + key + ' must be a finite non-negative number');
         }

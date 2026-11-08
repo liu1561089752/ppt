@@ -2474,7 +2474,7 @@ test('a table cell keeps its per-side borders instead of a full grid', () => {
   assert.equal(Array.isArray(header) ? header.every((entry) => entry.type === 'none') : header.type === 'none', true);
 });
 
-test('a single-side border outside a table is still reported', () => {
+test('a single-side border becomes a strip and two sides stay reported', () => {
   const result = pipeline.convertHtml([
     '<html><head><style>',
     '  .slide { width: 1280px; height: 720px; }',
@@ -2483,11 +2483,28 @@ test('a single-side border outside a table is still reported', () => {
     '<div class="card"></div>',
     '</main></body></html>'
   ].join('\n'));
+  // One declared side is a native strip, so nothing is reported for it any more.
   const reported = result.report.unsupportedDetails.filter((entry) => entry.property === 'border');
-  assert.equal(reported.length, 1, JSON.stringify(result.report.unsupportedDetails));
-  assert.ok(reported[0].value.includes('bottom: 2px solid #123456'), reported[0].value);
-  // The card still keeps its (uniform-less) look, but the report says why.
-  assert.ok(/uniform/.test(reported[0].reason), reported[0].reason);
+  assert.equal(reported.length, 0, JSON.stringify(result.report.unsupportedDetails));
+  // The box paints nothing, so its border side is emitted as a standalone strip.
+  const strip = result.deck.slides[0].elements.find((element) => element.fill === '123456');
+  assert.ok(strip, JSON.stringify(result.deck.slides[0].elements.map((element) => element.type)));
+  // 2px on the page is 1.5pt, and the strip is that thin in inches.
+  assert.ok(Math.abs(strip.h - 2 / 96) < 0.002, 'strip height ' + strip.h);
+  assert.ok(Math.abs((strip.y + strip.h) - 1.25) < 0.01, 'strip sits on the bottom edge: ' + strip.y);
+
+  // Two declared sides cannot be one strip, so that case stays reported.
+  const two = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .card { border-top: 2px solid #123456; border-bottom: 2px solid #123456; width: 300px; height: 120px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="card"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const stillReported = two.report.unsupportedDetails.filter((entry) => entry.property === 'border');
+  assert.equal(stillReported.length, 1, JSON.stringify(two.report.unsupportedDetails));
+  assert.ok(/uniform/.test(stillReported[0].reason), stillReported[0].reason);
 });
 
 
@@ -2923,5 +2940,148 @@ test('a padded card is as tall as it renders, so a wrapped line does not overlap
     assert.ok(card.h > 0.3, 'a padded text box height must include the padding: ' + card.h);
   }
   assert.ok(pad >= 0);
+});
+
+
+test('the layout audit reports colliding boxes and content that spills out', () => {
+  const audit = (html) => {
+    const result = pipeline.convertHtml(html);
+    return result.report.layout;
+  };
+
+  const overlap = audit([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .a { height: 100px; background: #EEEEEE; }',
+    '  .b { height: 100px; margin-top: -60px; background: #DDDDDD; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="a"></div><div class="b"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(overlap.total, 1);
+  const collision = overlap.slides[0].collisions[0];
+  assert.ok(collision.a.includes('a') && collision.b.includes('b'), JSON.stringify(collision));
+  assert.ok(collision.area > 1, 'the overlap area is reported in in²');
+
+  const spill = audit([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: 400px; height: 60px; padding: 10px; }',
+    '  .inner { height: 300px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="box"><div class="inner"></div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(spill.total, 1);
+  assert.equal(spill.slides[0].overflows[0].axis, 'y');
+  assert.ok(spill.slides[0].overflows[0].over > 2, JSON.stringify(spill.slides[0].overflows));
+
+  // A normal stack and deliberate absolute layers must not be reported.
+  const clean = audit([
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; padding: 40px; }',
+    '  .a { height: 100px; }',
+    '  .b { height: 100px; margin-top: 20px; }',
+    '  .bg { position: absolute; left: 0; top: 0; width: 1280px; height: 300px; }',
+    '  .title { position: absolute; left: 60px; top: 100px; width: 600px; height: 80px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="bg"></div><div class="title">标题</div>',
+    '  <div class="a"></div><div class="b"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(clean.total, 0, JSON.stringify(clean.slides));
+
+  // Content past the slide edge is content nobody in the audience sees.
+  const over = audit([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .tall { height: 900px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="tall"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(over.total, 1, JSON.stringify(over.slides));
+  assert.equal(over.slides[0].beyond[0].side, 'bottom');
+  assert.ok(over.slides[0].beyond[0].over > 2, JSON.stringify(over.slides[0].beyond));
+});
+
+test('every shipped HTML fixture lays out without a collision or an overflow', () => {
+  const fs = require('node:fs');
+  const pathSync = require('node:path');
+  const directory = pathSync.join(__dirname, '..', 'examples');
+  const files = fs.readdirSync(directory).filter((name) => name.endsWith('.html')).sort();
+  assert.ok(files.length >= 6, 'the fixtures must be present: ' + files.join(', '));
+  const failures = [];
+  files.forEach((name) => {
+    const result = pipeline.convertHtml(fs.readFileSync(pathSync.join(directory, name), 'utf8'));
+    const layout = result.report.layout;
+    if (layout && layout.total) {
+      failures.push(name + ': ' + JSON.stringify(layout.slides).slice(0, 400));
+    }
+  });
+  assert.deepEqual(failures, []);
+});
+
+
+test('a single declared border side becomes a real shape on that edge', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; gap: 12px; }',
+    '  .card { flex: 1; padding: 12px; background: #FFFFFF; border-top: 3px solid #D98A4B; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="row"><div class="card">甲</div><div class="card">乙</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  // The accent is not reported as an untranslatable border any more.
+  assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), []);
+  const row = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  const cards = row.children.filter((child) => child.type === 'container');
+  assert.equal(cards.length, 2);
+  cards.forEach((card) => {
+    assert.equal(card.edge.side, 'top');
+    assert.equal(card.edge.width, 2.25);          // 3px
+    assert.equal(card.edge.color, 'D98A4B');
+  });
+
+  // The engine resolves it into a thin filled shape lying on the card's top edge.
+  const { layoutSlide } = require('../native/engine/layout');
+  const flat = layoutSlide({ elements: JSON.parse(JSON.stringify(result.deck.slides[0].elements)) },
+    { width: 13.333, height: 7.5 }, {}, {});
+  const strips = flat.filter((element) => element.type === 'shape' && element.fill === 'D98A4B');
+  assert.equal(strips.length, 2, JSON.stringify(flat.map((element) => element.type)));
+  strips.forEach((strip) => {
+    assert.ok(Math.abs(strip.h - 2.25 / 72) < 0.002, 'strip height ' + strip.h);
+    assert.equal(strip.line, false);
+  });
+  const firstCard = flat.find((element) => element.type === 'shape' && element.fill === 'FFFFFF');
+  assert.ok(firstCard, 'the card surface is emitted');
+  const onEdge = strips.find((strip) => Math.abs(strip.y - firstCard.y) < 0.001);
+  assert.ok(onEdge, 'a strip sits on the card top edge: ' + JSON.stringify(strips));
+
+  // Two different sides stay reported: a native strip is one edge, not four.
+  const asymmetric = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .box { width: 200px; height: 80px; border-top: 2px solid #111111; border-bottom: 4px solid #222222; }',
+    '</style></head><body><main class="slide"><div class="box"></div></main></body></html>'
+  ].join('\n'));
+  assert.ok(asymmetric.report.unsupportedDetails.some((entry) => entry.property === 'border'),
+    JSON.stringify(asymmetric.report.unsupportedDetails));
+});
+
+test('a multi-slide HTML keeps every page inside the canvas', () => {
+  const fs = require('node:fs');
+  const pathSync = require('node:path');
+  const html = fs.readFileSync(pathSync.join(__dirname, '..', 'examples', 'pipeline-stress.html'), 'utf8');
+  const result = pipeline.convertHtml(html);
+  assert.equal(result.deck.slides.length, 3);
+  assert.equal(result.report.layout.total, 0, JSON.stringify(result.report.layout.slides));
+  // Each slide carries its own theme-derived background and its own elements.
+  result.deck.slides.forEach((slide, index) => {
+    assert.ok(Array.isArray(slide.elements) && slide.elements.length, 'slide ' + (index + 1) + ' is empty');
+  });
+  assert.equal(result.deck.slides[0].elements.length >= 4, true);
 });
 

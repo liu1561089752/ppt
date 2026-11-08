@@ -344,14 +344,30 @@ function checkUnsupported(ctx, domNode, style) {
   }
   // `flex-wrap: wrap` is laid out in real lines by the row branch; a wrapping
   // column still falls back to a single column, so it is reported there instead.
-  // A native outline is uniform, so an asymmetric border (only `border-bottom`,
-  // say) cannot be reproduced on a shape - but a table cell has four lines.
+  // A native outline is uniform, so an asymmetric border cannot live on the shape
+  // itself. Exactly one declared side is translated into a thin filled shape along
+  // that edge (the accent bar on a card), which is a real editable object; any other
+  // asymmetric combination is reported instead of silently losing sides.
   const isTableCell = domNode.tag === 'td' || domNode.tag === 'th';
   if (!isTableCell && !uniformBorderSides(style)) {
-    recordUnsupported(ctx, domNode, 'border',
-      BORDER_SIDES.map((side) => side + ': ' + String(borderSideValue(style, side) ?? '')).join('; '),
-      'A native shape outline is uniform; declare every side the same, or use a separate rule/shape');
+    const declared = BORDER_SIDES
+      .map((side) => ({ side, border: parseBorder({ border: borderSideValue(style, side) }) }))
+      .filter((entry) => entry.border && entry.border.width > 0);
+    if (declared.length !== 1) {
+      recordUnsupported(ctx, domNode, 'border',
+        BORDER_SIDES.map((side) => side + ': ' + String(borderSideValue(style, side) ?? '')).join('; '),
+        'A native shape outline is uniform; declare every side the same, or use a separate rule/shape');
+    }
   }
+}
+
+/** The one declared border side of an element, when it is a single-side accent. */
+function singleBorderSide(style) {
+  if (uniformBorderSides(style)) return null;
+  const declared = BORDER_SIDES
+    .map((side) => ({ side, border: parseBorder({ border: borderSideValue(style, side) }) }))
+    .filter((entry) => entry.border && entry.border.width > 0);
+  return declared.length === 1 ? declared[0] : null;
 }
 
 function fontPxOf(style, inheritedPx) {
@@ -519,6 +535,14 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   applyHeightConstraints(node, slot, ctx);
   attachDecorations(domNode, node, ctx);
   absoluteChildOverlays(node);
+  // One declared border side, on any kind of box, becomes a thin native shape along
+  // that edge; the engine places it from the resolved box, so nothing is baked in.
+  const isTableCell = domNode.tag === 'td' || domNode.tag === 'th';
+  const accent = isTableCell ? null : singleBorderSide(ctx.styles.computed(domNode));
+  if (accent) {
+    node.edge = { side: accent.side, width: accent.border.width, color: accent.border.color };
+    if (accent.border.dash) node.edge.dash = accent.border.dash;
+  }
   return node;
 }
 
