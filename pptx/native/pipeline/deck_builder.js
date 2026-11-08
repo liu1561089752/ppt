@@ -742,8 +742,14 @@ function leafElementRotationFree(node, resolvedTheme, report) {
   return surface;
 }
 
+/**
+ * The box a probe compares against: where the element must *end up*, which is `node.x`/
+ * `node.y` - already shifted for a `position: relative` offset. The spec carries the
+ * static position plus `relativeShift` and the engine applies it, so comparing against
+ * the static box would report every nudged box as a disagreement.
+ */
 function boxOf(node) {
-  return { x: xOf(node), y: yOf(node), w: node.w, h: node.h };
+  return { x: node.x, y: node.y, w: node.w, h: node.h };
 }
 
 function emitContainerChildren(spec, node, plan, context) {
@@ -783,6 +789,15 @@ function containerChild(node, parentPlan, context) {
     const plan = containerPlan(node, state);
     if (!plan.ok) return null;
     element = containerElement(node, plan, resolvedTheme, report);
+    // A container child is positioned by its parent just like a leaf, so its flow margin
+    // has to travel the same way (a grid track keeps its margins out of the geometry).
+    if (!parentPlan.columns) element.boxMargin = marginsOf(node);
+    // A container child's own box is placed by the engine, so it needs a probe too:
+    // otherwise a disagreement about *where a child sits inside its parent* is invisible
+    // to the gate (the parent's box can be right while its children are all at the top).
+    element._probe = node.id;
+    probes.set(node.id, boxOf(node));
+    owners.set(node.id, ownerId);
     report.declarativeContainers += 1;
     emitContainerChildren(element, node, plan, context);
   } else {
@@ -801,8 +816,11 @@ function containerChild(node, parentPlan, context) {
     } else {
       element.fixedWidth = true;
     }
-    // Named boxMargin: the writer reads `margin` as text-box insets.
-    if (parentPlan.display === 'block') element.boxMargin = marginsOf(node);
+    // Named boxMargin: the writer reads `margin` as text-box insets, so the flow margin
+    // travels under its own name. Every non-grid parent honours it (blocks all four
+    // sides, columns all four, rows the horizontal pair); a grid track must stay aligned
+    // to its cell, so a grid child keeps its margins out of the geometry.
+    if (!parentPlan.columns) element.boxMargin = marginsOf(node);
   }
   // Alignment belongs to the child, not to its kind: a container child of a grid needs
   // the same `align-self`/`justify-self` that a leaf does.

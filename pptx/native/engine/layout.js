@@ -567,6 +567,9 @@ function layoutContainer(container, box, theme = {}, options = {}) {
   }
   const background = containerBackgroundSpec(container);
   if (background) {
+    // The surface is the only element that carries the container's own box, so the
+    // geometry probe rides on it (see `verifySlide`).
+    if (container._probe !== undefined) background._probe = container._probe;
     sink.unshift(Object.assign(background, {
       x: resolvedBox.x, y: resolvedBox.y, w: resolvedBox.w, h: height
     }));

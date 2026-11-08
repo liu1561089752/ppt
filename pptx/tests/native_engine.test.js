@@ -3856,3 +3856,78 @@ test('a wrapped row distributes its lines with align-content', () => {
     'centred inside the grown line: ' + mid.y);
 });
 
+
+test('a flex column sizes and justifies along the height', () => {
+  const build = (colCss, childCss) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .col { display: flex; flex-direction: column; width: 600px; height: 400px; background: #EEEEEE; ' + colCss + ' }',
+    '  .b { ' + childCss + ' background: #CCCCCC; }',
+    '</style></head><body><main class="slide"><div class="col">',
+    '  <div class="b">a</div><div class="b">b</div><div class="b">c</div>',
+    '</div></main></body></html>'
+  ].join('\n'));
+
+  const column = (result) => result.analysis.slides[0].nodes[0];
+
+  // `justify-content` was silently ignored on a column: both sides put the stack at the
+  // top, so the deck rendered it uncentred. It is distributed now, and the engine has to
+  // reach the same lines or the container would fall back to absolute boxes.
+  const centred = build('justify-content: center;', 'padding: 10px;');
+  const centredColumn = column(centred);
+  const stack = centredColumn.children.reduce((sum, node) => sum + node.h, 0);
+  const free = 4.1667 - stack;
+  assert.ok(Math.abs(centredColumn.children[0].y - (0.4167 + free / 2)) < 0.01,
+    'the stack is centred: ' + centredColumn.children[0].y);
+  assert.deepEqual(centred.report.containerFallbacks, []);
+  assert.ok(centred.report.maxBoxDelta < 0.012, 'delta was ' + centred.report.maxBoxDelta);
+
+  const ending = build('justify-content: flex-end;', 'padding: 10px;');
+  const endingColumn = column(ending);
+  const last = endingColumn.children[endingColumn.children.length - 1];
+  assert.ok(Math.abs(last.y + last.h - (0.4167 + 4.1667)) < 0.01,
+    'the stack sits at the bottom: ' + (last.y + last.h));
+
+  // `flex: 1` shares the height: three items of a 400px column each get a third, and the
+  // stack stays contiguous (the cursor used to keep the pre-flex positions).
+  const grown = build('', 'flex: 1; padding: 10px;');
+  const grownColumn = column(grown);
+  const heights = grownColumn.children.map((node) => node.h);
+  const ys = grownColumn.children.map((node) => node.y);
+  assert.ok(Math.abs(heights[0] - heights[1]) < 0.002 && Math.abs(heights[1] - heights[2]) < 0.002,
+    'equal shares: ' + heights.join(','));
+  assert.ok(Math.abs(heights.reduce((sum, h) => sum + h, 0) - 4.1667) < 0.01, 'it fills the column');
+  assert.ok(Math.abs(ys[1] - (ys[0] + heights[0])) < 0.002, 'contiguous: ' + ys.join(','));
+  assert.deepEqual(grown.report.containerFallbacks, []);
+});
+
+test('a flow margin is part of the box it sits in', () => {
+  // A padded card keeps its last child's bottom margin (nothing collapses through the
+  // padding), and a container child's own margin separates it from the next sibling.
+  // Both were dropped before, which made the analyzer disagree with the engine about
+  // where the following block starts.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .col { width: 700px; }',
+    '  .card { padding: 18px 22px; background: #FFFFFF; margin: 0 0 14px 0; }',
+    '  .card p { margin: 0 0 8px 0; font-size: 13px; line-height: 1.95; }',
+    '  .next { background: #DDDDDD; padding: 10px; }',
+    '</style></head><body><main class="slide"><div class="col">',
+    '  <div class="card"><p>copy</p></div>',
+    '  <div class="next">next</div>',
+    '</div></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const col = result.analysis.slides[0].nodes[0];
+  const card = col.children[0];
+  const next = col.children[1];
+  // 18 top + one line of text + 8 of paragraph margin + 18 bottom, in inches.
+  const textLine = card.children[0].h;
+  assert.ok(Math.abs(card.h - (18 / 96 + textLine + 8 / 96 + 18 / 96)) < 0.01, 'card height ' + card.h);
+  // And the card's own 14px bottom margin still pushes the next block down.
+  assert.ok(Math.abs(next.y - (card.y + card.h + 14 / 96)) < 0.01, 'next starts after the margin: ' + next.y);
+  assert.deepEqual(result.report.containerFallbacks, []);
+  assert.ok(result.report.maxBoxDelta < 0.012, 'delta was ' + result.report.maxBoxDelta);
+});
+

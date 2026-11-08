@@ -1101,7 +1101,15 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     const childBottom = child.absolute ? bottom : child.y - relativeDy(child) + child.h;
     return Math.max(bottom, childBottom);
   }, contentBox.y);
-  const autoHeight = Math.max(0, Number((contentBottom - y + insetBottom).toFixed(4)));
+  // A child's bottom margin collapses out of its parent only when nothing separates
+  // them. With a bottom padding (or border) the margin stays inside the box - which is
+  // what a padded card with a trailing paragraph margin actually renders.
+  const inFlow = node.children.filter((child) => !child.absolute);
+  const lastInFlow = inFlow[inFlow.length - 1];
+  const trailingMargin = insetBottom > 0 && lastInFlow
+    ? Math.max(0, Number(lastInFlow.margins && lastInFlow.margins.bottom) || 0)
+    : 0;
+  const autoHeight = Math.max(0, Number((contentBottom - y + trailingMargin + insetBottom).toFixed(4)));
   // A declared height is the box the author asked for, so it is not grown here even
   // when the content measures taller: CSS would let the content spill out, and hiding
   // that difference behind a taller box is how a clipped design stops being reported.
@@ -1542,27 +1550,52 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   const flow = kids.filter((child) => !isAbsolute(ctx.styles.computed(child)));
 
   if (direction === 'column') {
+    const columnOptions = { parentWidth: contentBox.w, fontSizePx: inherited.fontPx };
     let cursor = contentBox.y;
-    const nodes = flow.map((child) => {
+    const measured = flow.map((child) => {
       const childStyle = ctx.styles.computed(child);
-      const margins = childMargins(childStyle, { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
-      const explicitWidth = inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
+      const margins = childMargins(childStyle, columnOptions);
+      const explicitWidth = inchesOf(childStyle.width, 'x', columnOptions);
       const slot = {
         x: contentBox.x + margins.left,
         y: cursor + margins.top,
         w: explicitWidth === null ? Math.max(0, contentBox.w - margins.left - margins.right) : explicitWidth,
-      explicitWidth: explicitWidth !== null,
+        explicitWidth: explicitWidth !== null,
         h: null
       };
       const node = analyzeNode(child, slot, inherited, ctx);
       if (node) {
         const self = alignSelfOf(childStyle);
         if (self) node.alignSelf = self;
-        if (declaresLength(ctx.styles.computed(child).width)) node.fixedWidth = true;
+        if (declaresLength(childStyle.width)) node.fixedWidth = true;
+        if (declaresLength(childStyle.height)) node.fixedHeight = true;
         cursor = node.y - relativeDy(node) + node.h + gap + margins.bottom;
       }
-      return node;
-    }).filter(Boolean);
+      return { node, margins, style: childStyle };
+    }).filter((entry) => entry.node);
+    const nodes = measured.map((entry) => entry.node);
+
+    // The main axis of a column is vertical, so `flex-grow`/`flex-shrink` size *heights*
+    // and `justify-content` distributes what is left - the same arithmetic and the same
+    // free-space rule the row branch uses, which is why the engine replays it exactly.
+    const inner = Number.isFinite(contentBox.h) ? Math.max(0, contentBox.h) : null;
+    if (inner !== null && nodes.length) {
+      const gapTotal = gap * Math.max(0, nodes.length - 1);
+      const heights = flexWidths(measured.map(({ node, margins, style }) => ({
+        base: node.h + margins.top + margins.bottom,
+        grow: flexWeightOf(style),
+        shrink: flexShrinkOf(style)
+      })), Math.max(0, inner - gapTotal));
+      measured.forEach((entry, index) => {
+        const boxHeight = Math.max(0, heights[index] - entry.margins.top - entry.margins.bottom);
+        if (Math.abs(boxHeight - entry.node.h) > 0.0005) {
+          // The width does not change, so the text keeps its line breaks; only the box
+          // the CSS asked for moves (that is what `flex: 1` on a block means).
+          entry.node.h = boxHeight;
+        }
+      });
+    }
+
     // Cross-axis alignment inside a column; align-self wins for one child.
     nodes.filter((node) => !node.absolute).forEach((node) => {
       const align = node.alignSelf || alignItems;
@@ -1573,6 +1606,32 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
         node.w = Math.max(node.w, contentBox.w);
       }
     });
+
+    // Then the block itself: `justify-content` places the stack in the leftover height.
+    // The stack is rewritten even with no leftover, because main-axis flexing above may
+    // have changed the heights the cursor was walked with.
+    if (inner !== null && nodes.length) {
+      const stack = measured.reduce((sum, { node, margins }, index) =>
+        sum + node.h + margins.top + margins.bottom + (index < measured.length - 1 ? gap : 0), 0);
+      const free = Math.max(0, inner - stack);
+      const justify = String(style.justifyContent || 'flex-start').toLowerCase();
+      let offset = 0;
+      let extra = 0;
+      if (justify === 'center') offset = free / 2;
+      else if (justify === 'flex-end' || justify === 'end') offset = free;
+      else if (justify === 'space-between' && measured.length > 1) extra = free / (measured.length - 1);
+      else if (justify === 'space-around') {
+        offset = free / (2 * measured.length);
+        extra = free / measured.length;
+      }
+      {
+        let line = contentBox.y + offset;
+        measured.forEach(({ node, margins }) => {
+          node.y = line + margins.top;
+          line += node.h + margins.top + margins.bottom + gap + extra;
+        });
+      }
+    }
     return nodes.concat(absolute);
   }
 
