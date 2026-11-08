@@ -3184,3 +3184,32 @@ test('writing-mode: vertical-rl becomes native vertical text, not a rotation', a
   });
 });
 
+
+test('word-break is translated where the wrap already behaves that way', () => {
+  const build = (declaration) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .cell { width: 140px; font-size: 12px; ' + declaration + ' }',
+    '</style></head><body><main class="slide">',
+    '  <div class="cell">https://example.com/a/very/long/path/that/cannot/fit/on/one/line</div>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const plain = build('');
+  const node = plain.deck.slides[0].elements.find((element) => element.type === 'text');
+  // The wrap already breaks an unbreakable token, so the box is several lines tall
+  // and nothing overflows: that is exactly what `break-all`/`break-word` ask for.
+  assert.ok(node.h > 0.4, 'the long token wraps: ' + node.h);
+  assert.equal(String(node.text).includes('\n'), false, 'the text itself is untouched');
+
+  const breakAll = build('word-break: break-all;');
+  assert.deepEqual(breakAll.report.unsupportedDetails, []);
+  assert.equal(breakAll.deck.slides[0].elements.find((element) => element.type === 'text').h, node.h);
+
+  // `keep-all` forbids the very break this solver makes, so it must be reported.
+  const keepAll = build('word-break: keep-all;');
+  const reported = keepAll.report.unsupportedDetails.filter((entry) => entry.property === 'wordBreak');
+  assert.equal(reported.length, 1, JSON.stringify(keepAll.report.unsupportedDetails));
+  assert.ok(/keep-all/u.test(reported[0].reason), reported[0].reason);
+});
+

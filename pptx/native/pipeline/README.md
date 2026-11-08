@@ -129,7 +129,12 @@ sitting on top of the stat cards.
   item spanning several rows grows only the flexible rows it covers, and an item
   that declares its own `height` keeps it instead of stretching.
 - **Text measurement is an estimate**, not OpenType shaping. Wrapping can differ
-  from the browser, especially with mixed scripts and unusual tracking.
+  from the browser, especially with mixed scripts and unusual tracking. It is greedy
+  and breaks an over-long token at grapheme level, which is what
+  `word-break: break-all`/`break-word` ask for and what PowerPoint's own renderer
+  does - so those values are translated, while `keep-all` (which forbids that break)
+  is reported. `overflow-wrap` is not read at all, so it is reported rather than
+  claimed.
 - **`flex-wrap: wrap` breaks on the declared basis.** An item with no width and no
   `flex-basis` (a bare `flex: 1`) contributes zero to the break decision, because
   its max-content width is not measured for a container - so such items stay on one

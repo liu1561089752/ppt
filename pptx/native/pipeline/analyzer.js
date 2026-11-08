@@ -60,7 +60,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
-  'writingMode',
+  'writingMode', 'wordBreak',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
@@ -73,7 +73,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   // writing-mode is translated (see applyWritingMode) or reported there.
   'animation', 'transition', 'float', 'columns', 'columnCount',
   'backgroundClip', 'textShadow',
-  'textOverflow', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
+  'textOverflow', 'hyphens', 'aspectRatio', 'inset',
   'justifySelf'
 ]);
 
@@ -339,6 +339,19 @@ function checkUnsupported(ctx, domNode, style) {
   });
   if (style.display === 'inline' || style.display === 'inline-block') {
     recordUnsupported(ctx, domNode, 'display', style.display, 'Inline flow is approximated as a block box');
+  }
+  // The wrap already breaks a token that cannot fit at grapheme level, which is what
+  // `overflow-wrap: break-word`/`anywhere` and `word-break: break-all` ask for, so
+  // those values are translated by construction. `keep-all` is the opposite request:
+  // it forbids the very break this solver makes between CJK characters.
+  const wordBreak = String(style.wordBreak || 'normal').toLowerCase();
+  if (wordBreak === 'keep-all' || wordBreak === 'break-word') {
+    // `break-word` is the legacy spelling of `overflow-wrap: break-word`, so it is
+    // the behaviour we already have; only `keep-all` changes it.
+    if (wordBreak === 'keep-all') {
+      recordUnsupported(ctx, domNode, 'wordBreak', style.wordBreak,
+        'CJK text breaks between characters here; keep-all forbids exactly that break');
+    }
   }
   const transform = style.transform;
   if (transform && !isNoopValue('transform', transform)) {
