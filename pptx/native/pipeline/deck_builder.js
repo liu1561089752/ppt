@@ -32,6 +32,7 @@ const {
   parseBoxShadow,
   backgroundOf,
   backgroundOverlayGradientOf,
+  evaluateInches,
   gradientOf
 } = require('./css');
 
@@ -421,18 +422,8 @@ function gridColumnCount(style) {
 
 function inchesOfGap(value) {
   if (value === undefined || value === null || value === '') return null;
-  const match = /^(-?[\d.]+)(px|pt|in|cm|mm|em|rem|%)?$/u.exec(String(value).trim());
-  if (!match) return null;
-  const magnitude = Number(match[1]);
-  if (!Number.isFinite(magnitude)) return null;
-  const unit = match[2] || 'px';
-  if (unit === 'px') return magnitude / 96;
-  if (unit === 'pt') return magnitude / 72;
-  if (unit === 'in') return magnitude;
-  if (unit === 'cm') return magnitude / 2.54;
-  if (unit === 'mm') return magnitude / 25.4;
-  if (unit === 'em' || unit === 'rem') return (magnitude * 16) / 96;
-  return null;
+  const inches = evaluateInches(value, { fontSizePx: 16, percentBase: undefined });
+  return inches;
 }
 
 function containerGap(style, axis) {

@@ -46,9 +46,18 @@ function parseDeclarations(text) {
     const colon = chunk.indexOf(':');
     if (colon === -1) return;
     const property = chunk.slice(0, colon).trim().toLowerCase();
-    const value = chunk.slice(colon + 1).trim();
+    let value = chunk.slice(colon + 1).trim();
     if (!property || !value) return;
-    declarations.push({ property, value });
+    // `!important` marks the declaration, it is not part of its value: leaving it in
+    // made `width: 600px !important` unparseable and the box fell back to full width.
+    let important = false;
+    const flagged = /\s*!\s*important\s*$/iu.exec(value);
+    if (flagged) {
+      important = true;
+      value = value.slice(0, flagged.index).trim();
+    }
+    if (!value) return;
+    declarations.push(important ? { property, value, important } : { property, value });
   });
   return declarations;
 }
@@ -644,8 +653,27 @@ function expandVariables(value, variables, depth = 0) {
   return replaced === value ? value : expandVariables(replaced, variables, depth + 1);
 }
 
+/** Split on whitespace that is not inside parentheses or a function call. */
+function splitTopLevelSpaces(value) {
+  const parts = [];
+  let depth = 0;
+  let buffer = '';
+  for (const character of String(value === undefined || value === null ? '' : value)) {
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (/\s/u.test(character) && depth === 0) {
+      if (buffer) parts.push(buffer);
+      buffer = '';
+      continue;
+    }
+    buffer += character;
+  }
+  if (buffer) parts.push(buffer);
+  return parts;
+}
+
 function expandBoxShorthand(value) {
-  const parts = String(value || '').trim().split(/\s+/u);
+  const parts = splitTopLevelSpaces(value);
   if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]];
   if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]];
   if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]];
@@ -661,7 +689,7 @@ function applyDeclarations(style, declarations, variables) {
     }
     if (property === 'gap' || property === 'grid-gap') {
       // `gap: <row> <column>`; a single value applies to both axes.
-      const parts = String(resolvedValue || '').trim().split(/\s+/u);
+      const parts = splitTopLevelSpaces(resolvedValue);
       style.rowGap = parts[0];
       style.columnGap = parts.length > 1 ? parts[1] : parts[0];
       return;
@@ -762,18 +790,39 @@ function parseLength(value) {
   return { value: magnitude, unit: match[2] === undefined ? 'px' : match[2] };
 }
 
+/** The slide is the viewport, so viewport units resolve to a fixed number. */
+const VIEWPORT_PX = { width: 1280, height: 720 };
+
+function viewportPx(context, axis) {
+  const viewport = context.viewport || VIEWPORT_PX;
+  const width = Number(viewport.width) || VIEWPORT_PX.width;
+  const height = Number(viewport.height) || VIEWPORT_PX.height;
+  return { width, height, min: Math.min(width, height), max: Math.max(width, height) };
+}
+
 function toInches(length, context = {}) {
   if (!length) return null;
   const { value, unit } = length;
+  const view = viewportPx(context);
   switch (unit) {
     case 'in': return value;
     case 'pt': return value / 72;
+    case 'pc': return value / 6;
     case 'cm': return value / 2.54;
     case 'mm': return value / 25.4;
+    case 'q': return value / 101.6;
     case '':
     case 'px': return value / 96;
     case 'em': return (value * (context.fontSizePx || 16)) / 96;
     case 'rem': return (value * (context.rootFontSizePx || 16)) / 96;
+    // A digit is about half an em in every UI face these decks use, so both relative
+    // units resolve to the same estimate rather than being dropped.
+    case 'ex':
+    case 'ch': return (value * (context.fontSizePx || 16) * 0.5) / 96;
+    case 'vw': return (value * view.width) / 9600;
+    case 'vh': return (value * view.height) / 9600;
+    case 'vmin': return (value * view.min) / 9600;
+    case 'vmax': return (value * view.max) / 9600;
     case '%': {
       const base = context.percentBase;
       if (base === null || base === undefined) return null;
@@ -783,11 +832,132 @@ function toInches(length, context = {}) {
   }
 }
 
+const MATH_LENGTH_TOKEN = /^(\d*\.?\d+)(px|pt|pc|in|cm|mm|q|em|rem|ex|ch|vw|vh|vmin|vmax|%)?/iu;
+
+/**
+ * Evaluate a CSS length expression - `calc(50% - 24px)`, `min(600px, 100%)`,
+ * `clamp(14px, 1.2vw, 18px)`, `60vw` - to inches, or null when it uses something this
+ * shape cannot resolve. Returning null is what makes the caller report the declaration
+ * instead of silently laying the box out at full width.
+ */
+function evaluateInches(text, context = {}) {
+  const source = String(text === undefined || text === null ? '' : text).trim();
+  if (!source) return null;
+  let index = 0;
+  const skip = () => { while (index < source.length && /\s/u.test(source[index])) index += 1; };
+  const fail = () => { throw new Error("unsupported length"); };
+  const parseNumber = () => {
+    skip();
+    const rest = source.slice(index);
+    const match = MATH_LENGTH_TOKEN.exec(rest);
+    if (!match) {
+      // A unitless number is a valid multiplier, not a length.
+      const bare = /^\d*\.?\d+/u.exec(rest);
+      if (!bare) fail();
+      index += bare[0].length;
+      return { inches: Number(bare[0]), unitless: true };
+    }
+    index += match[0].length;
+    // A bare number inside an expression is a multiplier, not a px length: treating it
+    // as px made `calc(100% / 3)` and `calc(1000 - 2 * 24px)` unsolvable.
+    if (!match[2]) return { inches: Number(match[1]), unitless: true };
+    const inches = toInches({ value: Number(match[1]), unit: match[2].toLowerCase() }, context);
+    if (inches === null) fail();
+    return { inches, unitless: false };
+  };
+  const parseArgs = () => {
+    const args = [parseSum()];
+    skip();
+    while (source[index] === ',') {
+      index += 1;
+      args.push(parseSum());
+      skip();
+    }
+    return args;
+  };
+  function parsePrimary() {
+    skip();
+    if (source[index] === '(') {
+      index += 1;
+      const value = parseSum();
+      skip();
+      if (source[index] !== ')') fail();
+      index += 1;
+      return value;
+    }
+    const name = /^([a-z]+)\(/iu.exec(source.slice(index));
+    if (name) {
+      const fn = name[1].toLowerCase();
+      index += name[0].length;
+      const args = parseArgs();
+      skip();
+      if (source[index] !== ')') fail();
+      index += 1;
+      if (fn === 'calc') return args.length === 1 ? args[0] : fail();
+      // Every term carries its unit, so a function returns a term too - returning a bare
+      // number here made the caller read `.inches` off a number and give up.
+      if (fn === 'min') return { inches: Math.min(...args.map((arg) => arg.inches)), unitless: false };
+      if (fn === 'max') return { inches: Math.max(...args.map((arg) => arg.inches)), unitless: false };
+      if (fn === 'clamp') {
+        if (args.length !== 3) fail();
+        return { inches: Math.min(Math.max(args[0].inches, args[1].inches), args[2].inches), unitless: false };
+      }
+      return fail();
+    }
+    return parseNumber();
+  }
+  function parseProduct() {
+    let left = parsePrimary();
+    for (;;) {
+      skip();
+      const op = source[index];
+      if (op !== '*' && op !== '/') return left;
+      index += 1;
+      const right = parsePrimary();
+      if (op === '*') {
+        if (!left.unitless && !right.unitless) fail();
+        left = {
+          inches: left.unitless ? right.inches * left.inches : left.inches * right.inches,
+          unitless: left.unitless && right.unitless
+        };
+      } else {
+        if (right.inches === 0) fail();
+        left = { inches: left.inches / right.inches, unitless: left.unitless && right.unitless };
+      }
+    }
+  }
+  function parseSum() {
+    let left = parseProduct();
+    for (;;) {
+      skip();
+      const op = source[index];
+      if (op !== '+' && op !== '-') return left;
+      index += 1;
+      const right = parseProduct();
+      const inches = op === '+' ? left.inches + right.inches : left.inches - right.inches;
+      left = { inches, unitless: left.unitless && right.unitless };
+    }
+  }
+  try {
+    const result = parseSum();
+    skip();
+    if (index !== source.length) return null;
+    if (result.unitless) return null;
+    return Number.isFinite(result.inches) ? result.inches : null;
+  } catch (error) {
+    return null;
+  }
+}
+
 function dimensionInches(value, axis, context = {}) {
+  if (value === undefined || value === null) return null;
+  const percentBase = axis === 'y' ? context.parentHeight : context.parentWidth;
+  const scoped = Object.assign({}, context, { percentBase });
+  const expression = evaluateInches(value, scoped);
+  if (expression !== null) return expression;
   const length = parseLength(value);
   if (!length) return null;
-  const percentBase = axis === 'y' ? context.parentHeight : context.parentWidth;
-  return toInches(length, Object.assign({}, context, { percentBase }));
+  return toInches(length, scoped);
 }
 
 function pxToPoints(value, context = {}) {
@@ -1183,6 +1353,8 @@ module.exports = {
   pxToPoints,
   parseColor,
   parseLinearGradient,
+  evaluateInches,
+  VIEWPORT_PX,
   gradientAngleOf,
   unsupportedGradientOf,
   backgroundLayersOf,

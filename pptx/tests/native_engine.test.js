@@ -4343,3 +4343,71 @@ test('margin: auto centres a fixed-width box, and tracking widens the measuremen
   assert.ok(kicker.w > plainWidth + 0.2, 'the box grew by the tracking: ' + kicker.w);
 });
 
+
+test('CSS math and viewport units resolve against the slide viewport', () => {
+  const { css } = require('../native/pipeline');
+  const context = { parentWidth: 12.5, parentHeight: 8, percentBase: 12.5, fontSizePx: 16 };
+  const inches = (value) => {
+    const result = css.evaluateInches(value, context);
+    return result === null ? null : Number(result.toFixed(4));
+  };
+  assert.equal(inches('600px'), 6.25);
+  assert.equal(inches('calc(50% - 24px)'), 6);
+  assert.equal(inches('calc(100% / 3)'), 4.1667);
+  assert.equal(inches('min(600px, 100%)'), 6.25);
+  assert.equal(inches('max(120px, 2in)'), 2);
+  assert.equal(inches('clamp(14px, 1.2vw, 18px)'), 0.16, '1.2vw of a 1280px viewport');
+  assert.equal(inches('60vw'), 8);
+  assert.equal(inches('90vh'), 6.75);
+  assert.equal(inches('40ch'), 3.3333, 'ch is half an em');
+  assert.equal(inches('fit-content'), null, 'what cannot be resolved stays null');
+  assert.equal(inches('calc(100% - env(safe-area-inset-left))'), null);
+
+  // The box geometry follows the expression, not the fallback.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: calc(50% - 24px); height: max(120px, 16vh); background: #EEEEEE; }',
+    '</style></head><body><main class="slide"><div class="box">text</div></main></body></html>'
+  ].join('\n'));
+  const box = result.analysis.slides[0].nodes[0];
+  assert.equal(Number(box.w.toFixed(3)), 6, '50% of the 1200px content box minus 24px');
+  assert.equal(Number(box.h.toFixed(3)), 1.25, '16vh of 720px is 115.2px');
+  assert.deepEqual(result.report.unsupportedDetails, []);
+
+  // A length that cannot be resolved is reported, not silently ignored.
+  const reported = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: fit-content; background: #EEEEEE; }',
+    '</style></head><body><main class="slide"><div class="box">text</div></main></body></html>'
+  ].join('\n'));
+  const lengthReport = reported.report.unsupportedDetails.find((entry) => entry.property === 'length');
+  assert.ok(lengthReport, 'fit-content is reported');
+  assert.equal(lengthReport.value, 'fit-content');
+});
+
+test('!important is a flag, relative font sizes apply once, and gaps keep their function', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .wide { width: 600px !important; height: 60px; background: #EEEEEE; }',
+    '  .grow { font-size: 120%; }',
+    '  .band { display: flex; gap: clamp(12px, 1.6vw, 28px); width: 1000px; }',
+    '  .band > div { width: calc(50% - 16px); height: 60px; background: #DDDDDD; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="wide">flagged</div>',
+    '  <div class="grow">relative</div>',
+    '  <div class="band"><div></div><div></div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const [wide, grow] = result.analysis.slides[0].nodes;
+  assert.equal(Number(wide.w.toFixed(3)), 6.25, 'the flagged width is read, not dropped');
+  assert.equal(Number(grow.fontSizePt.toFixed(2)), 14.4, '120% of 16px is 19.2px, applied once');
+  // The clamp() gap reads the same in the analyzer and in the engine, so the row stays
+  // declarative instead of falling back to absolute placement.
+  assert.equal(result.report.absoluteGroups, 0);
+  assert.ok(result.report.declarativeContainers >= 1, 'the row is emitted as a native container');
+});
+

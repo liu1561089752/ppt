@@ -34,6 +34,7 @@ const {
   backgroundOf,
   gradientOf,
   unsupportedGradientOf,
+  evaluateInches,
   backgroundOverlayGradientOf,
   untranslatedBackgroundLayers,
   backgroundImageOf,
@@ -479,7 +480,16 @@ function singleBorderSide(style) {
 }
 
 function fontPxOf(style, inheritedPx) {
-  const size = parseLength(style.fontSize);
+  const raw = style.fontSize;
+  if (raw === undefined || raw === null || raw === '') return inheritedPx;
+  // `font-size: clamp(14px, 1.2vw, 18px)` and `2.2vh` are resolved like any other length.
+  const resolved = evaluateInches(raw, {
+    fontSizePx: inheritedPx,
+    rootFontSizePx: 16,
+    percentBase: inheritedPx / 96
+  });
+  if (resolved !== null) return resolved * 96;
+  const size = parseLength(raw);
   if (!size) return inheritedPx;
   if (size.unit === 'em') return size.value * inheritedPx;
   if (size.unit === 'rem') return size.value * 16;
@@ -577,6 +587,37 @@ function ownText(domNode) {
     .trim();
 }
 
+/**
+ * Declarations the length evaluator could not resolve, so the caller can report them.
+ * A box that silently falls back to the full width is exactly the kind of quiet loss this
+ * pipeline is supposed to refuse: `fit-content`, `env()`, `calc()` over `ch` of an unknown
+ * font all end up here instead.
+ */
+const LENGTH_PROPERTIES = [
+  'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+  'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+  'gap', 'rowGap', 'columnGap', 'fontSize'
+];
+
+const LENGTH_KEYWORDS = new Set([
+  '', 'auto', 'none', 'normal', 'initial', 'inherit', 'unset', 'revert', 'revert-layer', '0'
+]);
+
+function unresolvableLengths(style, context) {
+  const found = [];
+  LENGTH_PROPERTIES.forEach((property) => {
+    const value = style[property];
+    if (value === undefined || value === null) return;
+    const text = String(value).trim();
+    if (LENGTH_KEYWORDS.has(text.toLowerCase())) return;
+    if (parseLength(text)) return;
+    if (evaluateInches(text, context) !== null) return;
+    found.push({ property, value: text });
+  });
+  return found;
+}
+
 function resolveKind(domNode, style, children) {
   const tagKind = KIND_BY_TAG[domNode.tag];
   if (tagKind) return tagKind;
@@ -638,8 +679,10 @@ function truncateWithEllipsis(rawText, maxWidthIn, fontSizePt, slack = 0.02) {
   return chars.slice(0, low).join('').replace(/\s+$/u, '') + tail;
 }
 
-function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx) {
-  const fontPx = fontPxOf(style, inheritedFontPx);
+function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx) {
+  // The caller already resolved this element's own `font-size`; resolving it again
+  // applied `120%` (and `1.2em`) twice and every relative size came out too large.
+  const fontPx = resolvedFontPx;
   const fontSizePt = Number((fontPx * 0.75).toFixed(2));
   const { multiple } = lineSpacingOf(style, fontPx);
   const built = buildRuns(domNode, Object.assign({ fontSize: fontPx + 'px' }, style), ctx);
@@ -1114,6 +1157,15 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   const elementKids = elementChildren(domNode);
   const kind = resolveKind(domNode, style, elementKids);
   const unsupportedGradient = unsupportedGradientOf(style);
+  unresolvableLengths(style, {
+    fontSizePx,
+    parentWidth,
+    parentHeight: slot.h === null ? undefined : slot.h,
+    percentBase: parentWidth
+  }).forEach((entry) => {
+    recordUnsupported(ctx, domNode, 'length', entry.value,
+      'This ' + entry.property + ' is not a length this shape can resolve, so the box falls back to the layout default instead of the declared value');
+  });
   // A block that holds both text and elements has an inline formatting context: its text
   // would share a line box with those children, which this shape does not model, so the
   // text is not translated at all. Silence here would lose words, so it is reported.

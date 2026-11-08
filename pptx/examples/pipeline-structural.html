@@ -50,6 +50,16 @@
   td.num { text-align: right; font-weight: 700; color: #7FD6D0; }
 
   .foot { margin-top: 20px; width: 1040px; font-size: 12px; line-height: 1.7; color: #8FA9AD; }
+
+  /* CSS 数学函数与视口单位：calc / clamp / vw / vh 都按 1280×720 视口求值 */
+  .math-band { display: flex; flex-direction: row; gap: clamp(12px, 1.6vw, 28px); width: 1152px; }
+  .math-band .tile {
+    width: calc(50% - 16px); min-height: max(96px, 16vh);
+    padding: 2.2vh 1.8vw; background: #13272B; border-radius: 10px;
+  }
+  .math-band .tile h3 { margin: 0 0 6px; font-size: clamp(14px, 1.3vw, 18px); color: #EAF1F0; }
+  .math-band .tile p { margin: 0; font-size: clamp(11px, 0.95vw, 13px); line-height: 1.8; color: #9FC0BE; }
+  .math-note { margin-top: 18px; width: calc(100% - 6ch); font-size: 12px; color: #7F9998; }
 </style>
 </head>
 <body>
@@ -83,5 +93,15 @@
 
   <div class="foot">首项高亮、偶数行条纹、末项反色都来自结构选择器；下面这张原生表格的条纹来自 <code>tbody tr:nth-child(even) td</code>，单元格文本仍可编辑。</div>
 </main>
+<main class="slide">
+  <div class="kicker">CSS MATH</div>
+  <h1>宽度和字号交给 calc 与 clamp</h1>
+  <div class="math-band">
+    <div class="tile"><h3>calc(50% - 16px)</h3><p>两块并排，间距由 clamp 给出，窄屏收紧、宽屏放开。</p></div>
+    <div class="tile"><h3>max(96px, 16vh)</h3><p>高度取视口比例与最小值的较大者，1vh 是 7.2px。</p></div>
+  </div>
+  <p class="math-note">这一页的每个尺寸都是表达式：流水线先按 1280×720 求值，再走和普通长度一样的布局与校验。</p>
+</main>
+
 </body>
 </html>
