@@ -12,6 +12,7 @@ on:
       - "pptx/scripts/extract_html_design_tokens.py"
       - "pptx/native/parity/**"
       - "pptx/native/pipeline/**"
+      - "pptx/native/scripts/preview_deck.py"
       - "pptx/tests/**"
       - "pptx/examples/**"
       - "pptx/SKILL.md"
@@ -43,6 +44,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libreoffice-impress poppler-utils fonts-noto-cjk python3-pil
+          python3 -m pip install --quiet python-pptx
       - name: Install native engine dependencies
         working-directory: pptx/native
         run: npm install --no-audit --no-fund
@@ -115,6 +117,12 @@ jobs:
           npm run render:batch
           npm run render:theme
           npm run render:parity
+      - name: Render offline layout previews
+        working-directory: pptx/native
+        run: |
+          python scripts/preview_deck.py native-stress-deck.pptx --output-dir preview/stress --sheet preview/stress-sheet.png
+          python scripts/preview_deck.py native-images-demo.pptx --output-dir preview/images --sheet preview/images-sheet.png
+          python scripts/preview_deck.py pipeline-converted/pipeline-converted.pptx --output-dir preview/pipeline --sheet preview/pipeline-sheet.png
       - name: Compare against reviewed golden slide images
         working-directory: pptx/native
         run: |
@@ -149,6 +157,7 @@ jobs:
             pptx/native/parity/
             pptx/native/batch-dist/
             pptx/native/render-check/
+            pptx/native/preview/
             pptx/native/visual-regression/
             pptx/native/design-profile/
             pptx/native/pipeline-converted/

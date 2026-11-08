@@ -7,7 +7,7 @@
 
 const path = require('node:path');
 const { generatePptx, components } = require('../native');
-const { writePngFixture, gradientPainter } = require('../native/scripts/sample_image');
+const { writePngFixture, gradientPainter, quadrantPainter } = require('../native/scripts/sample_image');
 
 const outputPath = process.argv[2] || 'native-images-demo.pptx';
 const assetDir = process.argv[3] || path.join(process.cwd(), 'native-image-assets');
@@ -30,6 +30,10 @@ const portrait = writePngFixture(assetDir, 'sample-portrait.png', 600, 900,
   gradientPainter([32, 48, 66], [0, 166, 166]));
 const panorama = writePngFixture(assetDir, 'sample-panorama.png', 1200, 400,
   gradientPainter([245, 240, 230], [24, 59, 58]));
+// A smooth gradient makes every fit mode look the same; this pattern has
+// quadrants, a frame and corner ticks so crops, focus and zoom are visible.
+const pattern = writePngFixture(assetDir, 'sample-pattern.png', 800, 600, quadrantPainter());
+const patternTall = writePngFixture(assetDir, 'sample-pattern-tall.png', 600, 900, quadrantPainter());
 
 const margin = theme.spacing.pageX;
 const caption = (text, x, y, w) => ({
@@ -51,12 +55,12 @@ const deck = {
         }),
         components.divider({ theme, x: margin + 0.02, y: 1.24, w: 11.85 }),
         caption('COVER · 铺满并裁切，保持比例', margin, 1.55, 3.4),
-        { type: 'image', path: landscape, x: margin, y: 1.82, w: 3.4, h: 3.6, fit: 'cover', radius: 0.1 },
+        { type: 'image', path: pattern, x: margin, y: 1.82, w: 3.4, h: 3.6, fit: 'cover', radius: 0.1 },
         caption('CONTAIN · 完整显示，保留比例', margin + 3.72, 1.55, 3.4),
-        { type: 'image', path: landscape, x: margin + 3.72, y: 1.82, w: 3.4, h: 3.6, fit: 'contain',
+        { type: 'image', path: pattern, x: margin + 3.72, y: 1.82, w: 3.4, h: 3.6, fit: 'contain',
           lineColor: theme.colors.border, lineWidth: 0.75, lineDash: 'dash' },
         caption('STRETCH · 拉伸填充（默认）', margin + 7.44, 1.55, 3.4),
-        { type: 'image', path: landscape, x: margin + 7.44, y: 1.82, w: 3.4, h: 3.6, fit: 'stretch', radius: 0.1 },
+        { type: 'image', path: pattern, x: margin + 7.44, y: 1.82, w: 3.4, h: 3.6, fit: 'stretch', radius: 0.1 },
         {
           type: 'text', text: '三种模式都是原生图片对象：cover 写入 a:srcRect 裁切矩形，contain 直接收敛图片框，stretch 保留旧行为。',
           x: margin, y: 5.7, w: 11.2, h: 0.55, fontFace: theme.fonts.body,
@@ -70,13 +74,13 @@ const deck = {
         components.title('裁切焦点与缩放', { theme, x: margin, y: 0.52, w: 11.9, h: 0.62 }),
         components.divider({ theme, x: margin + 0.02, y: 1.24, w: 11.85 }),
         caption('FOCUS TOP', margin, 1.55, 2.6),
-        { type: 'image', path: portrait, x: margin, y: 1.82, w: 2.6, h: 3.4, fit: 'cover', focus: 'top', radius: 0.08 },
+        { type: 'image', path: patternTall, x: margin, y: 1.82, w: 2.6, h: 3.4, fit: 'cover', focus: 'top', radius: 0.08 },
         caption('FOCUS CENTER', margin + 2.9, 1.55, 2.6),
-        { type: 'image', path: portrait, x: margin + 2.9, y: 1.82, w: 2.6, h: 3.4, fit: 'cover', focus: 'center', radius: 0.08 },
+        { type: 'image', path: patternTall, x: margin + 2.9, y: 1.82, w: 2.6, h: 3.4, fit: 'cover', focus: 'center', radius: 0.08 },
         caption('FOCUS BOTTOM', margin + 5.8, 1.55, 2.6),
-        { type: 'image', path: portrait, x: margin + 5.8, y: 1.82, w: 2.6, h: 3.4, fit: 'cover', focus: 'bottom', radius: 0.08 },
+        { type: 'image', path: patternTall, x: margin + 5.8, y: 1.82, w: 2.6, h: 3.4, fit: 'cover', focus: 'bottom', radius: 0.08 },
         caption('ZOOM 1.8 · 更紧的取景', margin + 8.7, 1.55, 3.0),
-        { type: 'image', path: panorama, x: margin + 8.7, y: 1.82, w: 3.0, h: 3.4, fit: 'cover', zoom: 1.8, radius: 0.08 },
+        { type: 'image', path: pattern, x: margin + 8.7, y: 1.82, w: 3.0, h: 3.4, fit: 'cover', zoom: 1.8, radius: 0.08 },
         {
           type: 'text', text: 'focus 支持 nine-grid 预设或 { x, y } 归一化坐标；zoom ≥ 1 在保持宽高比的前提下收紧取景。',
           x: margin, y: 5.55, w: 11.2, h: 0.4, fontFace: theme.fonts.body,

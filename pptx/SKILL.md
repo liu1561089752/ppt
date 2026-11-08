@@ -775,6 +775,20 @@ node scripts/audit_deck.js deck.pptx --json --max-picture-coverage 0.6
 
 Use `--fail-on-warning` in CI for fixtures that must stay clean. A full-bleed hero picture is reported as `info` (`FULL_BLEED_PICTURE`) because it is still a croppable native picture, not a raster.
 
+### Offline layout preview
+
+When LibreOffice or PowerPoint is not available, `scripts/preview_deck.py` renders a generated PPTX to PNG with Pillow so geometry can still be reviewed.
+
+```bash
+cd pptx/native
+python scripts/preview_deck.py native-stress-deck.pptx --output-dir preview/stress --sheet preview/stress-sheet.png
+python scripts/preview_deck.py deck.pptx --scale 0.5
+```
+
+It reads the real package through `python-pptx`, so slide size, shape frames, z-order, solid fills, linear gradients, line transparency, native tables, picture crops, and text wrapping/anchoring all come from the actual OOXML. It warns when text exceeds its box and when a table is taller than its frame.
+
+What it is not: a faithful Office renderer. There is no OpenType shaping or kerning, no shadow/glow/bevel rendering, no pattern fills, and shape rotation is ignored. Use it to catch layout mistakes — final typography still has to be approved in the target Office environment.
+
 ### HTML → Native conversion pipeline
 
 `pptx/native/pipeline/` implements the staged conversion described in the migration plan:

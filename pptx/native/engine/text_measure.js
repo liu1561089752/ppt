@@ -46,9 +46,17 @@ function normalizeCjkLineBreaks(lines) {
   return lines;
 }
 
+// CJK permits a break between any two characters, so each CJK character is its
+// own token. Treating a whole spacerless Chinese run as one word made the greedy
+// filler push a half-empty line whenever that run was wider than the box.
+const CJK_RANGES = '\\u1100-\\u11FF\\u2E80-\\u303F\\u3040-\\u30FF\\u3130-\\u318F' +
+  '\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uA960-\\uA97F\\uAC00-\\uD7FF\\uF900-\\uFAFF' +
+  '\\uFE30-\\uFE4F\\uFF00-\\uFFEF';
+const TOKEN_PATTERN = new RegExp('\\s+|[' + CJK_RANGES + ']|[^\\s' + CJK_RANGES + ']+', 'gu');
+
 function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
   if (!paragraph) return [''];
-  const tokens = paragraph.match(/\s+|[^\s]+/gu) || [paragraph];
+  const tokens = paragraph.match(TOKEN_PATTERN) || [paragraph];
   const lines = [];
   let line = '';
   let lineWidth = 0;

@@ -70,9 +70,20 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 1. `node pipeline/cli.js reference.html --pptx converted.pptx --report report.json`
 2. Read `report.json`; decide per unsupported entry whether it matters.
-3. Compare the HTML render and the converted PPTX side by side using the
-   checklist in [`../parity/README.md`](../parity/README.md).
-4. Only after human review, treat the result as a baseline.
+3. Render the converted deck for inspection. Without LibreOffice/PowerPoint use
+   the offline previewer, which reads the real OOXML geometry, fills, gradients,
+   tables and picture crops:
+
+   ```bash
+   python scripts/preview_deck.py converted.pptx --output-dir preview/converted --sheet preview/converted-sheet.png
+   ```
+
+   It is a layout preview, not a faithful Office render (no shaping, no
+   shadows), so it catches dropped objects, wrong positions and overflowing
+   text — not final typography.
+4. Compare against the HTML render using the checklist in
+   [`../parity/README.md`](../parity/README.md).
+5. Only after human review, treat the result as a baseline.
 
 ## Roadmap
 

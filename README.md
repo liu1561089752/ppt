@@ -47,6 +47,8 @@ node pipeline/cli.js ../examples/pipeline-reference.html \
   --out converted/deck.json --report converted/report.json --pptx converted/deck.pptx
 ```
 
+Both paths can be inspected without LibreOffice: `python scripts/preview_deck.py <deck.pptx> --sheet preview/sheet.png` renders the real OOXML geometry, fills, gradients, tables, picture crops and text wrapping to PNG with Pillow. It is a layout preview, not a faithful Office render.
+
 The pipeline reports every CSS feature it could not translate instead of dropping it silently. See `pptx/native/pipeline/README.md` for the supported subset and the explicit limitations — it is a deliberate subset translator, not a browser engine.
 
 Batch conversion is available through `node pptx/batch_native_pptx.js --input-dir <deck-spec-directory> --output-dir <output-directory>`. Each JSON Deck Spec is rendered to a separate editable PPTX; see `pptx/SKILL.md` for options.

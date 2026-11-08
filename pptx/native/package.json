@@ -29,7 +29,11 @@
     "pipeline:pptx": "node pipeline/cli.js ../examples/pipeline-reference.html --out pipeline-converted/deck.json --report pipeline-converted/report.json --pptx pipeline-converted/pipeline-converted.pptx",
     "pipeline:parity": "node pipeline/cli.js ../examples/design-reference.html --out pipeline-converted/parity.json --pptx pipeline-converted/pipeline-parity.pptx",
     "audit:pipeline": "node scripts/audit_deck.js pipeline-converted/pipeline-converted.pptx --min-text-shapes 2",
-    "render:pipeline": "python scripts/render_check.py pipeline-converted/pipeline-converted.pptx --output-dir render-check/pipeline-converted"
+    "render:pipeline": "python scripts/render_check.py pipeline-converted/pipeline-converted.pptx --output-dir render-check/pipeline-converted",
+    "preview:demo": "python scripts/preview_deck.py native-demo.pptx --output-dir preview/native-demo --sheet preview/native-demo-sheet.png",
+    "preview:stress": "python scripts/preview_deck.py native-stress-deck.pptx --output-dir preview/stress --sheet preview/stress-sheet.png",
+    "preview:images": "python scripts/preview_deck.py native-images-demo.pptx --output-dir preview/images --sheet preview/images-sheet.png",
+    "preview:pipeline": "python scripts/preview_deck.py pipeline-converted/pipeline-converted.pptx --output-dir preview/pipeline --sheet preview/pipeline-sheet.png"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

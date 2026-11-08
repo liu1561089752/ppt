@@ -1128,3 +1128,57 @@ test('html pipeline output stays editable once written to PPTX', async () => {
     report.slides.forEach((slide) => assert.ok(slide.textShapes >= 2, slide.part + ' must keep editable text'));
   });
 });
+
+test('native CJK wrapping fills each line instead of breaking at a spacerless run', () => {
+  const { wrapText } = require('../native/engine/text_measure');
+  const paragraph = '这段内容由 DOM 分析、布局求解与样式映射自动转换而来，标题、正文、卡片、图片、表格仍然全部可编辑。';
+  const lines = wrapText(paragraph, 6.46, 13.5).split('\n');
+  assert.equal(lines.length, 2, 'expected two filled lines, got: ' + JSON.stringify(lines));
+  // The first line must use most of the box instead of wasting it on 9 characters.
+  assert.ok(lines[0].length >= paragraph.length * 0.45,
+    'first line wasted the box: ' + JSON.stringify(lines[0]));
+
+  // Pure CJK must break between characters, not at a single hard boundary.
+  const pure = wrapText('一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十', 2.0, 13.5).split('\n');
+  assert.equal(pure.length, 4);
+  assert.ok(pure.slice(0, -1).every((line) => line.length >= 9));
+});
+
+test('html pipeline converts CSS gradient angles into DrawingML angles', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.hero { position: absolute; left: 0; top: 0; width: 1280px; height: 720px;',
+    '  background: linear-gradient(135deg, #142536 0%, #E56A42 100%); }',
+    '</style></head><body><main class="slide"><div class="hero"></div></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const shape = result.deck.slides[0].elements.find((element) => element.gradient);
+  assert.ok(shape, 'the gradient must survive the conversion');
+  // 135deg in CSS points to the bottom-right; DrawingML measures clockwise from
+  // east, so the same direction is 45 degrees there.
+  assert.equal(shape.gradient.angle, 45);
+  assert.equal(shape.gradient.stops.length, 2);
+  assert.equal(shape.gradient.stops[1].color, 'E56A42');
+});
+
+test('html pipeline paints table header cells declared with the background shorthand', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    'table { position: absolute; left: 40px; top: 40px; width: 800px; }',
+    'th { background: #183B3A; color: #FFFFFF; font-weight: 700; }',
+    'td { color: #202321; }',
+    '</style></head><body><main class="slide"><table>',
+    '<thead><tr><th>阶段</th><th>输出</th></tr></thead>',
+    '<tbody><tr><td>A</td><td>B</td></tr></tbody>',
+    '</table></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const table = result.deck.slides[0].elements.find((element) => element.type === 'table');
+  assert.ok(table, 'table must be converted');
+  assert.equal(table.rows[0][0].options.fill.color, '183B3A');
+  assert.equal(table.rows[0][0].options.color, 'FFFFFF');
+  assert.equal(table.rows[0][0].options.bold, true);
+  assert.equal(table.rows[1][0].options.color, '202321');
+});

@@ -35,6 +35,18 @@ const GENERIC_FAMILIES = {
   '-apple-system': null
 };
 
+/** CSS gradient angle (0deg = to top) -> DrawingML angle (0 = left-to-right). */
+function toDrawingMlAngle(cssAngle) {
+  const value = Number(cssAngle);
+  if (!Number.isFinite(value)) return 180;
+  return Math.round(((value - 90) % 360 + 360) % 360 * 100) / 100;
+}
+
+function nativeGradient(gradient) {
+  if (!gradient) return null;
+  return Object.assign({}, gradient, { angle: toDrawingMlAngle(gradient.angle) });
+}
+
 const FIT_BY_OBJECT_FIT = {
   cover: 'cover',
   contain: 'contain',
@@ -176,7 +188,7 @@ function surfaceElementFromNode(node, resolvedTheme) {
   const fillTransparency = transparencyOf(background);
   if (fillTransparency !== undefined) element.fillTransparency = fillTransparency;
   if (gradient) {
-    element.gradient = gradient;
+    element.gradient = nativeGradient(gradient);
     element.fill = gradient.stops[0].color;
   }
   if (radius) element.radius = radius;
@@ -318,7 +330,7 @@ function buildDeckSpec(analysis, options = {}) {
         w: analysis.pageSize.width,
         h: analysis.pageSize.height,
         fill: slide.gradient.stops[0].color,
-        gradient: slide.gradient,
+        gradient: nativeGradient(slide.gradient),
         line: false
       });
       report.shapes += 1;

@@ -211,7 +211,7 @@ function buildStressDeck(assets) {
                     type: 'container', direction: 'row', gap: 0.3, align: 'end',
                     children: [
                       text('62%', { flex: 1, fontFace: theme.fonts.heading, fontSize: 26, bold: true, color: C.accent }),
-                      text('增量收入贡献', { flex: 1, fontFace: theme.fonts.body, fontSize: theme.sizes.caption, color: C.muted })
+                      text('增量收入贡献', { flex: 1, align: 'right', fontFace: theme.fonts.body, fontSize: theme.sizes.caption, color: C.muted })
                     ]
                   }
                 ]
@@ -228,11 +228,49 @@ function buildStressDeck(assets) {
                     type: 'container', direction: 'row', gap: 0.3, align: 'end',
                     children: [
                       text('1.8x', { flex: 1, fontFace: theme.fonts.heading, fontSize: 26, bold: true, color: C.accent }),
-                      text('人均支持客户数差异', { flex: 1, fontFace: theme.fonts.body, fontSize: theme.sizes.caption, color: 'A9BCBA' })
+                      text('人均支持客户数差异', { flex: 1, align: 'right', fontFace: theme.fonts.body, fontSize: theme.sizes.caption, color: 'A9BCBA' })
                     ]
                   }
                 ]
               })
+            ]
+          },
+          shape({ x: M, y: 5.66, w: CW, h: 0.02, fill: C.border }),
+          text('证据 / EVIDENCE', {
+            x: M, y: 5.8, w: 4, h: 0.24,
+            fontFace: theme.fonts.body, fontSize: 10, bold: true, color: C.muted
+          }),
+          {
+            type: 'container', direction: 'row', gap: 0.5, align: 'stretch',
+            x: M, y: 6.14, w: CW,
+            children: [
+              {
+                type: 'container', direction: 'column', gap: 0.08, flex: 1,
+                children: [
+                  text('94.6%', { fontFace: theme.fonts.heading, fontSize: 21, bold: true, color: C.accent }),
+                  text('腰部客户 24 个月留存，低价大单同期只有 71%。', {
+                    fontFace: theme.fonts.body, fontSize: 11, color: C.foreground, valign: 'top'
+                  })
+                ]
+              },
+              {
+                type: 'container', direction: 'column', gap: 0.08, flex: 1,
+                children: [
+                  text('14 个月', { fontFace: theme.fonts.heading, fontSize: 21, bold: true, color: C.accent }),
+                  text('工具化投入的回收周期，按人均支持客户数提升 60% 测算。', {
+                    fontFace: theme.fonts.body, fontSize: 11, color: C.foreground, valign: 'top'
+                  })
+                ]
+              },
+              {
+                type: 'container', direction: 'column', gap: 0.08, flex: 1,
+                children: [
+                  text('2 条', { fontFace: theme.fonts.heading, fontSize: 21, bold: true, color: C.accent }),
+                  text('需要同时推进的产品线，其余进入维护模式，不再扩编。', {
+                    fontFace: theme.fonts.body, fontSize: 11, color: C.foreground, valign: 'top'
+                  })
+                ]
+              }
             ]
           }
         ]
@@ -579,11 +617,56 @@ function buildStressDeck(assets) {
                     fontFace: theme.fonts.body, fontSize: 12, color: C.muted, valign: 'top'
                   }),
                   shape({ h: 0.02, fill: C.border }),
-                  text('Decision required  ·  需要董事会本次会议明确的三件事：', {
+                  text('度量口径 · MEASUREMENT', {
                     fontFace: theme.fonts.body, fontSize: 10, bold: true, color: C.primary
                   }),
-                  text('1) 接受 12% 的收入增速目标；2) 批准 3200 万工具化预算；3) 授权 Q2 完成人力再配置。', {
+                  text('模板覆盖率、双轨运行周数、自动化替代率、人均支持客户数，四项按月公开。', {
                     fontFace: theme.fonts.body, fontSize: 12, color: C.foreground, valign: 'top'
+                  })
+                ]
+              }
+            ]
+          },
+          {
+            type: 'container', direction: 'row', gap: 0.36, align: 'stretch',
+            x: M, y: 5.72, w: CW, h: 1.3, padding: 0.3,
+            background: { fill: C.primary, radius: 0.16 },
+            children: [
+              {
+                type: 'container', direction: 'column', gap: 0.06, flex: 1,
+                children: [
+                  text('DECISION REQUIRED', {
+                    fontFace: theme.fonts.body, fontSize: 9.5, bold: true, color: C.accent
+                  }),
+                  text('本次会议需要明确的三件事', {
+                    fontFace: theme.fonts.body, fontSize: 13, bold: true, color: 'FFFFFF', valign: 'top'
+                  })
+                ]
+              },
+              {
+                type: 'container', direction: 'column', gap: 0.06, flex: 1,
+                children: [
+                  text('01', { fontFace: theme.fonts.heading, fontSize: 13, bold: true, color: C.accent }),
+                  text('接受 12% 的收入增速目标', {
+                    fontFace: theme.fonts.body, fontSize: 12, color: 'FFFFFF', valign: 'top'
+                  })
+                ]
+              },
+              {
+                type: 'container', direction: 'column', gap: 0.06, flex: 1,
+                children: [
+                  text('02', { fontFace: theme.fonts.heading, fontSize: 13, bold: true, color: C.accent }),
+                  text('批准 3200 万工具化预算', {
+                    fontFace: theme.fonts.body, fontSize: 12, color: 'FFFFFF', valign: 'top'
+                  })
+                ]
+              },
+              {
+                type: 'container', direction: 'column', gap: 0.06, flex: 1,
+                children: [
+                  text('03', { fontFace: theme.fonts.heading, fontSize: 13, bold: true, color: C.accent }),
+                  text('授权 Q2 完成人力再配置', {
+                    fontFace: theme.fonts.body, fontSize: 12, color: 'FFFFFF', valign: 'top'
                   })
                 ]
               }

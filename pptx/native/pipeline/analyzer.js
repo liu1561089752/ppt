@@ -587,7 +587,7 @@ function readTable(domNode, ctx) {
     rows.push(cells.map((cell) => {
       const style = ctx.styles.computed(cell);
       const color = parseColor(style.color);
-      const background = parseColor(style.backgroundColor);
+      const background = backgroundOf(style);
       const weight = String(style.fontWeight || '').toLowerCase();
       const sizePt = parseLength(style.fontSize);
       return {

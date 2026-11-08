@@ -93,4 +93,33 @@ function gradientPainter(from, to) {
   };
 }
 
-module.exports = { makePng, writePngFixture, gradientPainter, crc32 };
+/**
+ * Four-quadrant pattern with a white frame, a centre cross and corner ticks.
+ * A smooth gradient makes every fit mode look identical, so fixture images that
+ * are meant to prove cropping/focus/zoom need landmarks like these.
+ */
+function quadrantPainter(colours, options = {}) {
+  const quadrants = colours && colours.length === 4
+    ? colours
+    : [[24, 59, 58], [0, 166, 166], [211, 107, 69], [245, 240, 230]];
+  const frame = options.frame === undefined ? 26 : options.frame;
+  const tick = options.tick === undefined ? 60 : options.tick;
+  return (x, y, width, height) => {
+    const midX = width / 2;
+    const midY = height / 2;
+    const left = x < midX;
+    const top = y < midY;
+    if (x < frame || y < frame || x >= width - frame || y >= height - frame) return [255, 255, 255];
+    if (Math.abs(x - midX) < 2 || Math.abs(y - midY) < 2) return [255, 255, 255];
+    // Corner ticks inside each quadrant give an obvious distortion cue.
+    const inTickX = left ? x - frame < tick : width - frame - x < tick;
+    const inTickY = top ? y - frame < tick : height - frame - y < tick;
+    if (inTickX && inTickY) return [255, 255, 255];
+    if (left && top) return quadrants[0];
+    if (!left && top) return quadrants[1];
+    if (left && !top) return quadrants[2];
+    return quadrants[3];
+  };
+}
+
+module.exports = { makePng, writePngFixture, gradientPainter, quadrantPainter, crc32 };
