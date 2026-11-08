@@ -63,6 +63,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 | Clip path | `clip-path: polygon(...)` on a box with a declared height becomes a `custGeom` path whose vertices are the polygon corners: the shape itself is the clip, so it stays editable and its outline follows the cut. Percentages and lengths both resolve; anything else (`circle()`, `ellipse()`, `inset()`, `url()`) is reported, and so is a clipped box that has children, because only the box's own paint is clipped here |
 
+| Long tables | A table taller than the page continues on further slides, one row never split across pages, with the `<thead>` rows repeated and the same left edge, width and top margin. `Paged:` on stdout names the split |
+
 | Inline pseudo content | `::before`/`::after` that is not absolutely positioned joins its host line as a run: quoted strings and `attr()` are concatenated, the pseudo keeps its colour and size, and spaces collapse as in a browser. `counter()`/quote keywords and decorations on containers are reported |
 
 | Space evenly | `justify-content: space-evenly` and `align-content: space-evenly` distribute `n+1` equal gaps, the two outer ones included, instead of falling back to `space-around` |

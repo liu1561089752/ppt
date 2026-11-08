@@ -5172,3 +5172,55 @@ test('an inline ::before joins the line as a run, and attr() resolves', () => {
   assert.ok(container.report.unsupportedDetails.some((item) => item.property === '::before'));
 });
 
+
+test('a table taller than its slide continues on more slides with the header repeated', () => {
+  const rows = (count) => Array.from({ length: count },
+    (unused, index) => '<tr><td>row ' + index + '</td><td>' + index * 3 + ' ms</td></tr>').join('');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  table { width: 1000px; font-size: 14px; border-collapse: collapse; }',
+    '  th, td { padding: 8px; border-bottom: 1px solid #ddd; }',
+    '  thead th { background: #17332F; color: #fff; }',
+    '  tfoot td { font-weight: 600; }',
+    '</style></head><body><main class="slide"><table>',
+    '<thead><tr><th>name</th><th>value</th></tr></thead>',
+    '<tbody>' + rows(60) + '</tbody>',
+    '<tfoot><tr><td>total</td><td>999</td></tr></tfoot>',
+    '</table></main></body></html>'
+  ].join('\n'));
+
+  const slides = result.deck.slides;
+  assert.ok(slides.length > 1, 'one source page became several slides');
+  assert.equal(result.report.paginatedTables.length, 1);
+  // Every row is still there, once: 1 header + 60 body + 1 footer, plus one repeated header per
+  // continuation page.
+  const written = slides.flatMap((slide) => slide.elements.find((element) => element.type === 'table').rows);
+  assert.equal(written.length, 62 + (slides.length - 1), 'each continuation repeats only the header');
+  assert.equal(written.filter((cells) => cells[0].text === 'name').length, slides.length, 'the header is on every page');
+  assert.equal(written.filter((cells) => cells[0].text === 'total').length, 1, 'the footer is on the last page only');
+  slides.forEach((slide, index) => {
+    const table = slide.elements.find((element) => element.type === 'table');
+    assert.ok(table.y + table.h <= 7.5 - 0.24, 'page ' + (index + 1) + ' fits');
+    assert.equal(table.y, slides[0].elements.find((element) => element.type === 'table').y,
+      'every page keeps the table top');
+  });
+  // The deck no longer runs off the page, so the analysis overflow is not reported.
+  assert.equal(result.report.layout.total, 0, 'a split table is not an overflow');
+});
+
+test('a table that fits is left alone', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  table { width: 800px; font-size: 14px; }',
+    '  td { padding: 6px; }',
+    '</style></head><body><main class="slide">',
+    '<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(result.deck.slides.length, 1);
+  assert.equal(result.report.paginatedTables.length, 0);
+  assert.equal(result.deck.slides[0].elements.find((element) => element.type === 'table').rows.length, 2);
+});
+

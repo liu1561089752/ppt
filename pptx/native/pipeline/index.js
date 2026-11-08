@@ -44,6 +44,17 @@ function convertHtml(html, options = {}) {
   analysis.title = collectTitle(analysis);
   const { deck, report } = buildDeckSpec(analysis, options);
   const layout = auditAnalysis(analysis);
+  // A table that was split onto further slides no longer runs off the page, so the analysis
+  // overflow it would still report is not true of the deck that was written.
+  if ((report.paginatedTables || []).length) {
+    layout.slides.forEach((slide) => {
+      const kept = slide.beyond.filter((entry) => !/^table\(/u.test(String(entry.node || '')));
+      slide.overflows = slide.overflows.filter((entry) => !/^table\(/u.test(String(entry.node || '')));
+      slide.beyond = kept;
+    });
+    layout.total = layout.slides.reduce((sum, slide) =>
+      sum + slide.collisions.length + slide.overflows.length + slide.beyond.length, 0);
+  }
   const errors = validateDeck(deck);
   return {
     deck,

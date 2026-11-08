@@ -55,6 +55,13 @@
     "missingWords": 0,
     "unmatched": 0
   },
+  "pipeline-paginate.html": {
+    "boxes": 2,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
   "pipeline-patterns.html": {
     "boxes": 45,
     "droppedByWindow": 0,

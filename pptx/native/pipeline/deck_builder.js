@@ -494,6 +494,7 @@ function emptyCounters() {
     declarativeContainers: 0,
     absoluteGroups: 0,
     containerFallbacks: [],
+    paginatedTables: [],
     layoutAttempts: 0,
     maxBoxDelta: 0
   };
@@ -1042,6 +1043,7 @@ function emitAbsolute(node, context) {
     emitLeafOverlays(node, context, elements);
     return;
   }
+  if (element.type === 'table' && node.headerRows) element.headerRows = node.headerRows;
   // A table's caption is drawn before it in document order, so it is emitted first and a
   // reader paints it under nothing. It is a plain text box: a merged first row would put the
   // rest of the table off the page in LibreOffice, which could not be verified.
@@ -1135,6 +1137,80 @@ function stripProbes(elements) {
 }
 
 /** Convert an analyzed document into a Native Deck Spec plus a mapping report. */
+/**
+ * A table taller than its slide is split into pages instead of running off the bottom.
+ *
+ * A row never straddles two slides, the leading `<thead>` rows are repeated on every
+ * continuation page, and every page keeps the table's own left edge, width and top margin.
+ * What it cannot keep is whatever the host slide painted around the table, so only full-page
+ * backdrops travel with it: the rest of that page belongs to the page, not to the table.
+ */
+const TABLE_BOTTOM_KEEP = 0.25;
+
+function isPageBackdrop(element, pageSize) {
+  return Boolean(element) && element.type === 'shape' && !element.rotated
+    && Number(element.x) === 0 && Number(element.y) === 0
+    && Number(element.w) >= pageSize.width - 0.01 && Number(element.h) >= pageSize.height - 0.01;
+}
+
+function splitOverflowingTable(built, pageSize, report) {
+  const tableIndex = built.elements.findIndex((element) => element.type === 'table'
+    && Number(element.y) + Number(element.h) > pageSize.height - TABLE_BOTTOM_KEEP + 0.001);
+  if (tableIndex < 0) return [built];
+  const table = built.elements[tableIndex];
+  const heights = table.options && Array.isArray(table.options.rowH) ? table.options.rowH : null;
+  if (!heights || heights.length !== table.rows.length) return [built];
+  const headerCount = Math.min(Number(table.headerRows) || 0, table.rows.length - 1);
+  const headerHeight = headerCount
+    ? heights.slice(0, headerCount).reduce((sum, value) => sum + value, 0)
+    : 0;
+  const top = Math.max(0, Number(table.y));
+  const chunks = [];
+  let rowIndex = 0;
+  while (rowIndex < table.rows.length) {
+    const budget = pageSize.height - TABLE_BOTTOM_KEEP - top - (chunks.length ? headerHeight : 0);
+    let used = 0;
+    let end = rowIndex;
+    while (end < table.rows.length) {
+      const next = heights[end];
+      if (used + next > budget && end > rowIndex) break;
+      used += next;
+      end += 1;
+    }
+    // A single row taller than the page still has to go somewhere; it is left to overflow.
+    if (end === rowIndex) end = rowIndex + 1;
+    chunks.push({ start: rowIndex, end });
+    rowIndex = end;
+  }
+  if (chunks.length < 2) return [built];
+  const pageOf = (chunk, first) => {
+    const rows = (first ? [] : table.rows.slice(0, headerCount)).concat(table.rows.slice(chunk.start, chunk.end));
+    const rowH = (first ? [] : heights.slice(0, headerCount)).concat(heights.slice(chunk.start, chunk.end));
+    const height = rowH.reduce((sum, value) => sum + value, 0);
+    const element = Object.assign({}, table, {
+      y: Number(top.toFixed(4)),
+      h: Number(height.toFixed(4)),
+      rows,
+      options: Object.assign({}, table.options, { rowH })
+    });
+    if (!headerCount) delete element.headerRows;
+    return element;
+  };
+  const backdrop = built.elements.filter((element, position) =>
+    position !== tableIndex && isPageBackdrop(element, pageSize));
+  const first = Object.assign({}, built, {
+    elements: built.elements.slice(0, tableIndex)
+      .concat([pageOf(chunks[0], true)])
+      .concat(built.elements.slice(tableIndex + 1))
+  });
+  const pages = [first];
+  for (let index = 1; index < chunks.length; index += 1) {
+    pages.push({ background: built.background, elements: backdrop.concat([pageOf(chunks[index], false)]) });
+  }
+  report.paginatedTables.push({ rows: table.rows.length, headerRows: headerCount, pages: chunks.length });
+  return pages;
+}
+
 function buildDeckSpec(analysis, options = {}) {
   const resolvedTheme = options.theme
     ? resolveTheme(options.theme)
@@ -1144,7 +1220,7 @@ function buildDeckSpec(analysis, options = {}) {
   report.slides = analysis.slides.length;
   report.unsupported = analysis.unsupported.length;
 
-  const slides = analysis.slides.map((slide) => {
+  const slides = analysis.slides.flatMap((slide) => {
     const state = { blocked: new Set() };
     let elements = [];
     let attemptReport = emptyCounters();
@@ -1213,9 +1289,11 @@ function buildDeckSpec(analysis, options = {}) {
     };
     // Speaker notes are native `ppt/notesSlides` parts, not slide content.
     if (slide.notes) built.notes = slide.notes;
-    return built;
+    return splitOverflowingTable(built, analysis.pageSize, report);
   });
 
+  // Pagination adds slides, so the count a reader sees is the deck's, not the source's.
+  report.slides = slides.length;
   const deck = {
     title: options.title || analysis.title || 'HTML to native',
     language: options.language || 'zh-CN',

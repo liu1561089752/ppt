@@ -1683,6 +1683,7 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.columnCount = table.columns;
     node.colWidths = table.colWidths;
     node.rowHeights = table.rowHeights;
+    if (table.headerRows) node.headerRows = table.headerRows;
     // The height a declared CSS table already knows; otherwise the rows measured from
     // their real padding and line boxes, so the box reserved here matches what is drawn.
     const estimatedRows = (table.rowHeights || []).reduce((sum, height) => sum + height, 0);
@@ -3506,16 +3507,17 @@ function readTable(domNode, ctx, contentWidth) {
   // A row or section may carry the background a browser paints behind its cells -
   // the usual way a striped table is written. A cell inherits it visually, so the
   // first declared background wins: cell, then row, then section, then table.
-  const collect = (node, sectionBackground) => {
+  const collect = (node, sectionBackground, inHeader) => {
     (node.children || []).forEach((child) => {
       if (child.type !== 'element') return;
-      if (child.tag === 'tr') rowNodes.push({ rowNode: child, sectionBackground });
+      if (child.tag === 'tr') rowNodes.push({ rowNode: child, sectionBackground, header: inHeader });
       else if (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot') {
-        collect(child, backgroundOf(ctx.styles.computed(child)) || sectionBackground);
+        collect(child, backgroundOf(ctx.styles.computed(child)) || sectionBackground,
+          inHeader || child.tag === 'thead');
       }
     });
   };
-  collect(domNode, backgroundOf(ctx.styles.computed(domNode)));
+  collect(domNode, backgroundOf(ctx.styles.computed(domNode)), false);
 
   // Phase 1: read every row's cells the way the DOM presents them.
   const rawRows = rowNodes.map(({ rowNode, sectionBackground }) => {
@@ -3632,7 +3634,10 @@ function readTable(domNode, ctx, contentWidth) {
       }
     });
   });
-  return { rows, columns, colWidths, rowHeights };
+  // Only leading `<thead>` rows can be repeated at the top of a continuation page.
+  let headerRows = 0;
+  while (headerRows < rowNodes.length && rowNodes[headerRows].header) headerRows += 1;
+  return { rows, columns, colWidths, rowHeights, headerRows };
 }
 
 /** Width of the columns a cell spans, from the resolved track widths. */

@@ -109,6 +109,11 @@ async function main(argv) {
     process.stdout.write('Warning: ' + result.report.droppedDecorations +
       ' ::before/::after decoration(s) belong to a plain element that cannot host an overlay\n');
   }
+  (result.report.paginatedTables || []).forEach((entry) => {
+    process.stdout.write('Paged:   a ' + entry.rows + '-row table became ' + entry.pages
+      + ' slide(s)' + (entry.headerRows ? ' with the ' + entry.headerRows + '-row header repeated' : '')
+      + ', because it was taller than the page\n');
+  });
   if (result.report.rotatedGroups) {
     process.stdout.write('Warning: ' + result.report.rotatedGroups +
       ' rotated group(s) keep their children unrotated (a container cannot carry a rotation)\n');
