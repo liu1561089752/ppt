@@ -18,6 +18,7 @@ function parseArgs(argv) {
     if (token === '--out') options.out = argv[++index];
     else if (token === '--pptx') options.pptx = argv[++index];
     else if (token === '--report') options.reportPath = argv[++index];
+    else if (token === '--layout-out') options.layoutPath = argv[++index];
     else if (token === '--title') options.title = argv[++index];
     else if (token === '--language') options.language = argv[++index];
     else if (token === '--page-size') options.pageSize = argv[++index];
@@ -77,7 +78,7 @@ async function main(argv) {
   const options = parseArgs(argv);
   if (options.help || !options.input) {
     process.stdout.write('Usage: node pipeline/cli.js <input.html> [--out deck.json] [--pptx out.pptx] ' +
-      '[--report report.json] [--title T] [--language zh-CN] [--page-size wide|standard] [--json]\n');
+      '[--report report.json] [--layout-out layout.json] [--title T] [--language zh-CN] [--page-size wide|standard] [--json]\n');
     return options.help ? 0 : 1;
   }
 

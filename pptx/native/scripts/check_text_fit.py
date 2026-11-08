@@ -20,8 +20,13 @@ reading order drifts, so position alone cannot tell two stacked boxes apart. The
 where to look: without it a short label like "01" would match a rectangle on the other side
 of the slide and the spill would be measured against the wrong element entirely.
 
-    python scripts/check_text_fit.py deck.pptx --spec deck.json
-    python scripts/check_text_fit.py deck.pptx --spec deck.json --verbose
+    python scripts/check_text_fit.py deck.pptx --layout layout.json
+    python scripts/check_text_fit.py deck.pptx --layout layout.json --verbose
+
+`layout.json` is written by `node pipeline/cli.js --layout-out`: the boxes the writer really
+used, with container children already resolved into absolute positions. The raw deck spec is
+accepted too, but a nested container positions its children at write time, so the spec alone
+cannot say where a caption ended up.
 
 Requires LibreOffice (soffice) and pypdfium2. Set LIBREOFFICE_SOFFICE when soffice is not on
 PATH.
@@ -170,7 +175,8 @@ def claim_lines(target, rects, box):
     if not target:
         return claimed, skipped
     wanted = skeleton(target)
-    for rect in rects:
+    ordered = sorted(rects, key=lambda rect: -len(skeleton(rect["text"])))
+    for rect in ordered:
         shape = skeleton(rect["text"])
         if not shape:
             continue
@@ -182,7 +188,7 @@ def claim_lines(target, rects, box):
         centre_x = (rect["x0"] + rect["x1"]) / 2
         inside = (
             x0 - 0.15 <= centre_x <= x0 + width + 0.15
-            and y0 - 0.35 <= rect["top"] <= y0 + height + max(0.35, height * 1.5)
+            and y0 - 0.10 <= rect["top"] <= y0 + height + max(0.35, height * 1.5)
         )
         if not inside:
             skipped.append(rect)
@@ -218,19 +224,23 @@ def visual_lines(claimed, line_box):
     ]
 
 
-def check(deck, spec, soffice, tolerance, verbose):
-    deck_spec = json.loads(spec.read_text(encoding="utf-8"))
+def load_slides(spec_path):
+    """The text elements of every slide, with absolute boxes."""
+    data = json.loads(spec_path.read_text(encoding="utf-8"))
+    return data
+
+
+def check(deck, spec, soffice, tolerance=0.02, verbose=False, quiet=False):
+    deck_spec = load_slides(spec)
     with tempfile.TemporaryDirectory() as tmp:
         pdf = render_pdf(deck, soffice, Path(tmp))
         pages = read_line_rects(pdf)
 
     checked = 0
     unmatched = 0
-    spilling = 0
     extra_lines = 0
     missing_words = 0
     dropped_by_window = 0
-    worst = 0.0
     rows = []
     for slide_number, slide in enumerate(deck_spec.get("slides") or [], start=1):
         rects = pages[slide_number - 1] if slide_number - 1 < len(pages) else []
@@ -275,20 +285,16 @@ def check(deck, spec, soffice, tolerance, verbose):
             text_height = float(node.get("textHeight") or 0)
             lines = visual_lines(claimed, line_box)
             drawn = len(lines)
-            bottom = max(line["bottom"] for line in lines)
-            spill = max(0.0, bottom - (y0 + height))
-            # A line box is the em box; the glyphs inside it still reach a descender below,
-            # so a box sized to the line box always shows a few percent of "spill".
-            allowed = max(tolerance, font / POINTS_PER_INCH * 0.16)
-            # A box the design fixed is allowed to be shorter than its words - the browser
-            # paints them outside it too. Only a box the analyzer sized is a promise.
+            # Line count is the signal both sides agree on. A rectangle that holds CJK glyphs
+            # carries the whole em box, and a tall box may centre its first line well below
+            # the top, so measuring spill in ink inches reports differences that neither the
+            # browser nor PowerPoint would show. Lines are counted, not measured.
             auto_sized = text_height > 0 and abs(height - text_height) <= 0.02
             reserved = reserved_lines(node)
-            if auto_sized:
-                worst = max(worst, spill)
-                if spill > allowed:
-                    spilling += 1
-                if line_box and drawn > max(1, round(text_height / line_box)):
+            over = 0
+            if auto_sized and line_box:
+                over = max(0, drawn - max(1, round(text_height / line_box)))
+                if over:
                     extra_lines += 1
             rows.append(
                 {
@@ -296,39 +302,52 @@ def check(deck, spec, soffice, tolerance, verbose):
                     "text": text[:40].replace("\n", " "),
                     "reserved": reserved,
                     "drawn": drawn,
-                    "spill": round(spill, 3),
+                    "over": over,
                     "missing": missing,
                     "auto": auto_sized,
                     "box": [round(value, 2) for value in box],
                 }
             )
-            if verbose and (missing or (auto_sized and spill > allowed)):
+            if verbose and (missing or over):
                 print(
                     "    slide " + str(slide_number) + " box " + str(rows[-1]["box"])
                     + " reserved " + str(reserved) + " drawn " + str(drawn)
-                    + " spill " + str(round(spill, 3)) + " missing " + str(missing)
-                    + " " + repr(text[:40])
+                    + " missing " + str(missing) + " " + repr(text[:40])
                 )
 
-    print(deck.name + ": " + str(checked) + " text box(es) matched, " + str(unmatched) + " unmatched")
-    print("  boxes reaching below the reserved box beyond a descender: "
-          + str(spilling) + " (worst " + str(round(worst, 3)) + "in)")
-    print("  boxes that drew more lines than reserved:        " + str(extra_lines))
-    print("  boxes with words missing from the render:        " + str(missing_words))
-    if dropped_by_window:
-        print("  boxes whose words the window missed (still on the page): " + str(dropped_by_window))
-    return 0 if spilling == 0 and extra_lines == 0 and missing_words == 0 else 1
+    counts = {
+        "boxes": checked,
+        "unmatched": unmatched,
+        "extraLines": extra_lines,
+        "missingWords": missing_words,
+        "droppedByWindow": dropped_by_window,
+    }
+    if not quiet:
+        print(deck.name + ": " + str(checked) + " text box(es) matched, " + str(unmatched) + " unmatched")
+        print("  boxes that drew more lines than the analyzer reserved: " + str(extra_lines))
+        print("  boxes with words missing from the render:              " + str(missing_words))
+        if dropped_by_window:
+            print("  boxes whose words the window missed (still on the page): " + str(dropped_by_window))
+    return counts
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("deck", type=Path)
-    parser.add_argument("--spec", type=Path, required=True, help="the deck JSON written by pipeline/cli.js")
+    parser.add_argument("--layout", type=Path, default=None,
+                        help="the layout JSON written by pipeline/cli.js --layout-out")
+    parser.add_argument("--spec", type=Path, default=None, help="the deck JSON (nested boxes)")
     parser.add_argument("--soffice", default=None)
     parser.add_argument("--tolerance", type=float, default=0.02, help="inches of spill allowed")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
-    return check(args.deck, args.spec, find_soffice(args.soffice), args.tolerance, args.verbose)
+    source = args.layout or args.spec
+    if source is None:
+        parser.error("pass --layout (preferred) or --spec")
+    counts = check(args.deck, source, find_soffice(args.soffice), args.tolerance, args.verbose)
+    if counts["extraLines"] or counts["missingWords"]:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

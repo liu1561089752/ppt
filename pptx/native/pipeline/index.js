@@ -99,6 +99,20 @@ async function convertFile(inputPath, options = {}) {
       readImageFile: (file) => fs.readFileSync(path.isAbsolute(file) ? file : path.join(baseDirectory, file))
     });
     result.output = { pptx: written.outputPath, slides: written.report.length };
+    if (options.layoutPath) {
+      const slides = (written.laidOut || []).map((elements) => ({
+        elements: elements.filter((element) => element.type === 'text').map((element) => ({
+          type: 'text',
+          x: element.x, y: element.y, w: element.w, h: element.h,
+          fontSize: element.fontSize,
+          lineSpacingMultiple: element.lineSpacingMultiple,
+          textHeight: element.textHeight,
+          text: element.text
+        }))
+      }));
+      fs.mkdirSync(path.dirname(path.resolve(options.layoutPath)), { recursive: true });
+      fs.writeFileSync(path.resolve(options.layoutPath), JSON.stringify({ slides }, null, 2));
+    }
   }
   return result;
 }

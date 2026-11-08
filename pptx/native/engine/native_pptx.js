@@ -586,7 +586,10 @@ async function generatePptx(deck, outputPath, options = {}) {
     outputPath,
     report: result.report,
     pageSize: result.pageSize,
-    fontReport: result.fontReport
+    fontReport: result.fontReport,
+    // The boxes the writer really used, containers already resolved to absolute
+    // positions: a reader that checks the render needs these, not the nested spec.
+    laidOut: laidOutShapes
   };
 }
 

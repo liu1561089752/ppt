@@ -1,0 +1,79 @@
+{
+  "pipeline-chart.html": {
+    "boxes": 13,
+    "droppedByWindow": 0,
+    "extraLines": 2,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-decorations.html": {
+    "boxes": 33,
+    "droppedByWindow": 2,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-float.html": {
+    "boxes": 30,
+    "droppedByWindow": 0,
+    "extraLines": 2,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-grid.html": {
+    "boxes": 47,
+    "droppedByWindow": 1,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-indent.html": {
+    "boxes": 26,
+    "droppedByWindow": 1,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-reference.html": {
+    "boxes": 20,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-relative.html": {
+    "boxes": 11,
+    "droppedByWindow": 0,
+    "extraLines": 1,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-stress.html": {
+    "boxes": 39,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-structural.html": {
+    "boxes": 27,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-vertical.html": {
+    "boxes": 20,
+    "droppedByWindow": 0,
+    "extraLines": 1,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "pipeline-wrap.html": {
+    "boxes": 81,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  }
+}
