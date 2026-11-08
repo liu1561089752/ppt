@@ -75,7 +75,8 @@
     "render:pipeline-float": "python scripts/render_check.py pipeline-converted/pipeline-float.pptx --output-dir render-check/pipeline-float",
     "pipeline:relative": "node pipeline/cli.js ../examples/pipeline-relative.html --out pipeline-converted/relative.json --pptx pipeline-converted/pipeline-relative.pptx",
     "preview:pipeline-relative": "python scripts/preview_deck.py pipeline-converted/pipeline-relative.pptx --output-dir preview/pipeline-relative --sheet preview/pipeline-relative-sheet.png",
-    "render:pipeline-relative": "python scripts/render_check.py pipeline-converted/pipeline-relative.pptx --output-dir render-check/pipeline-relative"
+    "render:pipeline-relative": "python scripts/render_check.py pipeline-converted/pipeline-relative.pptx --output-dir render-check/pipeline-relative",
+    "check:text-fit": "node pipeline/cli.js ../examples/pipeline-wrap.html --out ../pipeline-converted/text-fit.json --pptx ../pipeline-converted/text-fit.pptx && python scripts/check_text_fit.py ../pipeline-converted/text-fit.pptx --spec ../pipeline-converted/text-fit.json --verbose"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

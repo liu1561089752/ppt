@@ -187,7 +187,10 @@ function textElementFromNode(node, theme, resolvedTheme) {
     italic: String(style.fontStyle || '').toLowerCase() === 'italic',
     align: ['left', 'center', 'right', 'justify'].includes(align) ? align : 'left',
     valign: role === 'caption' || role === 'body' ? 'top' : 'middle',
-    lineSpacingMultiple: node.lineSpacingMultiple
+    lineSpacingMultiple: node.lineSpacingMultiple,
+    // What the analyzer measured the words to need, next to the box it gave them: a reader
+    // that renders the deck can tell an auto-sized box from one the design fixed.
+    textHeight: Number(Math.max(0, node.textHeight || 0).toFixed(4))
   };
   const transparency = transparencyOf(color);
   // Two alphas multiply, they do not replace each other: a `rgba()` colour inside a box
