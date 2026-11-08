@@ -37,6 +37,7 @@ const {
   parseBackgroundFocus
 } = require('./css');
 const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
+const { flexWidths } = require('../engine/flex_size');
 const {
   placeGridItems,
   gridRowCount,
@@ -48,7 +49,7 @@ const {
 const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
-  'flexWrap', 'flexGrow', 'flexBasis', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
+  'flexWrap', 'flexGrow', 'flexBasis', 'flexShrink', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
   'gridColumn', 'gridRow', 'gridTemplateRows', 'gridAutoRows', 'alignItems',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
@@ -65,7 +66,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
-  'flexShrink', 'justifySelf'
+  'justifySelf'
 ]);
 
 /** CSS align-self spelling → the native container's per-child alignment. */
@@ -999,8 +1000,8 @@ function applyAnchorHints(node, slot) {
 }
 
 /**
- * The growth factor of a flex item: the `flex-grow` longhand wins, then the
- * `flex` shorthand, then 1 (a flex item grows by default).
+ * The growth factor a flex item declares, 0 when it declares none (a plain width
+ * does not grow). The caller decides what an undeclared grow means for its layout.
  */
 function flexWeightOf(style) {
   const grow = Number(style.flexGrow);
@@ -1008,14 +1009,36 @@ function flexWeightOf(style) {
   const shorthand = String(style.flex === undefined ? '' : style.flex).trim().toLowerCase();
   if (shorthand === 'none') return 0;
   const first = Number(shorthand.split(/\s+/u)[0]);
-  return Number.isFinite(first) && first >= 0 ? first : 1;
+  return Number.isFinite(first) && first >= 0 ? first : 0;
+}
+
+/** The shrink factor of a flex item: `flex-shrink`, then the `flex` shorthand, then 1. */
+function flexShrinkOf(style) {
+  const shrink = Number(style.flexShrink);
+  if (Number.isFinite(shrink) && shrink >= 0) return shrink;
+  const shorthand = String(style.flex === undefined ? '' : style.flex).trim().toLowerCase();
+  if (shorthand === 'none') return 0;
+  const parts = shorthand.split(/\s+/u);
+  if (parts.length > 1) {
+    const second = Number(parts[1]);
+    if (Number.isFinite(second) && second >= 0) return second;
+  }
+  return 1;
 }
 
 /** A flex item's base size: the declared width, then `flex-basis`, then auto. */
 function flexBasisOf(style, options) {
   const width = inchesOf(style.width, 'x', options);
   if (width !== null) return width;
-  return inchesOf(style.flexBasis, 'x', options);
+  const longhand = inchesOf(style.flexBasis, 'x', options);
+  if (longhand !== null) return longhand;
+  // `flex: <grow> <shrink> <basis>` and `flex: <grow> <basis>` carry it too.
+  const tokens = String(style.flex === undefined ? '' : style.flex).trim().toLowerCase().split(/\s+/u);
+  for (let index = tokens.length - 1; index >= 1; index -= 1) {
+    const inches = inchesOf(tokens[index], 'x', options);
+    if (inches !== null) return inches;
+  }
+  return null;
 }
 
 function layoutFlex(domNode, contentBox, inherited, ctx) {
@@ -1077,19 +1100,21 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     return nodes.concat(absolute);
   }
 
-  const fixed = flow.map((child) => flexBasisOf(ctx.styles.computed(child),
-    { parentWidth: contentBox.w, fontSizePx: inherited.fontPx }));
-  const weights = flow.map((child, index) => {
-    if (fixed[index] !== null) return 0;
-    const weight = flexWeightOf(ctx.styles.computed(child));
-    return weight > 0 ? weight : 1;
+  const options = { parentWidth: contentBox.w, fontSizePx: inherited.fontPx };
+  const bases = flow.map((child) => flexBasisOf(ctx.styles.computed(child), options));
+  const grows = flow.map((child, index) => {
+    if (bases[index] !== null) return flexWeightOf(ctx.styles.computed(child));
+    const declared = flexWeightOf(ctx.styles.computed(child));
+    // An item with neither a base nor a declared grow shares equally (flex: 1).
+    return declared > 0 ? declared : 1;
   });
-  const fixedTotal = fixed.reduce((sum, value) => sum + (value || 0), 0);
-  const weightTotal = weights.reduce((sum, value) => sum + value, 0);
-  const free = Math.max(0, contentBox.w - fixedTotal - gap * (flow.length - 1));
-  const widths = fixed.map((width, index) => (width !== null
-    ? width
-    : (weightTotal > 0 ? (free * weights[index]) / weightTotal : 0)));
+  const shrinks = flow.map((child) => flexShrinkOf(ctx.styles.computed(child)));
+  const available = Math.max(0, contentBox.w - gap * (flow.length - 1));
+  const widths = flexWidths(flow.map((child, index) => ({
+    base: bases[index] === null ? 0 : bases[index],
+    grow: grows[index],
+    shrink: shrinks[index]
+  })), available);
 
   const usedWidth = widths.reduce((sum, width) => sum + width, 0) + gap * (flow.length - 1);
   const slack = Math.max(0, contentBox.w - usedWidth);
@@ -1111,6 +1136,10 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     if (node) {
       const self = alignSelfOf(ctx.styles.computed(child));
       if (self) node.alignSelf = self;
+      // The engine replays these three numbers instead of re-reading the cascade.
+      if (bases[index] !== null) node.flexBasis = bases[index];
+      node.flexGrow = grows[index];
+      node.flexShrink = shrinks[index];
       nodes.push(node);
     }
     cursor += widths[index] + gap + extraGap;

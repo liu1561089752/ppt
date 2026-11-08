@@ -751,7 +751,7 @@ Element arrays still support the historical single-column flow, but real layouts
   },
   children: [
     { type: 'text', text: '指标', fontSize: 10, bold: true },   // width follows the cell
-    { type: 'text', text: '¥12.8 亿', fontSize: 24, bold: true },
+    { type: 'text', text: '¥12.8 亿', fontSize: 24, bold: true, flex: 2, flexBasis: 2.4, flexShrink: 1 },
     { type: 'shape', w: 1.2, h: 0.06, fill: 'D36B45', line: false }  // fixed width, flex-free
   ]
 }
@@ -759,7 +759,7 @@ Element arrays still support the historical single-column flow, but real layouts
 
 Behaviour worth knowing:
 
-- A child without `w` fills the cross axis; inside a `row` it claims an equal share of the remaining width unless it declares `flex` (a weight) or `w`.
+- A child without `w` fills the cross axis; inside a `row` it claims an equal share of the remaining width unless it declares `flex` (a weight), `w` or `flexBasis` (a base width). A `row` whose bases overflow shrinks its items in proportion to `flexShrink × base` — pass `flexShrink: 0` on a child that must keep its width.
 - `align: 'stretch'` is the default, matching CSS `align-items: stretch`, so siblings share the tallest height — this is what makes card rows line up without manual heights.
 - `background` is emitted as a normal editable shape *before* the children, so a card is still "one surface plus its own text boxes".
 - Nested containers resolve recursively; a container without `h` measures its own content, including estimated text height.

@@ -693,6 +693,14 @@ function containerChild(node, parentPlan, context) {
     if (parentPlan.display === 'block') element.boxMargin = marginsOf(node);
     if (node.alignSelf) element.alignSelf = node.alignSelf;
   }
+  // A row child keeps the base and the shrink factor the analyzer resolved, so
+  // the engine sizes the row identically (a fixed width must not shrink).
+  if (parentPlan.direction === 'row' && !parentPlan.columns) {
+    if (Number.isFinite(node.flexBasis)) element.flexBasis = round4(node.flexBasis);
+    if (Number.isFinite(node.flexShrink) && node.flexShrink !== 1) {
+      element.flexShrink = node.flexShrink;
+    }
+  }
   // A grid child may span several tracks; the engine replays the same placement.
   if (node.columnSpan) element.columnSpan = node.columnSpan;
   if (node.rowSpan) element.rowSpan = node.rowSpan;

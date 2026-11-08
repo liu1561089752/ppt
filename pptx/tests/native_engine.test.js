@@ -2246,3 +2246,67 @@ test('fr rows without a declared height fall back to their content', () => {
   });
 });
 
+
+test('a row that overflows shrinks its items like a browser', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; gap: 20px; width: 1200px; }',
+    '  .card { width: 500px; background: #EEEEEE; padding: 10px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row">',
+    '  <div class="card"><div>a</div></div><div class="card"><div>b</div></div><div class="card"><div>c</div></div>',
+    '</div></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const row = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.equal(row.children.length, 3);
+  // (1200 - 2 * 20) / 3 = 386.7px for each 500px card.
+  const expected = (1200 - 40) / 3 / 96;
+  row.children.forEach((child, index) => {
+    assert.ok(Math.abs(child.w - expected) < 0.01, 'card ' + index + ' width ' + child.w);
+  });
+  assert.deepEqual(result.report.containerFallbacks, []);
+  assert.deepEqual(result.report.unsupportedDetails, []);
+});
+
+test('flex-shrink: 0 keeps an authored width even when the row overflows', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; gap: 20px; width: 1200px; }',
+    '  .card { width: 500px; flex-shrink: 0; background: #EEEEEE; padding: 10px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row">',
+    '  <div class="card"><div>a</div></div><div class="card"><div>b</div></div><div class="card"><div>c</div></div>',
+    '</div></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const row = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(row, 'the overflowing row stays declarative');
+  row.children.forEach((child, index) => {
+    assert.ok(Math.abs(child.w - 500 / 96) < 0.01, 'card ' + index + ' width ' + child.w);
+  });
+  assert.deepEqual(result.report.containerFallbacks, []);
+});
+
+test('the flex shorthand sets the base and the shrink factor', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; display: flex;',
+    '    flex-direction: row; gap: 20px; padding: 40px; }',
+    '  .a { flex: 0 0 300px; background: #EEEEEE; }',
+    '  .b { flex: 1; background: #DDDDDD; }',
+    '</style></head><body><main class="slide">',
+    '<div class="a"><div>fixed</div></div><div class="b"><div>rest</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const [first, second] = result.deck.slides[0].elements;
+  assert.ok(Math.abs(first.w - 300 / 96) < 0.01, 'fixed item ' + first.w);
+  // 1280 - 80 padding - 300 - 20 gap = 880px for the growing item.
+  assert.ok(Math.abs(second.w - 880 / 96) < 0.02, 'growing item ' + second.w);
+  assert.equal(result.report.unsupportedDetails.length, 0);
+  assert.deepEqual(result.report.containerFallbacks, []);
+});
+

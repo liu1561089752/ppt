@@ -1,6 +1,7 @@
 'use strict';
 
 const { estimateTextHeight, estimateRichTextHeight, wrapText } = require('./text_measure');
+const { flexWidths } = require('./flex_size');
 const {
   placeGridItems,
   gridRowCount,
@@ -234,18 +235,16 @@ function placeRow(container, box, theme, options, sink) {
   const children = container.children || [];
   if (!children.length) return padding.top + padding.bottom;
 
-  const fixedWidths = children.map((child) => (child.w === undefined ? null : child.w));
-  const flexWeights = children.map((child) => {
-    if (child.w !== undefined) return 0;
-    return Number.isFinite(child.flex) && child.flex > 0 ? child.flex : 1;
-  });
-  const fixedTotal = fixedWidths.reduce((sum, width) => sum + (width || 0), 0);
-  const weightTotal = flexWeights.reduce((sum, weight) => sum + weight, 0);
-  const freeWidth = Math.max(0, contentWidth - fixedTotal - gap * (children.length - 1));
-  const widths = fixedWidths.map((width, index) => {
-    if (width !== null) return width;
-    return weightTotal > 0 ? (freeWidth * flexWeights[index]) / weightTotal : 0;
-  });
+  const available = Math.max(0, contentWidth - gap * (children.length - 1));
+  const widths = flexWidths(children.map((child) => {
+    const base = Number.isFinite(child.w) ? child.w
+      : (Number.isFinite(child.flexBasis) ? child.flexBasis : 0);
+    const declaredGrow = Number.isFinite(child.flex) && child.flex > 0 ? child.flex : 0;
+    // No width, no basis and no declared grow: the item shares the space equally.
+    const grow = declaredGrow > 0 ? declaredGrow : (base > 0 ? 0 : 1);
+    const shrink = Number.isFinite(child.flexShrink) && child.flexShrink >= 0 ? child.flexShrink : 1;
+    return { base, grow, shrink };
+  }), available);
 
   const heights = children.map((child, index) => measureElementHeight(child, widths[index], theme, options));
   const tallest = Math.max(...heights);
