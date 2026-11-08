@@ -59,6 +59,7 @@ function parseStylesheet(cssText) {
   const css = stripComments(cssText);
   const rules = [];
   const variables = Object.create(null);
+  const pseudoSelectors = [];
   let index = 0;
   let order = 0;
 
@@ -92,6 +93,12 @@ function parseStylesheet(cssText) {
     selectorText.split(',').forEach((rawSelector) => {
       const parsed = parseSelector(rawSelector);
       if (!parsed) return;
+      if (parsed.pseudo) {
+        // A pseudo rule describes a box the DOM does not contain, so letting it
+        // match the element itself would deform the real element.
+        pseudoSelectors.push(rawSelector.trim());
+        return;
+      }
       rules.push({
         selectorText: rawSelector.trim(),
         parts: parsed.parts,
@@ -101,7 +108,7 @@ function parseStylesheet(cssText) {
       });
     });
   }
-  return { rules, variables };
+  return { rules, variables, pseudoSelectors };
 }
 
 function parseSimpleSelector(segment) {
@@ -127,7 +134,9 @@ function parseSimpleSelector(segment) {
  * descendant relationship, which over-matches slightly but never under-matches.
  */
 function parseSelector(rawSelector) {
-  const cleaned = String(rawSelector || '')
+  const raw = String(rawSelector || '');
+  const pseudo = /::?[\w-]+/u.test(raw);
+  const cleaned = raw
     .replace(/::[\w-]+(\([^)]*\))?/gu, '')
     .replace(/:[\w-]+(\([^)]*\))?/gu, '')
     .trim();
@@ -140,7 +149,7 @@ function parseSelector(rawSelector) {
     classes: accumulator.classes + part.classes.length,
     tags: accumulator.tags + (part.tag ? 1 : 0)
   }), { ids: 0, classes: 0, tags: 0 });
-  return { parts, specificity };
+  return { parts, specificity, pseudo };
 }
 
 function matchesSimple(node, simple) {

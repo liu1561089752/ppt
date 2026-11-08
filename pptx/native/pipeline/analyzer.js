@@ -137,12 +137,19 @@ function createContext(html, options = {}) {
     if (node.type === 'element' && node.tag === 'style') styleBlocks.push(textContent(node));
   });
   const stylesheet = parseStylesheet(styleBlocks.join('\n'));
+  const unsupported = (stylesheet.pseudoSelectors || []).map((selectorText) => ({
+    tag: null,
+    classes: [],
+    property: 'selector',
+    value: selectorText,
+    reason: 'Pseudo-elements and pseudo-classes describe boxes that do not exist; their rules are not translated'
+  }));
   return {
     root,
     stylesheet,
     styles: createStyleResolver(stylesheet),
     nextId: 1,
-    unsupported: [],
+    unsupported,
     notes: [],
     options
   };

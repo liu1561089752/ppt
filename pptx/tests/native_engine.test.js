@@ -1440,3 +1440,31 @@ test('every CSS property claimed as supported is actually read', () => {
   assert.deepEqual(unread, [],
     'these properties are declared supported but never read: ' + unread.join(', '));
 });
+
+test('html pipeline never lets pseudo rules deform the element they decorate', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.card { position: absolute; left: 40px; top: 40px; width: 200px; background: #EEEEEE; }',
+    '.card::before { content: ""; width: 40px; height: 40px; background: #FF0000; }',
+    '.card:hover { background: #000000; }',
+    '</style></head><body><main class="slide">',
+    '<div class="card">hello</div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  // A pseudo rule used to be stripped to `.card` and win the cascade, so the
+  // element inherited the pseudo box: 40px wide, red, and hover-black.
+  const element = result.deck.slides[0].elements[0];
+  assert.equal(element.type, 'container');
+  assert.ok(Math.abs(element.w - 200 / 96) < 0.01, 'pseudo width leaked, w=' + element.w);
+  assert.equal(element.background.fill, 'EEEEEE', 'pseudo background leaked');
+  assert.equal(element.children[0].text, 'hello');
+
+  const reported = result.report.unsupportedDetails.map((entry) => entry.value);
+  assert.deepEqual(reported.sort(), ['.card::before', '.card:hover'],
+    'pseudo rules must be reported, not silently applied');
+});
+
