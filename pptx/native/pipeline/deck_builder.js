@@ -409,8 +409,15 @@ function containerPlan(node, state) {
 
   let direction = 'column';
   let columns = null;
+  let tracks = null;
   if (display === 'grid') {
     columns = gridColumnCount(style);
+    if (Array.isArray(node.gridTracks) && node.gridTracks.length) {
+      tracks = node.gridTracks.map((track) => (track.width !== undefined
+        ? { width: Number(track.width.toFixed(3)) }
+        : { fr: track.fr }));
+      columns = tracks.length;
+    }
   } else if (display === 'flex') {
     if (String(style.flexWrap || 'nowrap').toLowerCase() === 'wrap') {
       return { ok: false, reason: 'flex-wrap: wrap needs multiple lines' };
@@ -429,7 +436,7 @@ function containerPlan(node, state) {
     if (spaced) return { ok: false, reason: display + ' child declares margins' };
   }
 
-  return { ok: true, direction, columns, display };
+  return { ok: true, direction, columns, display, tracks };
 }
 
 function containerPadding(node) {
@@ -456,6 +463,7 @@ function containerElement(node, plan, resolvedTheme, report) {
 
   if (plan.columns) {
     spec.columns = Math.max(1, plan.columns);
+    if (plan.tracks) spec.columnTracks = plan.tracks;
     spec.gap = containerGap(style, 'row');
     spec.columnGap = style.columnGap !== undefined ? containerGap(style, 'row') : spec.gap;
     spec.rowGap = style.rowGap !== undefined ? containerGap(style, 'column') : spec.gap;

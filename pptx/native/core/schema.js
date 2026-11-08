@@ -143,6 +143,23 @@ function validateContainer(prefix, element, errors) {
   if (element.align !== undefined && !['start', 'center', 'end', 'stretch'].includes(element.align)) {
     errors.push(prefix + '.align must be one of: start, center, end, stretch');
   }
+  if (element.columnTracks !== undefined) {
+    if (!Array.isArray(element.columnTracks) || !element.columnTracks.length) {
+      errors.push(prefix + '.columnTracks must be a non-empty array');
+    } else {
+      element.columnTracks.forEach((track, index) => {
+        if (!track || typeof track !== 'object' || Array.isArray(track)) {
+          errors.push(prefix + '.columnTracks[' + index + '] must be an object');
+          return;
+        }
+        const hasFr = Number.isFinite(track.fr) && track.fr > 0;
+        const hasWidth = Number.isFinite(track.width) && track.width > 0;
+        if (!hasFr && !hasWidth) {
+          errors.push(prefix + '.columnTracks[' + index + '] needs a positive fr or width');
+        }
+      });
+    }
+  }
   if (element.alignSelf !== undefined && !['start', 'center', 'end', 'stretch'].includes(element.alignSelf)) {
     errors.push(prefix + '.alignSelf must be one of: start, center, end, stretch');
   }

@@ -665,6 +665,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     node.children = layoutFlex(domNode, contentBox, childContext, ctx);
   } else if (display === 'grid') {
     node.children = layoutGrid(domNode, style, contentBox, childContext, ctx);
+    if (node.children.gridTracks && node.children.gridTracks.length) {
+      node.gridTracks = node.children.gridTracks;
+      delete node.children.gridTracks;
+    }
   } else {
     node.children = layoutFlow(domNode, contentBox, childContext, ctx);
   }
@@ -826,13 +830,89 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   return nodes;
 }
 
+/** Split a track list on top-level whitespace, keeping repeat(...) intact. */
+function gridTokens(text) {
+  const tokens = [];
+  let depth = 0;
+  let current = '';
+  for (const char of String(text || '')) {
+    if (char === '(') depth += 1;
+    if (char === ')') depth -= 1;
+    if (/\s/u.test(char) && depth === 0) {
+      if (current) tokens.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function expandGridTracks(tokens) {
+  const expanded = [];
+  tokens.forEach((token) => {
+    const repeat = /^repeat\(\s*(\d+)\s*,\s*(.+)\)$/u.exec(token);
+    if (!repeat) {
+      if (token !== 'none') expanded.push(token);
+      return;
+    }
+    const inner = gridTokens(repeat[2]);
+    const count = Math.min(Number(repeat[1]), 24);
+    for (let index = 0; index < count; index += 1) expanded.push(...inner);
+  });
+  return expanded;
+}
+
+/** One track as { fr } (fraction of the free space) or { width } in inches. */
+function gridTrackOf(token, contentWidth, fontSizePx) {
+  const value = String(token || '').trim().toLowerCase();
+  const fr = /^([\d.]+)fr$/u.exec(value);
+  if (fr) return { fr: Math.max(0.01, Number(fr[1])) };
+  const minmax = /^minmax\(\s*([^,]+?)\s*,\s*(.+)\)$/u.exec(value);
+  if (minmax) return gridTrackOf(minmax[2], contentWidth, fontSizePx);
+  const length = parseLength(value);
+  if (length) {
+    const inches = length.unit === '%'
+      ? (length.value / 100) * contentWidth
+      : toInches(length, { parentWidth: contentWidth, fontSizePx });
+    if (Number.isFinite(inches) && inches > 0) return { width: inches };
+  }
+  // auto / min-content / max-content: an equal share is the closest safe reading.
+  return { fr: 1 };
+}
+
+function gridTracksOf(style, contentWidth, fontSizePx) {
+  const tokens = expandGridTracks(gridTokens(style.gridTemplateColumns));
+  return tokens.map((token) => gridTrackOf(token, contentWidth, fontSizePx));
+}
+
+/** Fixed tracks keep their width; the rest share what is left by weight. */
+function resolveGridSizes(tracks, totalWidth, gap) {
+  if (!tracks.length) return [];
+  const fixed = tracks.reduce((sum, track) => sum + (track.width || 0), 0);
+  const weights = tracks.reduce((sum, track) => sum + (track.fr || 0), 0);
+  const free = Math.max(0, totalWidth - fixed - gap * (tracks.length - 1));
+  return tracks.map((track) => {
+    if (track.width !== undefined) return track.width;
+    if (weights <= 0) return 0;
+    return (free * (track.fr || 0)) / weights;
+  });
+}
+
 function layoutGrid(domNode, style, contentBox, inherited, ctx) {
-  const columnText = style.gridTemplateColumns || '';
-  const repeat = /repeat\(\s*(\d+)\s*,/u.exec(columnText);
-  const columns = repeat ? Number(repeat[1]) : Math.max(1, columnText.split(/\s+/u).filter(Boolean).length || 1);
   const columnGap = inchesOf(style.columnGap || style.gap, 'x', {}) || 0;
   const rowGap = inchesOf(style.rowGap || style.gap, 'x', {}) || 0;
-  const cellWidth = Math.max(0, (contentBox.w - columnGap * (columns - 1)) / columns);
+  const tracks = gridTracksOf(style, contentBox.w, inherited.fontPx);
+  const columns = Math.max(1, tracks.length);
+  const sizes = tracks.length
+    ? resolveGridSizes(tracks, contentBox.w, columnGap)
+    : [Math.max(0, contentBox.w)];
+  const columnLeft = (column) => {
+    let left = contentBox.x;
+    for (let index = 0; index < column; index += 1) left += sizes[index] + columnGap;
+    return left;
+  };
   const kids = sortByOrder(elementChildren(domNode), ctx);
   const nodes = [];
   let cursorY = contentBox.y;
@@ -841,9 +921,9 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
     const rowNodes = [];
     row.forEach((child, column) => {
       const node = analyzeNode(child, {
-        x: contentBox.x + column * (cellWidth + columnGap),
+        x: columnLeft(column),
         y: cursorY,
-        w: cellWidth,
+        w: sizes[Math.min(column, sizes.length - 1)],
         h: null
       }, inherited, ctx);
       if (node) rowNodes.push(node);
@@ -853,6 +933,7 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
     nodes.push(...rowNodes);
     cursorY += rowHeight + rowGap;
   }
+  nodes.gridTracks = tracks;
   return nodes;
 }
 

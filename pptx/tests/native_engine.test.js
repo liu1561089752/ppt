@@ -1775,3 +1775,53 @@ test('html pipeline maps transform: rotate() to native shape rotation', () => {
   assert.equal(result.report.rotatedGroups, 1);
 });
 
+
+test('html pipeline resolves fractional and fixed grid tracks', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.split { position: absolute; left: 40px; top: 40px; width: 900px; display: grid;',
+    '  grid-template-columns: 2fr 1fr; gap: 20px; }',
+    '.mixed { position: absolute; left: 40px; top: 220px; width: 900px; display: grid;',
+    '  grid-template-columns: 200px 1fr 2fr; gap: 16px; }',
+    '.pct { position: absolute; left: 40px; top: 520px; width: 900px; display: grid;',
+    '  grid-template-columns: 30% 70%; gap: 10px; }',
+    '.item { background: #EEEEEE; font-size: 12px; height: 60px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="split"><div class="item">A</div><div class="item">B</div></div>',
+    '<div class="mixed"><div class="item">A</div><div class="item">B</div><div class="item">C</div></div>',
+    '<div class="pct"><div class="item">A</div><div class="item">B</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  const grids = result.deck.slides[0].elements.filter((element) => element.type === 'container');
+  assert.equal(grids.length, 3, 'every grid must stay declarative');
+  assert.equal(result.report.containerFallbacks.length, 0);
+  assert.ok(result.report.maxBoxDelta < 0.012, 'delta was ' + result.report.maxBoxDelta);
+
+  const byTracks = (tracks) => grids.find((grid) => JSON.stringify(grid.columnTracks) === JSON.stringify(tracks));
+
+  // 2fr 1fr: fractions are kept as weights, not baked into inches.
+  const halves = byTracks([{ fr: 2 }, { fr: 1 }]);
+  assert.ok(halves, 'grid-template-columns: 2fr 1fr must keep its weights');
+
+  // 200px 1fr 2fr: the fixed track is in inches, the rest stay fractional.
+  const mixed = grids.find((grid) => Array.isArray(grid.columnTracks)
+    && grid.columnTracks.length === 3 && grid.columnTracks[0].width !== undefined);
+  assert.ok(mixed, 'a fixed track must be emitted as a width');
+  assert.ok(Math.abs(mixed.columnTracks[0].width - 200 / 96) < 0.01,
+    'fixed track was ' + mixed.columnTracks[0].width);
+  assert.deepEqual(mixed.columnTracks.slice(1), [{ fr: 1 }, { fr: 2 }]);
+
+  // 30% 70% resolves against the grid's own content width.
+  const percent = grids.find((grid) => Array.isArray(grid.columnTracks)
+    && grid.columnTracks.length === 2 && grid.columnTracks[1].width > 5);
+  assert.ok(percent, 'percentage tracks must become widths');
+  assert.ok(Math.abs(percent.columnTracks[0].width - 0.3 * 9.375) < 0.01,
+    '30% track was ' + percent.columnTracks[0].width);
+
+  // Track widths plus gaps must fill the container.
+  mixed.columnTracks.forEach((track) => assert.ok(track.fr === undefined || track.fr > 0));
+});
+

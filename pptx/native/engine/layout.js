@@ -237,6 +237,18 @@ function placeRow(container, box, theme, options, sink) {
   return padding.top + Math.max(innerHeight, tallest) + padding.bottom;
 }
 
+/** Fixed tracks keep their width; fractional tracks share what is left. */
+function resolveTrackSizes(tracks, totalWidth, gap) {
+  const fixed = tracks.reduce((sum, track) => sum + (Number(track.width) || 0), 0);
+  const weights = tracks.reduce((sum, track) => sum + (Number(track.fr) || 0), 0);
+  const free = Math.max(0, totalWidth - fixed - gap * (tracks.length - 1));
+  return tracks.map((track) => {
+    if (Number.isFinite(track.width)) return track.width;
+    if (weights <= 0) return 0;
+    return (free * (Number(track.fr) || 0)) / weights;
+  });
+}
+
 function placeGrid(container, box, theme, options, sink) {
   const padding = normalizePadding(container.padding);
   const gap = resolveGap(container.gap, theme);
@@ -245,8 +257,20 @@ function placeGrid(container, box, theme, options, sink) {
   const contentX = box.x + padding.left;
   const contentY = box.y + padding.top;
   const contentWidth = Math.max(0, box.w - padding.left - padding.right);
-  const columns = Math.max(1, Math.floor(container.columns));
-  const cellWidth = Math.max(0, (contentWidth - columnGap * (columns - 1)) / columns);
+  const tracks = Array.isArray(container.columnTracks) && container.columnTracks.length
+    ? container.columnTracks
+    : null;
+  const columns = tracks ? tracks.length : Math.max(1, Math.floor(container.columns));
+  const equalWidth = Math.max(0, (contentWidth - columnGap * (columns - 1)) / columns);
+  const sizes = tracks
+    ? resolveTrackSizes(tracks, contentWidth, columnGap)
+    : Array.from({ length: columns }, () => equalWidth);
+  const columnWidth = (column) => sizes[Math.min(column, sizes.length - 1)];
+  const columnLeft = (column) => {
+    let left = contentX;
+    for (let index = 0; index < column; index += 1) left += sizes[Math.min(index, sizes.length - 1)] + columnGap;
+    return left;
+  };
   const children = container.children || [];
   if (!children.length) return padding.top + padding.bottom;
 
@@ -254,7 +278,7 @@ function placeGrid(container, box, theme, options, sink) {
   let cursorY = contentY;
   for (let start = 0; start < children.length; start += columns) {
     const row = children.slice(start, start + columns);
-    const heights = row.map((child) => measureElementHeight(child, cellWidth, theme, options));
+    const heights = row.map((child, column) => measureElementHeight(child, columnWidth(column), theme, options));
     const rowHeight = Math.max(...heights);
     row.forEach((child, column) => {
       const childAlign = child.alignSelf || align;
@@ -264,9 +288,9 @@ function placeGrid(container, box, theme, options, sink) {
       else if (childAlign === 'center') y = cursorY + (rowHeight - height) / 2;
       else if (childAlign === 'end') y = cursorY + rowHeight - height;
       emitElement(child, {
-        x: contentX + column * (cellWidth + columnGap),
+        x: columnLeft(column),
         y,
-        w: cellWidth,
+        w: columnWidth(column),
         h: height
       }, theme, options, sink);
     });
