@@ -70,7 +70,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
   'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
   'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
-  'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
+  'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius', 'columns', 'columnCount', 'columnGap',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
@@ -88,7 +88,7 @@ const POST_LAYOUT_PROPERTIES = new Set(['overflow']);
 const UNSUPPORTED_ALWAYS = new Set([
   'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   // writing-mode is translated (see applyWritingMode) or reported there.
-  'animation', 'transition', 'columns', 'columnCount',
+  'animation', 'transition',
   'backgroundClip', 'textShadow',
   'hyphens', 'inset'
 ]);
@@ -1318,6 +1318,17 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     node.h = explicitHeight !== null
       ? explicitHeight
       : (Number.isFinite(boxHeight) && boxHeight > 0.2 ? boxHeight : Math.max(1.6, width * 0.5));
+    applyRelativeShift(node, style, parentWidth);
+    return node;
+  }
+
+  // `columns: N` flows a block's text into N native columns of one text box. Only plain
+  // text children qualify: a card with its own paint between two columns has geometry the
+  // split would have to invent, so that case keeps reporting instead.
+  const columnPlan = columnPlanOf(domNode, style, contentWidth, fontSizePx, ctx);
+  if (columnPlan) {
+    Object.assign(node, columnPlan);
+    node.h = explicitHeight === null ? columnPlan.textHeight + insetTop + insetBottom : explicitHeight;
     applyRelativeShift(node, style, parentWidth);
     return node;
   }
@@ -3388,6 +3399,96 @@ function cellSpanWidth(colWidths, column, span) {
     width += Number.isFinite(colWidths[index]) ? colWidths[index] : 0;
   }
   return width;
+}
+
+/** `columns: N` (or `column-count`) as an integer, or 0 when the block is single column. */
+function columnCountOf(style) {
+  const raw = style.columnCount !== undefined ? style.columnCount : style.columns;
+  if (raw === undefined || raw === null) return 0;
+  const value = Number(String(raw).trim().split(/\s+/u)[0]);
+  return Number.isFinite(value) && value > 1 ? Math.min(16, Math.floor(value)) : 0;
+}
+
+/** The gap between columns in inches: `column-gap` when it is a length, else 0.4in. */
+function columnGapIn(style, fontSizePx, parentWidth) {
+  const gap = inchesOf(style.columnGap, 'x', { parentWidth, fontSizePx });
+  return gap === null ? 0.4 : Math.max(0, gap);
+}
+
+const COLUMN_INLINE_TAGS = new Set(['span', 'a', 'b', 'strong', 'i', 'em', 'u', 's', 'del', 'ins',
+  'code', 'kbd', 'samp', 'mark', 'small', 'sup', 'sub', 'br', 'abbr', 'cite', 'q', 'time']);
+
+function onlyInlineDescendants(node) {
+  return elementChildren(node).every((child) =>
+    COLUMN_INLINE_TAGS.has(child.tag) && onlyInlineDescendants(child));
+}
+
+function columnPlanOf(domNode, style, contentWidth, fontSizePx, ctx) {
+  const count = columnCountOf(style);
+  if (count === 0) return null;
+  const children = elementChildren(domNode);
+  const bail = (reason) => {
+    recordUnsupported(ctx, domNode, 'columns', style.columns || style.columnCount, reason);
+    return null;
+  };
+  if (!children.length || ownText(domNode)) {
+    return bail('A column block has to hold paragraph elements; text of its own is a line box this shape does not model');
+  }
+  const paragraphs = [];
+  let rich = false;
+  for (const child of children) {
+    const childStyle = ctx.styles.computed(child);
+    if (childStyle.display === 'none' || childStyle.visibility === 'hidden') continue;
+    const words = String(normalizedText(child) || '').trim();
+    if (!words) continue;
+    if (!onlyInlineDescendants(child)) {
+      return bail('Every child of a column block has to be a paragraph of inline content; <' + child.tag + '> holds blocks');
+    }
+    // A child that paints its own box cannot be poured into a column: its background would be
+    // cut in half at the column edge, which is geometry the design never asked for.
+    const padding = boxShorthand(childStyle, 'padding');
+    if (backgroundOf(childStyle) || parseBorder(childStyle) || padding.top || padding.left) {
+      return bail('A column child cannot paint its own box; <' + child.tag + '> has a background, border or padding');
+    }
+    const built = buildRuns(child, childStyle, ctx);
+    if (built.hasFormatting) rich = true;
+    paragraphs.push({ text: words, runs: built.hasFormatting ? built.runs : null });
+  }
+  if (!paragraphs.length) return null;
+  const gapIn = columnGapIn(style, fontSizePx, contentWidth);
+  const columnWidth = Math.max(0.4, (contentWidth - gapIn * (count - 1)) / count);
+  const fontSizePt = Number((fontSizePx * 0.75).toFixed(2));
+  const lineSpacing = lineSpacingOf(style, fontSizePx);
+  const plain = paragraphs.map((paragraph) => paragraph.text).join('\n');
+  // The height is measured on the plain text at the column width, so both models agree on how
+  // many rows the columns need; runs only change how the words are painted.
+  const needed = estimateTextHeight(plain, columnWidth, fontSizePt,
+    { lineHeight: lineSpacing.multiple, safetyFactor: 0.92 });
+  const perRow = fontSizePt * lineSpacing.multiple / 72;
+  const rows = Math.max(1, Math.ceil(Math.round(needed / perRow) / count));
+  let emitted = plain;
+  if (rich) {
+    const flat = [];
+    paragraphs.forEach((paragraph, index) => {
+      const runs = paragraph.runs && paragraph.runs.length ? paragraph.runs : [{ text: paragraph.text }];
+      runs.forEach((run, runIndex) => {
+        const options = Object.assign({}, run.options);
+        if (runIndex === runs.length - 1 && index < paragraphs.length - 1) options.breakLine = true;
+        flat.push(Object.keys(options).length ? { text: run.text, options } : { text: run.text });
+      });
+    });
+    emitted = flat;
+  }
+  return {
+    kind: 'text',
+    role: 'body',
+    text: emitted,
+    runs: null,
+    fontSizePt,
+    lineSpacingMultiple: lineSpacing.multiple,
+    textHeight: Number((rows * perRow).toFixed(4)),
+    columns: { count, gapIn: Number(gapIn.toFixed(4)) }
+  };
 }
 
 /**

@@ -172,6 +172,8 @@ function textElementFromNode(node, theme, resolvedTheme) {
   const weight = String(style.fontWeight || '').toLowerCase();
   const align = String(style.textAlign || 'left').toLowerCase();
   const letterSpacing = style.letterSpacing;
+  // `columns: N` is one text box with N native columns, which is exactly what PowerPoint
+  // calls a columned body: the reader splits the text itself, so editing still reflows.
   const element = {
     type: 'text',
     role,
@@ -199,6 +201,10 @@ function textElementFromNode(node, theme, resolvedTheme) {
   const fromOpacity = opacityFactor < 1 ? Math.round((1 - opacityFactor) * 100) : 0;
   const combined = 100 - Math.round(((100 - (transparency || 0)) * (100 - fromOpacity)) / 100);
   if (combined) element.transparency = combined;
+  if (node.columns) {
+    element.columns = node.columns.count;
+    element.columnGap = node.columns.gapIn;
+  }
   if (letterSpacing) {
     const match = /^(-?[\d.]+)(px|pt|em|rem)?$/u.exec(String(letterSpacing).trim());
     if (match) {

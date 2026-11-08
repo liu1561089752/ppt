@@ -83,7 +83,10 @@
     "golden:update": "python scripts/visual_golden.py --update",
     "pipeline:clamp": "node pipeline/cli.js ../examples/pipeline-clamp.html --out pipeline-converted/clamp.json --pptx pipeline-converted/pipeline-clamp.pptx",
     "preview:clamp": "python scripts/preview_deck.py pipeline-converted/pipeline-clamp.pptx --output-dir preview/clamp --sheet preview/clamp-sheet.png",
-    "render:clamp": "python scripts/render_check.py pipeline-converted/pipeline-clamp.pptx --output-dir render-check/pipeline-clamp"
+    "render:clamp": "python scripts/render_check.py pipeline-converted/pipeline-clamp.pptx --output-dir render-check/pipeline-clamp",
+    "pipeline:columns": "node pipeline/cli.js ../examples/pipeline-columns.html --out pipeline-converted/columns.json --pptx pipeline-converted/pipeline-columns.pptx",
+    "preview:columns": "python scripts/preview_deck.py pipeline-converted/pipeline-columns.pptx --output-dir preview/columns --sheet preview/columns-sheet.png",
+    "render:columns": "python scripts/render_check.py pipeline-converted/pipeline-columns.pptx --output-dir render-check/pipeline-columns"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

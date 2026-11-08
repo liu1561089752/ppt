@@ -4845,3 +4845,56 @@ test('-webkit-line-clamp keeps N lines and ends the last one with an ellipsis', 
   assert.ok((ignored.report.unsupportedDetails || []).some((entry) => entry.property === 'WebkitLineClamp'));
 });
 
+
+test('columns: N becomes one native text box with N columns', () => {
+  const build = (css, markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    markup,
+    '</main></body></html>'
+  ].join('\n'));
+
+  const result = build(
+    '.cols { columns: 2; column-gap: 48px; width: 900px; font-size: 12px; line-height: 2; }',
+    '<div class="cols"><p>第一段足够长，会在栏宽之内折成几行，用来观察分栏之后的行数。</p>'
+    + '<p>第二段也同样长，它应当接着第一段流进第二栏，而不是落在下面。</p></div>'
+  );
+  const element = result.deck.slides[0].elements[0];
+  assert.equal(element.type, 'text', 'a column block is a text box, not a container');
+  assert.equal(element.columns, 2);
+  assert.equal(Number(element.columnGap.toFixed(4)), 0.5, 'column-gap 48px');
+  assert.ok(String(element.text).includes('\n'), 'the paragraphs are one flow');
+  assert.equal(result.report.unsupported, 0, JSON.stringify(result.report.unsupportedDetails));
+
+  // The box is as tall as the balanced columns need: ceil(lines / N) rows, measured at the
+  // column width, because PowerPoint fills a column to the bottom before starting the next.
+  const { estimateLineCount } = require('../native/engine/text_measure');
+  const gapIn = 48 / 96;
+  const columnWidth = (900 / 96 - gapIn) / 2;
+  const lines = estimateLineCount(String(element.text), columnWidth, 9,
+    { lineHeight: 2, safetyFactor: 0.92 });
+  const rowHeight = 9 * 2 / 72;
+  assert.equal(Math.round(element.h / rowHeight), Math.ceil(lines / 2),
+    'the box holds the balanced rows, not the whole text at full width');
+  assert.ok(lines > Math.ceil(lines / 2), 'the sample really needs more than one row per column: ' + lines);
+  // Inline semantics survive the split: the run array keeps bold and code.
+  const rich = build(
+    '.cols { columns: 2; width: 800px; font-size: 12px; }',
+    '<div class="cols"><p>这里有 <strong>加粗</strong> 和 <code>代码</code>。</p><p>第二段。</p></div>'
+  ).deck.slides[0].elements[0];
+  assert.ok(Array.isArray(rich.text), 'mixed styling is carried as runs');
+  assert.ok(rich.text.some((run) => run.options && run.options.bold), 'the bold run survives');
+  assert.ok(rich.text.some((run) => run.options && run.options.fontFace), 'the code run keeps its face');
+
+  // A child that paints its own box cannot be poured into a column: the paint would be cut in
+  // half at the column edge, so the block keeps reporting instead of inventing geometry.
+  const painted = build(
+    '.cols { columns: 2; width: 800px; font-size: 12px; } .card { background: #eee; }',
+    '<div class="cols"><div class="card">第一段带背景。</div><p>第二段。</p></div>'
+  );
+  assert.ok((painted.report.unsupportedDetails || []).some((entry) => entry.property === 'columns'),
+    'a painted column child is reported');
+});
+

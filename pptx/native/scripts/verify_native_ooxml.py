@@ -54,7 +54,7 @@ def inspect(path: Path) -> dict[str, int]:
               "image_crops": 0, "rounded_pictures": 0, "outlined_pictures": 0,
               "shadowed_pictures": 0, "tables": 0,
               "merged_cells": 0, "uneven_tables": 0, "rotated": 0,
-              "invalid_enums": 0}
+              "text_columns": 0, "invalid_enums": 0}
     problems: list[str] = []
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
@@ -74,6 +74,27 @@ def inspect(path: Path) -> dict[str, int]:
                 if value is not None and int(value) != 0:
                     counts["rotated"] += 1
             counts["texts"] += len(root.findall(".//p:sp[p:txBody]", NS))
+            # `numCol` is how DrawingML spells a columned text box; the writer has no option
+            # for it, so it is patched in and has to be checked like any other attribute.
+            for body in root.findall(".//a:bodyPr", NS):
+                declared = body.get("numCol")
+                if declared is None:
+                    continue
+                counts["text_columns"] += 1
+                try:
+                    columns = int(declared)
+                except ValueError:
+                    problems.append(f'<a:bodyPr numCol="{declared}"> is not an integer')
+                    continue
+                if not 1 <= columns <= 16:
+                    problems.append(f'<a:bodyPr numCol="{declared}"> is outside 1..16')
+                spacing = body.get("spcCol")
+                if spacing is not None:
+                    try:
+                        if int(spacing) < 0:
+                            problems.append(f'<a:bodyPr spcCol="{spacing}"> is negative')
+                    except ValueError:
+                        problems.append(f'<a:bodyPr spcCol="{spacing}"> is not an integer')
             counts["gradients"] += len(root.findall(".//a:gradFill", NS))
             counts["shadows"] += len(root.findall(".//a:outerShdw", NS))
             counts["alpha_nodes"] += len(root.findall(".//a:alpha", NS))
