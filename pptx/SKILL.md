@@ -770,6 +770,8 @@ Behaviour worth knowing:
 - Lengths resolve through one evaluator: `px/pt/pc/in/cm/mm/q/em/rem/ex/ch/%` plus `vw/vh/vmin/vmax` against the 1280x720 slide, and `calc()`/`min()`/`max()`/`clamp()` over any mix of them. `ch` and `ex` count as half an em. A value it cannot resolve is reported as `length`.
 - `!important` is stripped from the value (and noted); equal-specificity priority still follows source order.
 - Shorthand splitting respects parentheses, so `gap: clamp(12px, 1.6vw, 28px)` stays one value in both the analyzer and the engine.
+- `box-shadow` becomes a native outer shadow (offset, blur, colour); the CSS offset maps to DrawingML `dist`/`dir` with `dir = atan2(dy, dx)` - `0 10px` is 90 degrees. `inset`, a spread radius and a second layer are reported.
+- `opacity` fades a leaf's fill or text (alpha multiplies); on a box with children it is reported instead, since PowerPoint cannot fade a subtree.
 - A `linear-gradient` layered above a `url()` picture is a scrim: the picture and a gradient shape are emitted, the shape above the picture and below the text.
 - `margin: auto` centres a fixed-width box (both sides) or pushes it to the end edge (one side); in a flex column the same decision travels to the engine as `align-self`.
 - A painted inline box, text mixed with element children, and a per-corner `border-radius` are reported rather than approximated silently.
@@ -854,7 +856,7 @@ Scope discipline: the pipeline covers absolute positioning (and `position: fixed
 
 ### Current Native quality gates
 
-- The CI suite runs Node engine tests (164 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
+- The CI suite runs Node engine tests (166 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
 - The visual comparator is active, but it only performs real deck comparisons when reviewed PNGs exist under `pptx/native/golden/<deck>/`. Its self-test is not a substitute for a real baseline.
 - Never add generated PNGs to Golden directories merely to make CI green. A human must review each paired HTML/Native slide and approve the baseline first.
 - LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.

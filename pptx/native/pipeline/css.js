@@ -1127,6 +1127,23 @@ function parseLinearGradient(value) {
 }
 
 /** Parse a single outer box-shadow. Returns null for lists/inset shadows. */
+/**
+ * What a `box-shadow` leaves behind: an inset direction, a second layer and a spread
+ * radius are all things a native outer shadow cannot express, so they are reported
+ * instead of disappearing into a shadow that looks close but is not the same.
+ */
+function boxShadowNote(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  if (!text || text === 'none') return null;
+  if (/\binset\b/iu.test(text)) return 'An inset shadow paints inside the box; only an outer shadow is translated';
+  const layers = splitTopLevel(text, ',');
+  if (layers.length > 1) return 'Only the first shadow layer is translated';
+  const shadow = parseBoxShadow(text);
+  if (!shadow) return null;
+  if (shadow.spread) return 'The spread of a shadow is dropped: a native outer shadow carries offset, blur and colour';
+  return null;
+}
+
 function parseBoxShadow(value) {
   const text = String(value || '').trim();
   if (!text || text === 'none') return null;
@@ -1146,7 +1163,10 @@ function parseBoxShadow(value) {
   const opacity = color ? color.alpha : 0.2;
   if (opacity === 0) return null;
   const distance = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
-  const angle = (Math.atan2(offsetX, -offsetY) * 180) / Math.PI;
+  // DrawingML measures the direction clockwise from the positive x axis with y pointing
+  // down, which is exactly `atan2(dy, dx)`: `0 10px` is 90 degrees, straight down. The
+  // negated form used here before pointed every shadow to the left.
+  const angle = (Math.atan2(offsetY, offsetX) * 180) / Math.PI;
   return {
     color: (color && color.hex) || '000000',
     opacity,
@@ -1353,6 +1373,7 @@ module.exports = {
   pxToPoints,
   parseColor,
   parseLinearGradient,
+  boxShadowNote,
   evaluateInches,
   VIEWPORT_PX,
   gradientAngleOf,

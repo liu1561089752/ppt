@@ -4411,3 +4411,75 @@ test('!important is a flag, relative font sizes apply once, and gaps keep their 
   assert.ok(result.report.declarativeContainers >= 1, 'the row is emitted as a native container');
 });
 
+
+test('a box-shadow becomes a native outer shadow with the CSS direction', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .card { width: 400px; height: 160px; background: #FFFFFF; border-radius: 12px;',
+    '          box-shadow: 0 10px 26px rgba(6, 18, 20, 0.35); }',
+    '</style></head><body><main class="slide"><div class="card"></div></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const card = result.deck.slides[0].elements[0];
+  const shadow = card.shadow;
+  assert.ok(shadow, 'the shadow travels with the shape');
+  assert.equal(shadow.color, '061214');
+  assert.equal(Number(shadow.opacity.toFixed(2)), 0.35);
+  assert.equal(Number(shadow.blur.toFixed(2)), 19.5, '26px is 19.5pt');
+  assert.equal(Number(shadow.distance.toFixed(2)), 7.5, '10px is 7.5pt');
+  // DrawingML measures the direction clockwise from +x with y down: straight down is 90.
+  assert.equal(Number(shadow.angle.toFixed(1)), 90);
+
+  const toTheRight = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .chip { width: 200px; height: 80px; background: #FFFFFF; box-shadow: 12px 0 8px #000000; }',
+    '</style></head><body><main class="slide"><div class="chip"></div></main></body></html>'
+  ].join('\n'));
+  assert.equal(Number(toTheRight.deck.slides[0].elements[0].shadow.angle.toFixed(1)), 0,
+    'an offset to the right is zero degrees');
+
+  // The parts of a shadow a native effect cannot express are named.
+  const spread = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .ring { width: 200px; height: 80px; background: #FFFFFF; box-shadow: 0 0 0 6px rgba(0,0,0,0.2); }',
+    '  .inner { width: 200px; height: 80px; background: #FFFFFF; box-shadow: inset 0 2px 6px #000000; }',
+    '  .stacked { width: 200px; height: 80px; background: #FFFFFF; box-shadow: 0 2px 4px #000000, 0 8px 16px #000000; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="ring"></div><div class="inner"></div><div class="stacked"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const reasons = spread.report.unsupportedDetails
+    .filter((entry) => entry.property === 'boxShadow').map((entry) => entry.reason);
+  assert.equal(reasons.length, 3, 'spread, inset and a second layer are each reported');
+  assert.ok(reasons.some((reason) => reason.includes('spread')));
+  assert.ok(reasons.some((reason) => reason.includes('inset')));
+  assert.ok(reasons.some((reason) => reason.includes('first shadow layer')));
+});
+
+test('opacity fades a leaf, multiplies with the colour alpha, and is reported on a subtree', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .plate { width: 300px; height: 100px; background: #2FA8A0; opacity: 0.5; }',
+    '  .label { width: 300px; font-size: 18px; color: rgba(255,255,255,0.8); opacity: 0.5; }',
+    '  .group { width: 300px; height: 120px; background: #EEEEEE; opacity: 0.6; }',
+    '  .group p { margin: 0; font-size: 14px; color: #333333; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="plate"></div>',
+    '  <div class="label">half faded</div>',
+    '  <div class="group"><p>child text</p></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const [plate, label] = result.deck.slides[0].elements;
+  assert.equal(plate.transparency, 50, 'the plate is half transparent');
+  // 0.8 alpha from the colour and 0.5 from the box multiply to 0.4.
+  assert.equal(label.transparency, 60, 'two alphas multiply, they do not replace');
+  const opacityReport = result.report.unsupportedDetails.find((entry) => entry.property === 'opacity');
+  assert.ok(opacityReport, 'a faded subtree is reported');
+  assert.equal(opacityReport.value, '0.6');
+  assert.ok(opacityReport.reason.includes('subtree'));
+});
+

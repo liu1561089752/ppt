@@ -34,6 +34,7 @@ const {
   backgroundOf,
   gradientOf,
   unsupportedGradientOf,
+  boxShadowNote,
   evaluateInches,
   backgroundOverlayGradientOf,
   untranslatedBackgroundLayers,
@@ -1157,6 +1158,8 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   const elementKids = elementChildren(domNode);
   const kind = resolveKind(domNode, style, elementKids);
   const unsupportedGradient = unsupportedGradientOf(style);
+  const shadowNote = boxShadowNote(style.boxShadow);
+  if (shadowNote) recordUnsupported(ctx, domNode, 'boxShadow', style.boxShadow, shadowNote);
   unresolvableLengths(style, {
     fontSizePx,
     parentWidth,
@@ -1202,6 +1205,17 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     border,
     children: []
   };
+  // CSS fades the whole subtree; a PowerPoint shape can only fade its own paint, so a
+  // box with content reports the gap instead of pretending the fade reached its children.
+  const opacityValue = Number(style.opacity);
+  if (Number.isFinite(opacityValue) && opacityValue >= 0 && opacityValue < 1) {
+    if (elementKids.length > 0 && kind !== 'image') {
+      recordUnsupported(ctx, domNode, 'opacity', style.opacity,
+        'opacity fades the whole subtree; only this box\'s own fill and text are faded, its children keep full opacity');
+    } else {
+      node.opacity = opacityValue;
+    }
+  }
   // Stretch alignment may size a box on its cross axis, but never one whose own
   // CSS pinned that axis: an 80px chip in a 415px row stays 80px, top aligned.
   if (declaresLength(style.height)) node.fixedHeight = true;

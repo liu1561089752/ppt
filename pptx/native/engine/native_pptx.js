@@ -112,7 +112,11 @@ function shapeStyle(el, theme) {
       opacity: shadow.opacity === undefined ? 0.18 : shadow.opacity,
       blur: shadow.blur === undefined ? 4 : shadow.blur,
       angle: shadow.angle === undefined ? 45 : shadow.angle,
-      distance: shadow.distance === undefined ? 2 : shadow.distance
+      // The writer spells the offset `offset` (in points); `distance` was accepted and
+      // then ignored, which put every shadow directly under its shape.
+      offset: shadow.offset === undefined
+        ? (shadow.distance === undefined ? 2 : shadow.distance)
+        : shadow.offset
     };
   }
   return options;

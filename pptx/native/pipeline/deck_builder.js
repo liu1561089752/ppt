@@ -190,7 +190,12 @@ function textElementFromNode(node, theme, resolvedTheme) {
     lineSpacingMultiple: node.lineSpacingMultiple
   };
   const transparency = transparencyOf(color);
-  if (transparency) element.transparency = transparency;
+  // Two alphas multiply, they do not replace each other: a `rgba()` colour inside a box
+  // with `opacity: 0.5` ends up half as opaque again.
+  const opacityFactor = node.opacity === undefined ? 1 : node.opacity;
+  const fromOpacity = opacityFactor < 1 ? Math.round((1 - opacityFactor) * 100) : 0;
+  const combined = 100 - Math.round(((100 - (transparency || 0)) * (100 - fromOpacity)) / 100);
+  if (combined) element.transparency = combined;
   if (letterSpacing) {
     const match = /^(-?[\d.]+)(px|pt|em|rem)?$/u.exec(String(letterSpacing).trim());
     if (match) {
@@ -252,7 +257,7 @@ function surfaceElementFromNode(node, resolvedTheme) {
     element.line = false;
   }
   if (shadow) element.shadow = shadow;
-  const opacity = Number(style.opacity);
+  const opacity = node.opacity === undefined ? Number(style.opacity) : node.opacity;
   if (Number.isFinite(opacity) && opacity < 1) element.transparency = Math.round((1 - opacity) * 100);
   return element;
 }
