@@ -1,32 +1,53 @@
 # Golden slide images
 
-This directory is reserved for reviewed PNG baselines used by visual regression.
+This directory holds reviewed PNG baselines for the visual-regression gate.
 
-## Create or refresh a baseline
+## Baselines must come from the CI renderer
 
-1. Run the native CI render workflow (or install LibreOffice, Poppler, and Pillow locally).
-2. Generate previews with `npm run render:demo` and/or `npm run render:components`.
-3. Copy the reviewed output into the matching directory:
-   - `golden/native-demo/`
-   - `golden/native-components-demo/`
-4. Review every PNG before committing. Baselines are intentional design contracts; do not refresh them merely to make a failing comparison green.
+CI renders on Ubuntu with LibreOffice and `fonts-noto-cjk`. A PNG rendered on a
+developer machine uses that machine's fonts, so its text metrics differ and the
+comparison fails on typography alone — not on a design change. Therefore:
 
-The comparator can also copy a current preview set:
+1. Run the workflow and download the `native-ppt-rendered-demos` artifact. It
+   contains `render-check/<deck>/*.png`, `preview/<deck>/` and
+   `visual-regression/<deck>/`.
+2. Review every PNG of that deck by eye (open the whole set, not just the slides
+   you expect to have changed).
+3. Promote the reviewed set:
 
 ```bash
-python scripts/visual_regression.py \
-  --baseline-dir golden/native-components-demo \
-  --current-dir render-check/native-components-demo \
-  --update-baseline
+cd pptx/native
+python scripts/promote_goldens.py --source path/to/artifact/render-check --deck native-components-demo --yes
 ```
 
-Then inspect and commit the PNGs. CI compares a deck only when its reviewed baseline directory contains PNG files. Until baselines are checked in, CI still runs the synthetic shifted-geometry self-test, which verifies that the comparator detects a five-pixel object displacement.
+   Each promoted directory also gets a `MANIFEST.json` with the soffice version,
+   the slide list and the promotion date, so a later failure can be traced to a
+   renderer change instead of being blamed on the deck.
+
+4. Commit the PNGs and the manifest. Never promote images you have not looked at:
+   a baseline is a design contract, not a snapshot of whatever the code produced.
+
+`golden/` currently contains no PNGs on purpose. Renderers here and in CI agree
+on geometry, but approving a baseline is a human design decision.
+
+## Comparator
+
+`scripts/visual_regression.py` reports MAE and global SSIM, writes a JSON metric
+file, an HTML summary and per-slide heatmaps. It compares a deck only when its
+`golden/<deck>/` directory contains PNG files; otherwise CI runs the synthetic
+self-test (a five-pixel displacement must be detected).
 
 ## Thresholds
 
-The initial CI thresholds are MAE <= 0.015 and global SSIM >= 0.97. They are conservative starting points, not universal quality guarantees. Rendering should use the same LibreOffice and font environment for baseline capture and CI. Every failure produces JSON metrics, an HTML summary, and per-slide difference heatmaps.
-
+Initial thresholds are MAE <= 0.015 and global SSIM >= 0.97. They are starting
+points, not a quality guarantee. Rendering must use the same LibreOffice and font
+environment for baseline capture and for CI; that is what the artifact workflow
+above enforces.
 
 ## Current gate
 
-The latest fixture review improves geometry coverage, but no Golden PNG is approved yet. The local HTML/LibreOffice comparison shows the composition and surfaces are aligned; font substitution remains visible. Before adding baseline images, review the current HTML source and Native PPTX in the intended Microsoft PowerPoint environment and record the font availability and any remaining visual differences.
+Every fixture now renders in a real engine (LibreOffice 26.2.7 verified locally,
+Ubuntu LibreOffice in CI), including native charts, rotation, merged table cells
+and image crops. Text rendering still depends on the machine's fonts, and
+Microsoft PowerPoint itself has not been used for review — that remains the last
+open verification step before baselines are approved.
