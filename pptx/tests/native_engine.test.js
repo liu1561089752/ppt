@@ -4898,3 +4898,37 @@ test('columns: N becomes one native text box with N columns', () => {
     'a painted column child is reported');
 });
 
+
+test('font-variant: small-caps becomes the native run property cap="small"', () => {
+  const build = (css, markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    markup,
+    '</main></body></html>'
+  ].join('\n'));
+
+  const block = build('.caps { font-variant: small-caps; font-size: 18px; }', '<div class="caps">Section Kicker</div>');
+  assert.equal(block.deck.slides[0].elements[0].smallCaps, true);
+  assert.equal(block.report.unsupported, 0, JSON.stringify(block.report.unsupportedDetails));
+
+  // A column block carries it too: the flag rides on the same element.
+  const columns = build('.cols { columns: 2; font-variant: small-caps; width: 700px; font-size: 12px; }',
+    '<div class="cols"><p>第一段。</p><p>第二段。</p></div>');
+  assert.equal(columns.deck.slides[0].elements[0].columns, 2);
+  assert.equal(columns.deck.slides[0].elements[0].smallCaps, true);
+
+  // `cap` is one attribute for the whole run, so an inline span asking for small caps inside
+  // an ordinary paragraph would apply to every run or to none: that is reported, not guessed.
+  const inline = build('.p { font-size: 18px; } .k { font-variant: small-caps; }',
+    '<div class="p">A <span class="k">span</span> here</div>');
+  assert.ok((inline.report.unsupportedDetails || []).some((entry) => entry.property === 'fontVariant'),
+    'an inline small-caps span is reported');
+
+  // Other values have no native spelling at all.
+  const other = build('.p { font-variant: all-small-caps; font-size: 18px; }', '<div class="p">Text</div>');
+  assert.ok((other.report.unsupportedDetails || []).some((entry) => entry.property === 'fontVariant'));
+  assert.ok(!other.deck.slides[0].elements[0].smallCaps);
+});
+

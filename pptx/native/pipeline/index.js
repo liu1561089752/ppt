@@ -107,7 +107,10 @@ async function convertFile(inputPath, options = {}) {
           fontSize: element.fontSize,
           lineSpacingMultiple: element.lineSpacingMultiple,
           textHeight: element.textHeight,
-          text: element.text
+          text: element.text,
+          // The audit needs to know a box draws small caps: those runs come back from the
+          // renderer as capitals, and comparing them case-sensitively would call them lost.
+          ...(element.smallCaps ? { smallCaps: true } : {})
         }))
       }));
       fs.mkdirSync(path.dirname(path.resolve(options.layoutPath)), { recursive: true });

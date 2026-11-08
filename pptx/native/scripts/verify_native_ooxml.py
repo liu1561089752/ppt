@@ -54,7 +54,7 @@ def inspect(path: Path) -> dict[str, int]:
               "image_crops": 0, "rounded_pictures": 0, "outlined_pictures": 0,
               "shadowed_pictures": 0, "tables": 0,
               "merged_cells": 0, "uneven_tables": 0, "rotated": 0,
-              "text_columns": 0, "invalid_enums": 0}
+              "text_columns": 0, "small_caps": 0, "invalid_enums": 0}
     problems: list[str] = []
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
@@ -95,6 +95,13 @@ def inspect(path: Path) -> dict[str, int]:
                             problems.append(f'<a:bodyPr spcCol="{spacing}"> is negative')
                     except ValueError:
                         problems.append(f'<a:bodyPr spcCol="{spacing}"> is not an integer')
+            for run in root.findall(".//a:rPr", NS):
+                cap = run.get("cap")
+                if cap is None:
+                    continue
+                counts["small_caps"] += 1
+                if cap not in ("none", "small", "all"):
+                    problems.append(f'<a:rPr cap="{cap}"> is not none/small/all')
             counts["gradients"] += len(root.findall(".//a:gradFill", NS))
             counts["shadows"] += len(root.findall(".//a:outerShdw", NS))
             counts["alpha_nodes"] += len(root.findall(".//a:alpha", NS))

@@ -61,6 +61,15 @@
   }
 
   /* 行内语义标签：UA 默认样式 + 原生文本属性 */
+  /* 小型大写字母是原生 run 属性：整块文字被打上 cap="small" */
+  .smallcaps {
+    font-variant: small-caps;
+    font-size: 20px;
+    letter-spacing: 1px;
+    color: #7A3B22;
+    margin-top: 14px;
+  }
+
   .inline-body { width: 1040px; font-size: 14px; line-height: 2; color: #37474B; }
   .inline-body p { margin: 0 0 12px; }
   .inline-body ul { margin: 0 0 12px; padding-left: 24px; }
@@ -121,6 +130,8 @@
 <main class="slide">
   <div class="kicker">INLINE SEMANTICS</div>
   <h1>上下标、下划线、高亮和链接都是原生文本属性</h1>
+  <div class="smallcaps">Small Caps Kicker For The Section</div>
+
   <div class="inline-body">
     <p>化学式 H<sub>2</sub>O；幂次 E = mc<sup>2</sup>；<u>下划线</u>、<s>删除线</s>、<mark>高亮</mark>与 <code>npm test</code> 等宽体。</p>
     <ul>

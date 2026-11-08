@@ -550,6 +550,51 @@ function applyTextColumns(xml, count, gapIn) {
   });
 }
 
+/** `cap="small"` is DrawingML's small caps, and the writer has no option for it. */
+function applySmallCaps(xml) {
+  return xml.replace(/<a:rPr([^>]*?)(\/?)>/gu, (whole, attrs, selfClose) => {
+    const cleaned = attrs.replace(/\s*cap="[^"]*"/gu, '');
+    return '<a:rPr' + cleaned + ' cap="small"' + (selfClose || '') + '>';
+  });
+}
+
+async function patchSmallCaps(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const needsCaps = (element) => element && element.type === 'text' && element.smallCaps === true;
+  if (!supplied(laidOut, slides).some((elements) => elements.some(needsCaps))) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
+    if (!shapeElements.some(needsCaps)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    let shapeIndex = 0;
+    let patched = 0;
+    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapeElements[shapeIndex++];
+      if (!needsCaps(element)) return whole;
+      const updated = applySmallCaps(inner);
+      if (updated !== inner) patched += 1;
+      return '<p:sp>' + updated + '</p:sp>';
+    });
+    if (shapeIndex !== shapeElements.length) {
+      throw new Error('Small caps patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has ' + shapeIndex + ' p:sp elements');
+    }
+    const expected = shapeElements.filter(needsCaps).length;
+    if (patched !== expected) {
+      throw new Error('Small caps patch count mismatch on slide ' + (slideIndex + 1)
+        + ': expected ' + expected + ', patched ' + patched);
+    }
+    zip.file(name, next);
+  }
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 async function patchTextColumns(outputPath, deck, laidOut) {
   const slides = (deck && deck.slides) || [];
   const columnar = (element) => element && element.type === 'text' && Number(element.columns) > 1;
@@ -637,6 +682,7 @@ async function generatePptx(deck, outputPath, options = {}) {
   }
   await patchTextIndents(outputPath, deck, result.laidOut);
   await patchTextColumns(outputPath, deck, result.laidOut);
+  await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchImageEffects(outputPath, result.imagePlans);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
@@ -654,5 +700,6 @@ async function generatePptx(deck, outputPath, options = {}) {
 module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
+  applySmallCaps, patchSmallCaps,
   applyTextIndent, patchTextIndents
 };

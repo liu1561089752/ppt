@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 import os
 import re
 import subprocess
@@ -166,7 +167,7 @@ def read_line_rects(pdf_path):
     return pages
 
 
-def claim_lines(target, rects, box):
+def claim_lines(target, rects, box, lower=False):
     """Rectangles inside `box` that spell out `target`, and the ones the window left alone."""
     x0, y0, width, height = box
     remaining = skeleton(target)
@@ -174,16 +175,19 @@ def claim_lines(target, rects, box):
     skipped = []
     if not target:
         return claimed, skipped
-    wanted = skeleton(target)
-    ordered = sorted(rects, key=lambda rect: -len(skeleton(rect["text"])))
+    # `cap="small"` draws capitals for lowercase letters, and some extractors report those
+    # capitals back: the glyphs are there, the case is the format's, not a lost word.
+    fold = (lambda value: skeleton(value).lower()) if lower else skeleton
+    wanted = fold(target)
+    ordered = sorted(rects, key=lambda rect: -len(fold(rect["text"])))
     for rect in ordered:
-        shape = skeleton(rect["text"])
+        shape = fold(rect["text"])
         if not shape:
             continue
         # A rectangle holds our words, or - when the renderer merged neighbours into one
         # rectangle - holds more than our words. Either way the words were drawn here.
         merged = shape != wanted and wanted and wanted in shape
-        if not merged and shape not in skeleton(remaining):
+        if not merged and shape not in fold(remaining):
             continue
         centre_x = (rect["x0"] + rect["x1"]) / 2
         inside = (
@@ -197,7 +201,7 @@ def claim_lines(target, rects, box):
         if merged:
             remaining = ""
         else:
-            remaining = skeleton(remaining).replace(shape, "", 1)
+            remaining = fold(remaining).replace(shape, "", 1)
     return claimed, skipped
 
 
@@ -260,24 +264,38 @@ def check(deck, spec, soffice, tolerance=0.02, verbose=False, quiet=False):
                 float(node.get("w") or 0),
                 float(node.get("h") or 0),
             )
-            claimed, skipped = claim_lines(target, rects, box)
+            claimed, skipped = claim_lines(target, rects, box, lower=bool(node.get("smallCaps")))
             if not claimed:
                 unmatched += 1
                 if verbose:
                     print("  slide " + str(slide_number) + ": nothing matched " + repr(text[:40]))
                 continue
             checked += 1
-            remaining = skeleton(target)
+            small_caps = bool(node.get("smallCaps"))
+            fold = (lambda value: skeleton(value).lower()) if small_caps else skeleton
+            remaining = fold(target)
             for rect in claimed:
-                remaining = remaining.replace(skeleton(rect["text"]), "", 1)
+                remaining = remaining.replace(fold(rect["text"]), "", 1)
             # Words the window missed may still be on the page: call them missing only when
             # the glyphs really are absent, not when attribution was too narrow.
             missing = 0
-            if remaining and remaining not in page_text:
-                missing = len(remaining)
-                missing_words += 1
-            elif remaining:
-                dropped_by_window += 1
+            if remaining:
+                if small_caps:
+                    # `cap="small"` puts one rectangle per glyph run on the page and reports
+                    # capitals for lowercase letters, so a box cannot be attributed by
+                    # position. The signal that survives that is the letters themselves.
+                    diff = Counter(remaining) - Counter(page_text.lower())
+                    gone = sum(diff.values())
+                    if verbose and gone:
+                        print("  letters not on the page " + repr(dict(diff)))
+                    if gone:
+                        missing = gone
+                        missing_words += 1
+                elif remaining in page_text:
+                    dropped_by_window += 1
+                else:
+                    missing = len(remaining)
+                    missing_words += 1
             y0, height = box[1], box[3]
             font = float(node.get("fontSize") or 12)
             spacing = float(node.get("lineSpacingMultiple") or 1.2)

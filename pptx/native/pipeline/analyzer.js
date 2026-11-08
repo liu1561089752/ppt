@@ -74,6 +74,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
+  'fontVariant',
   'writingMode', 'wordBreak', 'float', 'clear', 'aspectRatio',
   // The `-webkit-line-clamp` properties; the clamp itself is applied where the text is
   // measured, and the orientation it needs is read there too.
@@ -588,6 +589,14 @@ function buildRuns(domNode, baseStyle, ctx) {
       }
       const face = runFontFamily(style.fontFamily);
       if (face && face !== base.fontFace) options.fontFace = face;
+      // `cap="small"` applies to a whole run, and a box is patched as a unit: a span that
+      // asks for small caps inside an ordinary paragraph would apply to every run or to
+      // none, so it is named rather than half-applied.
+      const variant = String(style.fontVariant || '').toLowerCase().trim();
+      if (inline && variant === 'small-caps') {
+        recordUnsupported(ctx, inline || {}, 'fontVariant', style.fontVariant,
+          'Small caps on an inline span is not carried: declare it on the block so the whole box can be patched');
+      }
     }
     Object.assign(options, decorationOptions(style, tag));
     // A background on a plain inline element is a highlighter, which PowerPoint keeps
@@ -1388,7 +1397,20 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     // of it. The text itself still measures at the content width.
     // `text-overflow: ellipsis` only exists for a single line that cannot wrap; the other
     // combinations are reported rather than half-applied.
-    const textOverflow = String(style.textOverflow || 'clip').toLowerCase();
+    // `font-variant: small-caps` is DrawingML's `cap="small"` on the run properties, so it is
+  // carried to the writer rather than reported. The other values (`all-small-caps`,
+  // `petite-caps`, `unicase`) have no native spelling and keep reporting.
+  const fontVariant = String(style.fontVariant || 'normal').toLowerCase().trim();
+  if (fontVariant !== 'normal' && fontVariant !== 'none' && fontVariant !== '') {
+    if (fontVariant === 'small-caps') {
+      node.smallCaps = true;
+    } else {
+      recordUnsupported(ctx, domNode, 'fontVariant', style.fontVariant,
+        'Only small-caps has a native run property; this value has none');
+    }
+  }
+
+  const textOverflow = String(style.textOverflow || 'clip').toLowerCase();
     if (textOverflow === 'ellipsis') {
       const clips = String(style.overflow || 'visible').toLowerCase();
       if (!node.noWrap) {
@@ -3487,7 +3509,8 @@ function columnPlanOf(domNode, style, contentWidth, fontSizePx, ctx) {
     fontSizePt,
     lineSpacingMultiple: lineSpacing.multiple,
     textHeight: Number((rows * perRow).toFixed(4)),
-    columns: { count, gapIn: Number(gapIn.toFixed(4)) }
+    columns: { count, gapIn: Number(gapIn.toFixed(4)) },
+    ...(String(style.fontVariant || '').toLowerCase().trim() === 'small-caps' ? { smallCaps: true } : {})
   };
 }
 

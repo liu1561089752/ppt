@@ -201,6 +201,9 @@ function textElementFromNode(node, theme, resolvedTheme) {
   const fromOpacity = opacityFactor < 1 ? Math.round((1 - opacityFactor) * 100) : 0;
   const combined = 100 - Math.round(((100 - (transparency || 0)) * (100 - fromOpacity)) / 100);
   if (combined) element.transparency = combined;
+  // `cap="small"` is a run property the writer has no option for, so it travels on the
+  // element and is patched into the part after the file is written.
+  if (node.smallCaps) element.smallCaps = true;
   if (node.columns) {
     element.columns = node.columns.count;
     element.columnGap = node.columns.gapIn;
