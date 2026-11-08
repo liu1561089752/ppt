@@ -136,6 +136,40 @@ function wrapText(text, widthIn, fontSizePt, options = {}) {
     .join('\n');
 }
 
+/**
+ * Truncate to `count` lines and end the last one with an ellipsis, the way
+ * `-webkit-line-clamp` does. Returns null when the text already fits, so a caller can
+ * tell "nothing to do" from "clamped to nothing".
+ *
+ * The lines come from the same wrap that reserved the box height, so the clamp agrees with
+ * the space the text was given. The last line sheds characters until the mark itself fits:
+ * an ellipsis hanging outside the box is what a clamp looks like when it is broken.
+ */
+function clampText(text, widthIn, fontSizePt, count, options = {}) {
+  const limit = Math.max(1, Math.floor(Number(count) || 0));
+  // A clamp bakes its lines as hard breaks, and a baked line that only just fitted would wrap
+  // again in a reader whose face is wider than the one measured here. That does not shorten
+  // the excerpt - it turns one line into a line plus a dangling character. The headroom is the
+  // widest substitution this machine produced (about 1.17em per CJK glyph): a slightly shorter
+  // excerpt is a fair price for a box that stays intact when the font is missing.
+  const bakeWidthIn = widthIn * 0.85;
+  const lines = wrapText(String(text || ''), bakeWidthIn, fontSizePt, options).split('\n');
+  if (lines.length <= limit) return null;
+  const usableWidthPt = Math.max(1,
+    (bakeWidthIn - (options.marginIn === undefined ? 0.04 : options.marginIn) * 2)
+      * 72 * (options.safetyFactor || 0.9));
+  const kept = lines.slice(0, limit);
+  let last = kept[limit - 1];
+  while (last && measureTextPt(last + '\u2026', fontSizePt, options) > usableWidthPt) {
+    const chars = graphemes(last);
+    if (!chars.length) break;
+    chars.pop();
+    last = chars.join('').replace(/\s+$/u, '');
+  }
+  kept[limit - 1] = last + '\u2026';
+  return kept.join('\n');
+}
+
 function estimateLineCount(text, widthIn, fontSizePt, options = {}) {
   return Math.max(1, wrapText(text, widthIn, fontSizePt, options).split('\n').length);
 }
@@ -195,6 +229,6 @@ function estimateRichTextHeight(runs, widthIn, fontSizePt, options = {}) {
 }
 
 module.exports = {
-  glyphWidthFactor, graphemes, measureTextPt, wrapText, estimateLineCount,
+  glyphWidthFactor, graphemes, measureTextPt, wrapText, clampText, estimateLineCount,
   estimateTextHeight, estimateRichTextHeight
 };

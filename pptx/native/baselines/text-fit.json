@@ -6,6 +6,13 @@
     "missingWords": 0,
     "unmatched": 0
   },
+  "pipeline-clamp.html": {
+    "boxes": 18,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
   "pipeline-decorations.html": {
     "boxes": 33,
     "droppedByWindow": 2,

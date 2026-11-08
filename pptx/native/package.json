@@ -80,7 +80,10 @@
     "audit:text-fit": "python scripts/check_all_text_fit.py",
     "baseline:text-fit": "python scripts/check_all_text_fit.py --write-baseline",
     "golden:check": "python scripts/visual_golden.py",
-    "golden:update": "python scripts/visual_golden.py --update"
+    "golden:update": "python scripts/visual_golden.py --update",
+    "pipeline:clamp": "node pipeline/cli.js ../examples/pipeline-clamp.html --out pipeline-converted/clamp.json --pptx pipeline-converted/pipeline-clamp.pptx",
+    "preview:clamp": "python scripts/preview_deck.py pipeline-converted/pipeline-clamp.pptx --output-dir preview/clamp --sheet preview/clamp-sheet.png",
+    "render:clamp": "python scripts/render_check.py pipeline-converted/pipeline-clamp.pptx --output-dir render-check/pipeline-clamp"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

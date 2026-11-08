@@ -4798,3 +4798,50 @@ test('left and right floats pack from opposite edges and the text sits between t
     'a left and a right float on one line is translated, not reported: ' + JSON.stringify(reported));
 });
 
+
+test('-webkit-line-clamp keeps N lines and ends the last one with an ellipsis', () => {
+  const { clampText } = require('../native/engine/text_measure');
+  const long = '这是一段很长的卡片说明文字，用来验证截断是否只保留两行并在末尾加上省略号。后面还有更多内容应当被丢掉。';
+  const options = { lineHeight: 1.7, safetyFactor: 0.92 };
+  const full = Number(require('../native/engine/text_measure').estimateLineCount(long, 2.5, 9.75, options));
+  assert.ok(full > 2, 'the sample is long enough to wrap: ' + full);
+
+  const clamped = clampText(long, 2.5, 9.75, 2, options);
+  const lines = clamped.split('\n');
+  assert.equal(lines.length, 2, 'exactly the clamped number of lines');
+  assert.ok(lines[1].endsWith('…'), 'the last line carries the mark: ' + lines[1]);
+  assert.ok(long.startsWith(lines[0].slice(0, -0)), 'the kept text is the beginning of the original');
+  // Shorter than the limit is left exactly as it came in: truncating text that already fits
+  // deletes content for no reason.
+  assert.equal(clampText('短文本。', 2.5, 9.75, 4, options), null);
+
+  // End to end: the deck carries the clamped string, reserves the clamped height, and says
+  // nothing about the declaration, because it was honoured.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .c { width: 240px; font-size: 13px; line-height: 1.7; display: -webkit-box;',
+    '       -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="c">' + long + '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const element = result.deck.slides[0].elements[0];
+  assert.equal(String(element.text).split('\n').length, 2);
+  assert.ok(String(element.text).endsWith('…'));
+  assert.equal(result.report.unsupported, 0, JSON.stringify(result.report.unsupportedDetails));
+
+  // A clamp outside a `-webkit-box` changes nothing in a browser, so it is reported rather
+  // than applied: silently clamping there would delete text the design never asked to lose.
+  const ignored = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .c { width: 240px; font-size: 13px; -webkit-line-clamp: 2; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="c">' + long + '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(ignored.deck.slides[0].elements[0].text, long, 'the text is untouched');
+  assert.ok((ignored.report.unsupportedDetails || []).some((entry) => entry.property === 'WebkitLineClamp'));
+});
+

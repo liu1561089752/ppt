@@ -41,7 +41,7 @@ const {
   backgroundImageOf,
   parseBackgroundFocus
 } = require('./css');
-const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
+const { estimateTextHeight, measureTextPt, clampText } = require('../engine/text_measure');
 const { flexWidths } = require('../engine/flex_size');
 const { flexLines, flexColumns, alignLines } = require('../engine/flex_lines');
 const {
@@ -75,6 +75,9 @@ const SUPPORTED_PROPERTIES = new Set([
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
   'writingMode', 'wordBreak', 'float', 'clear', 'aspectRatio',
+  // The `-webkit-line-clamp` properties; the clamp itself is applied where the text is
+  // measured, and the orientation it needs is read there too.
+  'WebkitLineClamp', 'WebkitBoxOrient', 'lineClamp',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
@@ -1394,7 +1397,41 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
         }
       }
     }
-    node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : explicitHeight;
+      // `-webkit-line-clamp: N` keeps N lines and ends the last with an ellipsis - the way a
+  // card grid gets an even row of excerpts. Browsers only honour it inside a `-webkit-box`,
+  // so a clamp written anywhere else is reported instead of silently applied.
+  const clampCount = lineClampOf(style);
+  if (clampCount > 0 && Number.isFinite(contentWidth) && contentWidth > 0) {
+    const clampHost = String(style.display || '').toLowerCase();
+    // Both halves of the mechanism are read: the box that makes the clamp legal, and the
+    // vertical orientation that gives it lines to count. A horizontal box clamps a column,
+    // which is not what a line count means.
+    const clampOrient = String(style.WebkitBoxOrient || '').toLowerCase();
+    if (clampHost !== '-webkit-box' && clampHost !== '-webkit-inline-box') {
+      recordUnsupported(ctx, domNode, 'WebkitLineClamp', style.WebkitLineClamp || style.lineClamp,
+        'A clamp is only honoured on `display: -webkit-box`');
+    } else if (clampOrient && clampOrient !== 'vertical') {
+      recordUnsupported(ctx, domNode, 'WebkitBoxOrient', style.WebkitBoxOrient,
+        'A line count needs `-webkit-box-orient: vertical`');
+    } else if (node.noWrap) {
+      recordUnsupported(ctx, domNode, 'WebkitLineClamp', style.WebkitLineClamp || style.lineClamp,
+        'A clamp counts wrapped lines, so it needs wrapping text');
+    } else {
+      const clampedText = Array.isArray(node.text)
+        ? node.text.map((run) => (typeof run === 'string' ? run : run.text)).join('')
+        : node.text;
+      const clamped = clampText(clampedText, contentWidth, measured.fontSizePt, clampCount,
+        { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92, noWrap: false });
+      if (clamped) {
+        node.text = clamped;
+        // The runs no longer describe the string once characters are gone.
+        node.runs = null;
+        node.textHeight = estimateTextHeight(clamped, contentWidth, measured.fontSizePt,
+          { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92 });
+      }
+    }
+  }
+node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : explicitHeight;
     applyWritingMode(node, domNode, style, measured, explicitHeight, ctx);
     applyRelativeShift(node, style, parentWidth);
     return node;
@@ -3351,6 +3388,18 @@ function cellSpanWidth(colWidths, column, span) {
     width += Number.isFinite(colWidths[index]) ? colWidths[index] : 0;
   }
   return width;
+}
+
+/**
+ * `-webkit-line-clamp` as a line count, or 0 when the element does not ask for one.
+ * The property is spelled with a capital W after the cascade camel-cases it.
+ */
+function lineClampOf(style) {
+  const raw = style.WebkitLineClamp !== undefined ? style.WebkitLineClamp
+    : style.webkitLineClamp !== undefined ? style.webkitLineClamp : style.lineClamp;
+  if (raw === undefined || raw === null) return 0;
+  const value = Number(String(raw).trim());
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
 /** `letter-spacing` in points, or 0 when it is absent or unparseable. */
