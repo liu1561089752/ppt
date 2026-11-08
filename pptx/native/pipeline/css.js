@@ -193,6 +193,62 @@ function collectRules(css, viewport, state) {
   }
 }
 
+/**
+ * `[attr]`, `[attr=value]` and the `~ | ^ $ *` operators, with an optional `i`/`s`
+ * flag. Returns null when the bracket syntax is not one we can evaluate.
+ */
+const ATTRIBUTE_SELECTOR = /\[\s*([\w-]+)\s*(?:([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]*))\s*([is])?\s*)?\]/gu;
+
+function parseAttributeSelectors(segment) {
+  const tests = [];
+  const source = String(segment || '');
+  let remaining = source;
+  ATTRIBUTE_SELECTOR.lastIndex = 0;
+  let match = ATTRIBUTE_SELECTOR.exec(source);
+  while (match) {
+    const value = match[3] !== undefined ? match[3] : (match[4] !== undefined ? match[4] : match[5]);
+    tests.push({
+      name: match[1],
+      operator: match[2] || null,
+      value: value === undefined ? null : value,
+      insensitive: (match[6] || '').toLowerCase() === 'i'
+    });
+    match = ATTRIBUTE_SELECTOR.exec(source);
+  }
+  // Anything left in brackets is a selector we do not understand.
+  remaining = source.replace(ATTRIBUTE_SELECTOR, '');
+  ATTRIBUTE_SELECTOR.lastIndex = 0;
+  return { tests, untranslatable: remaining.includes('[') || remaining.includes(']') };
+}
+
+function matchesAttribute(node, test) {
+  const attrs = (node && node.attrs) || {};
+  if (!Object.prototype.hasOwnProperty.call(attrs, test.name)) return false;
+  if (test.operator === null) return true;
+  let actual = String(attrs[test.name] === undefined || attrs[test.name] === null ? '' : attrs[test.name]);
+  let expected = test.value === null ? '' : String(test.value);
+  if (test.insensitive) {
+    actual = actual.toLowerCase();
+    expected = expected.toLowerCase();
+  }
+  switch (test.operator) {
+    case '=':
+      return actual === expected;
+    case '~=':
+      return actual.split(/\s+/u).filter(Boolean).includes(expected);
+    case '|=':
+      return actual === expected || actual.startsWith(expected + '-');
+    case '^=':
+      return expected !== '' && actual.startsWith(expected);
+    case '$=':
+      return expected !== '' && actual.endsWith(expected);
+    case '*=':
+      return expected !== '' && actual.includes(expected);
+    default:
+      return false;
+  }
+}
+
 function parseSimpleSelector(segment) {
   const simple = { tag: null, id: null, classes: [], universal: false };
   let rest = segment;
@@ -221,8 +277,8 @@ function selectorSegments(text) {
   let current = '';
   let depth = 0;
   for (const char of String(text || '')) {
-    if (char === '(') depth += 1;
-    else if (char === ')') depth = Math.max(0, depth - 1);
+    if (char === '(' || char === '[') depth += 1;
+    else if (char === ')' || char === ']') depth = Math.max(0, depth - 1);
     if (depth === 0 && /[\s>+~]/u.test(char)) {
       if (current) segments.push(current);
       current = '';
@@ -302,8 +358,8 @@ function splitSelectorList(text) {
   let current = '';
   let depth = 0;
   for (const char of source) {
-    if (char === '(') depth += 1;
-    else if (char === ')') depth = Math.max(0, depth - 1);
+    if (char === '(' || char === '[') depth += 1;
+    else if (char === ')' || char === ']') depth = Math.max(0, depth - 1);
     if (char === ',' && depth === 0) {
       parts.push(current);
       current = '';
@@ -357,6 +413,7 @@ function parseSimpleList(inner, depth) {
     if (!read || read.others.length) return null;
     if (!read.simple.tag && !read.simple.id && !read.simple.classes.length
       && !read.simple.universal && !read.simple.structural.length
+      && !(read.simple.attributes && read.simple.attributes.length)
       && !read.simple.negations && !read.simple.alternatives) return null;
     selectors.push(read.simple);
   }
@@ -372,12 +429,13 @@ function readSegment(segment, depth = 0) {
   const structural = [];
   const negations = [];
   const alternatives = [];
+  let attributes = [];
   let zeroSpecificity = false;
   let rest = String(segment || '');
 
-  // Pull out the functional pseudo-classes first: their argument may itself be a
-  // structural pseudo-class (`:not(:first-child)`), which must survive until the
-  // recursion strips it.
+  // Pull out the functional pseudo-classes first: their argument may itself hold a
+  // structural pseudo-class (`:not(:first-child)`) or an attribute selector
+  // (`:not([data-kind="x"])`), and both belong to the argument.
   for (let guard = 0; guard < 6; guard += 1) {
     const found = findFunctionalPseudo(rest, ['not', 'is', 'where']);
     if (!found) break;
@@ -393,6 +451,18 @@ function readSegment(segment, depth = 0) {
     rest = rest.slice(0, found.start) + rest.slice(found.end);
   }
 
+  // Attribute selectors: brackets may contain quotes and operator characters.
+  const attributeRead = parseAttributeSelectors(rest);
+  if (attributeRead.untranslatable) {
+    // Keep the text so the rule is reported instead of matching too much.
+    return { simple: parseSimpleSelector(''), others: [String(segment || '').trim()], unparsed: true };
+  }
+  if (attributeRead.tests.length) {
+    attributes = attributeRead.tests;
+    rest = rest.replace(ATTRIBUTE_SELECTOR, '');
+    ATTRIBUTE_SELECTOR.lastIndex = 0;
+  }
+
   rest = rest.replace(STRUCTURAL_PSEUDO, (whole, kind, arg) => {
     structural.push({ kind: String(kind).toLowerCase(), arg: arg === undefined ? null : arg });
     return '';
@@ -402,6 +472,7 @@ function readSegment(segment, depth = 0) {
   rest = rest.replace(/::?[\w-]+(?:\([^)]*\))?/gu, '');
   const simple = parseSimpleSelector(rest.trim());
   simple.structural = structural;
+  if (attributes.length) simple.attributes = attributes;
   if (negations.length) simple.negations = negations;
   if (alternatives.length) simple.alternatives = alternatives;
   simple.zeroSpecificity = zeroSpecificity;
@@ -429,17 +500,21 @@ function parseSelector(rawSelector) {
     const count = (part.negations ? 1 : 0) + (part.alternatives && !part.zeroSpecificity ? 1 : 0);
     return sum + count;
   }, 0);
+  const attributeCount = parts.reduce((sum, part) => sum + (part.attributes ? part.attributes.length : 0), 0);
   // A selector that names nothing (`:root { --x: ... }`, a lone `:hover`) cannot
-  // describe an element, so it is not reported as an untranslated selector.
+  // describe an element, so it is not reported as an untranslated selector. A
+  // selector that names an element but contains a construct we could not parse
+  // (an attribute operator we do not support) is reported instead of dropped.
   const identifies = parts.some((part) => part.tag || part.id || part.classes.length
     || part.universal || (part.structural && part.structural.length)
+    || (part.attributes && part.attributes.length)
     || part.negations || part.alternatives);
-  if (!identifies) return null;
+  if (!identifies && !reads.some((read) => read.unparsed)) return null;
   const specificity = parts.reduce((accumulator, part) => ({
     ids: accumulator.ids + (part.id ? 1 : 0),
     classes: accumulator.classes + (part.zeroSpecificity ? 0 : part.classes.length),
     tags: accumulator.tags + (part.tag ? 1 : 0)
-  }), { ids: 0, classes: structuralCount + functionalCount, tags: 0 });
+  }), { ids: 0, classes: structuralCount + functionalCount + attributeCount, tags: 0 });
   return {
     parts,
     specificity,
@@ -459,6 +534,11 @@ function matchesSimple(node, simple) {
   if (simple.structural && simple.structural.length) {
     for (const test of simple.structural) {
       if (!matchesStructural(node, test)) return false;
+    }
+  }
+  if (simple.attributes && simple.attributes.length) {
+    for (const test of simple.attributes) {
+      if (!matchesAttribute(node, test)) return false;
     }
   }
   if (simple.alternatives && simple.alternatives.length) {

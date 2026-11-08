@@ -732,12 +732,16 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   let y = slot.y;
   if (absolute) {
     // CSS: the containing block of an absolutely positioned element is the
-    // padding box of its positioned ancestor.
-    const parentBox = inherited.parentPaddingBox || parentBoxForWidth;
-    const left = inchesOf(style.left, 'x', { parentWidth, fontSizePx });
-    const right = inchesOf(style.right, 'x', { parentWidth, fontSizePx });
-    const top = inchesOf(style.top, 'y', { parentWidth, parentHeight: parentBox.h, fontSizePx });
-    const bottom = inchesOf(style.bottom, 'y', { parentWidth, parentHeight: parentBox.h, fontSizePx });
+    // padding box of its positioned ancestor. `fixed` is the exception - it is
+    // anchored to the viewport (the slide), not to the nearest positioned parent.
+    const parentBox = style.position === 'fixed'
+      ? (ctx.viewport || inherited.parentPaddingBox || parentBoxForWidth)
+      : (inherited.parentPaddingBox || parentBoxForWidth);
+    const absoluteParentWidth = Number.isFinite(parentBox.w) ? parentBox.w : parentWidth;
+    const left = inchesOf(style.left, 'x', { parentWidth: absoluteParentWidth, fontSizePx });
+    const right = inchesOf(style.right, 'x', { parentWidth: absoluteParentWidth, fontSizePx });
+    const top = inchesOf(style.top, 'y', { parentWidth: absoluteParentWidth, parentHeight: parentBox.h, fontSizePx });
+    const bottom = inchesOf(style.bottom, 'y', { parentWidth: absoluteParentWidth, parentHeight: parentBox.h, fontSizePx });
     if (left !== null) x = parentBox.x + left;
     else if (right !== null) x = parentBox.x + parentBox.w - right - width;
     if (top !== null) y = parentBox.y + top;
@@ -940,7 +944,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     const slotWidth = Math.max(0, contentBox.w - margins.left - margins.right);
     const explicitWidth = inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
     const slot = isAbsolute(childStyle)
-      ? anchoredSlot(childStyle, contentBox, inherited)
+      ? anchoredSlot(childStyle, containingBlockFor(childStyle, contentBox, ctx), inherited)
       : {
         x: contentBox.x + margins.left,
         y: cursor + margins.top,
@@ -963,6 +967,16 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
  * resolve against the container, and `left/right` plus `top/bottom` are
  * interchangeable, exactly like CSS.
  */
+/**
+ * The containing block for an out-of-flow child. `position: fixed` is anchored to
+ * the viewport - the slide itself - rather than to the nearest positioned
+ * ancestor, which is what a footer pinned with `bottom: 20px` means in a slide.
+ */
+function containingBlockFor(style, contentBox, ctx) {
+  if (!style || style.position !== 'fixed') return contentBox;
+  return (ctx && ctx.viewport) || contentBox;
+}
+
 function anchoredSlot(style, contentBox, inherited) {
   const options = {
     parentWidth: contentBox.w,
@@ -1089,7 +1103,8 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   const absolute = kids
     .filter((child) => isAbsolute(ctx.styles.computed(child)))
     .map((child) => {
-      const slot = anchoredSlot(ctx.styles.computed(child), contentBox, inherited);
+      const childStyle = ctx.styles.computed(child);
+      const slot = anchoredSlot(childStyle, containingBlockFor(childStyle, contentBox, ctx), inherited);
       return applyAnchorHints(analyzeNode(child, slot, inherited, ctx), slot);
     })
     .filter(Boolean)
@@ -1826,6 +1841,9 @@ function analyzeHtml(html, options = {}) {
       h: Math.max(0, pageSize.height - slideInset * 2)
     };
     const rootContext = { fontPx: 16, parentBox: contentBox, parentPaddingBox: slidePaddingBox };
+    // `position: fixed` resolves against the slide frame, so a pinned footer is
+    // measured from the slide edge and not from whatever container holds it.
+    ctx.viewport = { x: 0, y: 0, w: pageSize.width, h: pageSize.height };
     const rootDisplay = String(style.display || 'block').toLowerCase();
     // The root is a real box: honour flex/grid instead of forcing block flow.
     const children = rootDisplay === 'grid'

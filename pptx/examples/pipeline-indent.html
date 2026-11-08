@@ -31,6 +31,19 @@
   .half.on p { text-indent: 2em; }
 
   .foot { margin-top: 16px; font-size: 12px; line-height: 1.8; color: #7A8C90; width: 1060px; text-indent: 2em; }
+
+  /* 固定页脚：position: fixed 以幻灯片为参照，而不是最近的定位祖先 */
+  .pager {
+    position: fixed;
+    right: 48px;
+    bottom: 26px;
+    padding: 6px 12px;
+    background: #1D2A2E;
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: #FBFAF7;
+  }
 </style>
 </head>
 <body>
@@ -71,6 +84,8 @@
   </div>
 
   <div class="foot">缩进值支持 em、px 与百分比；负数（悬挂缩进）需要内边距配合，当前会上报而不是半途应用。</div>
+
+  <div class="pager">2026 / 05</div>
 </main>
 </body>
 </html>

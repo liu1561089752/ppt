@@ -2652,3 +2652,89 @@ test(':where() has zero specificity and :is() keeps its argument\'s', () => {
   assert.deepEqual(is.report.unsupportedDetails, []);
 });
 
+
+test('attribute selectors match like a browser', () => {
+  const build = (selector) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; gap: 10px; width: 1200px; }',
+    '  .card { flex: 1; height: 60px; background: #EEEEEE; }',
+    '  .card' + selector + ' { background: #FF0000; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row">',
+    '  <div class="card" data-kind="kpi"><div>1</div></div>',
+    '  <div class="card" data-kind="chart"><div>2</div></div>',
+    '  <div class="card" data-kind="kpi extra"><div>3</div></div>',
+    '  <div class="card"><div>4</div></div>',
+    '</div></main></body></html>'
+  ].join('\n'), {});
+
+  const marks = (selector) => {
+    const result = build(selector);
+    assert.deepEqual(result.report.unsupportedDetails, [], selector + ' must be translated');
+    const row = result.deck.slides[0].elements.find((element) => element.type === 'container' && element.children && element.children.length === 4);
+    assert.ok(row, 'the row must stay declarative for ' + selector);
+    return row.children.map((child) => ((child.background && child.background.fill) === 'FF0000' ? 'X' : '.')).join('');
+  };
+
+  assert.equal(marks('[data-kind]'), 'XXX.');
+  assert.equal(marks('[data-kind="kpi"]'), 'X...');
+  assert.equal(marks("[data-kind='kpi']"), 'X...');
+  assert.equal(marks('[data-kind=chart]'), '.X..');
+  assert.equal(marks('[data-kind~="kpi"]'), 'X.X.');
+  assert.equal(marks('[data-kind|="kpi"]'), 'X...');
+  assert.equal(marks('[data-kind^="ch"]'), '.X..');
+  assert.equal(marks('[data-kind$="tra"]'), '..X.');
+  assert.equal(marks('[data-kind*="pi"]'), 'X.X.');
+  assert.equal(marks('[data-kind="KPI" i]'), 'X...');
+  assert.equal(marks('[data-missing]'), '....');
+  // Combined with a pseudo-class, and with :not().
+  assert.equal(marks('[data-kind]:not([data-kind="chart"])'), 'X.X.');
+});
+
+test('an attribute selector we cannot parse is reported, not silently ignored', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .card { width: 200px; height: 80px; background: #EEEEEE; }',
+    '  .card[data-kind!=kpi] { background: #FF0000; }',
+    '</style></head><body><main class="slide"><div class="card" data-kind="kpi"></div></main></body></html>'
+  ].join('\n'));
+  const selectors = result.report.unsupportedDetails.filter((entry) => entry.property === 'selector');
+  assert.equal(selectors.length, 1, JSON.stringify(result.report.unsupportedDetails));
+  assert.ok(selectors[0].value.includes('data-kind!=kpi'), selectors[0].value);
+  // The rule must not be half-applied to every .card.
+  const card = result.deck.slides[0].elements.find((element) => element.type === 'shape' || element.type === 'container');
+  const fill = card.fill || (card.background && card.background.fill);
+  assert.equal(fill, 'EEEEEE');
+});
+
+test('position: fixed anchors to the slide, not to a positioned parent', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; }',
+    '  .card { position: absolute; left: 100px; top: 100px; width: 400px; height: 300px; background: #EEEEEE; }',
+    '  .badge { position: fixed; right: 20px; bottom: 20px; width: 120px; height: 40px; background: #FF0000; }',
+    '</style></head><body><main class="slide">',
+    '<div class="card"><div class="badge"><div>pinned</div></div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const walk = (nodes) => {
+    for (const node of nodes) {
+      const fill = node.fill || (node.background && node.background.fill);
+      if (fill === 'FF0000') return node;
+      if (node.children) {
+        const nested = walk(node.children);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
+  const badge = walk(result.deck.slides[0].elements);
+  assert.ok(badge, 'the fixed badge must be emitted');
+  // 1280 - 120 - 20 = 1140px, 720 - 40 - 20 = 660px, in inches.
+  assert.ok(Math.abs(badge.x - 1140 / 96) < 0.02, 'x was ' + badge.x);
+  assert.ok(Math.abs(badge.y - 660 / 96) < 0.02, 'y was ' + badge.y);
+});
+
