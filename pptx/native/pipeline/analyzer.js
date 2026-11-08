@@ -2984,6 +2984,64 @@ function borderWidthPt(value) {
   return Number.isFinite(number) ? Math.max(0.25, number) : 0.75;
 }
 
+/**
+ * One `<td>`/`<th>`: the text, the cell options PowerPoint understands, the span it
+ * covers, and the numbers a row height needs later.
+ */
+function readTableCell(cell, ctx, rowBackground) {
+  const style = ctx.styles.computed(cell);
+  const color = parseColor(style.color);
+  const background = backgroundOf(style) || rowBackground;
+  const weight = String(style.fontWeight || '').toLowerCase();
+  const sizePt = parseLength(style.fontSize);
+  const fontSizePt = sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(2)) : 10.5;
+  const colspan = spanOf(cell, 'colspan', 12);
+  const rowspan = spanOf(cell, 'rowspan', 64);
+  const padding = boxShorthand(style, 'padding');
+  const paddingPt = [padding.top, padding.right, padding.bottom, padding.left]
+    .map((value) => Number((value * 72).toFixed(2)));
+  const text = normalizedText(cell);
+  const options = {
+    bold: cell.tag === 'th' || weight === 'bold' || Number(weight) >= 600,
+    color: color && color.hex ? color.hex : undefined,
+    fill: background && background.hex ? { color: background.hex } : undefined,
+    fontSize: sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(1)) : undefined,
+    align: style.textAlign || (cell.tag === 'th' ? 'left' : undefined),
+    border: cellBorderOptions(style)
+  };
+  // A cell margin is the CSS padding. PowerPoint stores it in points as
+  // top/right/bottom/left and PptxGenJS writes marT/marR/marB/marL from it.
+  if (paddingPt.some((value) => value > 0)) options.margin = paddingPt;
+  const verticalAlign = String(style.verticalAlign || '').trim().toLowerCase();
+  if (verticalAlign === 'middle' || verticalAlign === 'bottom' || verticalAlign === 'top') {
+    options.valign = verticalAlign;
+  }
+  if (String(style.fontStyle || '').toLowerCase() === 'italic') options.italic = true;
+  const spacingPt = letterSpacingPtOf(style);
+  if (spacingPt) options.charSpacing = spacingPt;
+  if (colspan > 1) options.colspan = colspan;
+  if (rowspan > 1) options.rowspan = rowspan;
+  return {
+    node: cell,
+    text,
+    options,
+    colspan,
+    rowspan,
+    metrics: {
+      column: 0,
+      colspan,
+      rowspan,
+      text,
+      fontSizePt,
+      lineHeight: lineSpacingOf(style, fontSizePt).multiple,
+      paddingTop: padding.top,
+      paddingBottom: padding.bottom,
+      paddingLeft: padding.left,
+      paddingRight: padding.right
+    }
+  };
+}
+
 function readTable(domNode, ctx, contentWidth) {
   const rows = [];
   const rowNodes = [];
@@ -3001,64 +3059,86 @@ function readTable(domNode, ctx, contentWidth) {
   };
   collect(domNode, backgroundOf(ctx.styles.computed(domNode)));
 
-  let columns = 0;
-  // Per cell, the numbers a row height needs later: the text, the size it is set in,
-  // the padding around it and which columns it covers.
-  const metrics = [];
-  rowNodes.forEach(({ rowNode, sectionBackground }) => {
+  // Phase 1: read every row's cells the way the DOM presents them.
+  const rawRows = rowNodes.map(({ rowNode, sectionBackground }) => {
     const rowBackground = backgroundOf(ctx.styles.computed(rowNode)) || sectionBackground;
     const cells = elementChildren(rowNode).filter((child) => child.tag === 'td' || child.tag === 'th');
-    let spanTotal = 0;
-    const rowMetrics = [];
-    const mapped = cells.map((cell) => {
-      const style = ctx.styles.computed(cell);
-      const color = parseColor(style.color);
-      const background = backgroundOf(style) || rowBackground;
-      const weight = String(style.fontWeight || '').toLowerCase();
-      const sizePt = parseLength(style.fontSize);
-      const fontSizePt = sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(2)) : 10.5;
-      const colspan = spanOf(cell, 'colspan', 12);
-      const rowspan = spanOf(cell, 'rowspan', 64);
-      const padding = boxShorthand(style, 'padding');
-      const paddingPt = [padding.top, padding.right, padding.bottom, padding.left]
-        .map((value) => Number((value * 72).toFixed(2)));
-      const text = normalizedText(cell);
-      rowMetrics.push({
-        column: spanTotal,
-        colspan,
-        text,
-        fontSizePt,
-        lineHeight: lineSpacingOf(style, fontSizePt).multiple,
-        paddingTop: padding.top,
-        paddingBottom: padding.bottom,
-        paddingLeft: padding.left,
-        paddingRight: padding.right
-      });
-      spanTotal += colspan;
-      const options = {
-        bold: cell.tag === 'th' || weight === 'bold' || Number(weight) >= 600,
-        color: color && color.hex ? color.hex : undefined,
-        fill: background && background.hex ? { color: background.hex } : undefined,
-        fontSize: sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(1)) : undefined,
-        align: style.textAlign || (cell.tag === 'th' ? 'left' : undefined),
-        border: cellBorderOptions(style)
-      };
-      // A cell margin is the CSS padding. PowerPoint stores it in points as
-      // top/right/bottom/left and PptxGenJS writes marT/marR/marB/marL from it.
-      if (paddingPt.some((value) => value > 0)) options.margin = paddingPt;
-      const verticalAlign = String(style.verticalAlign || '').trim().toLowerCase();
-      if (verticalAlign === 'middle' || verticalAlign === 'bottom' || verticalAlign === 'top') {
-        options.valign = verticalAlign;
+    return cells.map((cell) => readTableCell(cell, ctx, rowBackground));
+  });
+
+  // Phase 2: place the cells on the grid `colspan` and `rowspan` describe. A browser walks
+  // each row left to right and skips the slots an earlier row reserved, and so does this.
+  // Only the cells that *start* in a row are emitted: PptxGenJS writes the merge
+  // placeholders itself from `colspan`/`rowspan`, so emitting the covered cells too would
+  // add a column per span and shift the whole table.
+  const occupied = [];
+  const carried = [];
+  let columns = 0;
+  const grid = rawRows.map((cells, rowIndex) => {
+    if (!occupied[rowIndex]) occupied[rowIndex] = [];
+    if (!carried[rowIndex]) carried[rowIndex] = [];
+    const placed = [];
+    let column = 0;
+    cells.forEach((cell) => {
+      while (occupied[rowIndex][column]) column += 1;
+      const rowspan = Math.min(cell.rowspan, Math.max(1, rawRows.length - rowIndex));
+      if (rowspan !== cell.rowspan) {
+        recordUnsupported(ctx, cell.node, 'rowspan', cell.rowspan,
+          'A rowspan reaching past the last row is clipped to the rows that exist');
+        if (rowspan > 1) cell.options.rowspan = rowspan;
+        else delete cell.options.rowspan;
       }
-      if (String(style.fontStyle || '').toLowerCase() === 'italic') options.italic = true;
-      const spacingPt = letterSpacingPtOf(style);
-      if (spacingPt) options.charSpacing = spacingPt;
-      if (colspan > 1) options.colspan = colspan;
-      if (rowspan > 1) options.rowspan = rowspan;
-      return { text, options };
+      for (let rowOffset = 0; rowOffset < rowspan; rowOffset += 1) {
+        const target = rowIndex + rowOffset;
+        if (!occupied[target]) occupied[target] = [];
+        if (!carried[target]) carried[target] = [];
+        for (let columnOffset = 0; columnOffset < cell.colspan; columnOffset += 1) {
+          occupied[target][column + columnOffset] = true;
+          // A rowspan covers the slots of the rows below it; those rows must not emit a
+          // cell there, because the merge placeholder already fills the slot.
+          if (rowOffset > 0) carried[target][column + columnOffset] = true;
+        }
+      }
+      cell.metrics.column = column;
+      placed.push(Object.assign(cell, { column, rowspan }));
+      column += cell.colspan;
     });
-    columns = Math.max(columns, spanTotal);
-    rows.push(mapped);
+    columns = Math.max(columns, column);
+    return placed;
+  });
+  columns = Math.max(columns, ...occupied.map((marks) => marks.length));
+
+  // Phase 3: emit the rows. A slot the HTML leaves unused is an empty cell in a browser,
+  // so it is emitted as one instead of letting PowerPoint close the gap.
+  const metrics = [];
+  grid.forEach((placed, rowIndex) => {
+    const rowMetrics = [];
+    const emitted = [];
+    let cursor = 0;
+    let next = 0;
+    while (cursor < columns) {
+      if (carried[rowIndex][cursor]) {
+        cursor += 1;
+        continue;
+      }
+      const cell = placed[next];
+      if (cell && cell.column === cursor) {
+        emitted.push({ text: cell.text, options: cell.options });
+        rowMetrics.push(cell.metrics);
+        cursor += cell.colspan;
+        next += 1;
+      } else {
+        emitted.push({ text: '', options: {} });
+        cursor += 1;
+      }
+    }
+    // Any cell that never found its column still has to be drawn.
+    while (next < placed.length) {
+      emitted.push({ text: placed[next].text, options: placed[next].options });
+      rowMetrics.push(placed[next].metrics);
+      next += 1;
+    }
+    rows.push(emitted);
     metrics.push(rowMetrics);
   });
 
@@ -3071,18 +3151,28 @@ function readTable(domNode, ctx, contentWidth) {
   const measureWidths = Array.isArray(colWidths) && colWidths.length
     ? colWidths
     : Array.from({ length: Math.max(1, columns) }, () => contentWidth / Math.max(1, columns));
+  const cellHeight = (cell) => {
+    const width = cellSpanWidth(measureWidths, cell.column, cell.colspan);
+    const usable = Math.max(0.1, width - cell.paddingLeft - cell.paddingRight);
+    return estimateTextHeight(cell.text, usable, cell.fontSizePt, {
+      marginIn: 0,
+      lineHeight: cell.lineHeight,
+      verticalInsetIn: cell.paddingTop + cell.paddingBottom
+    });
+  };
   const rowHeights = metrics.map((cells) => {
-    const tallest = cells.reduce((max, cell) => {
-      const width = cellSpanWidth(measureWidths, cell.column, cell.colspan);
-      const usable = Math.max(0.1, width - cell.paddingLeft - cell.paddingRight);
-      const height = estimateTextHeight(cell.text, usable, cell.fontSizePt, {
-        marginIn: 0,
-        lineHeight: cell.lineHeight,
-        verticalInsetIn: cell.paddingTop + cell.paddingBottom
-      });
-      return Math.max(max, height);
-    }, 0);
+    // A rowspan cell is measured over the rows it covers, further down.
+    const tallest = cells.reduce((max, cell) => (cell.rowspan > 1 ? max : Math.max(max, cellHeight(cell))), 0);
     return Number(Math.max(0.16, tallest).toFixed(4));
+  });
+  metrics.forEach((cells, rowIndex) => {
+    cells.forEach((cell) => {
+      if (!(cell.rowspan > 1)) return;
+      const share = cellHeight(cell) / cell.rowspan;
+      for (let offset = 0; offset < cell.rowspan && rowIndex + offset < rowHeights.length; offset += 1) {
+        rowHeights[rowIndex + offset] = Number(Math.max(rowHeights[rowIndex + offset], share).toFixed(4));
+      }
+    });
   });
   return { rows, columns, colWidths, rowHeights };
 }

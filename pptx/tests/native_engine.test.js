@@ -4483,3 +4483,69 @@ test('opacity fades a leaf, multiplies with the colour alpha, and is reported on
   assert.ok(opacityReport.reason.includes('subtree'));
 });
 
+
+test('colspan and rowspan place cells on the real grid instead of shifting columns', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 900px; border-collapse: collapse; font-size: 13px; }',
+    '  th, td { border: 1px solid #CCCCCC; padding: 8px; }',
+    '</style></head><body><main class="slide"><table>',
+    '  <thead><tr><th colspan="2">Region</th><th>Q1</th><th>Q2</th></tr></thead>',
+    '  <tbody>',
+    '    <tr><td rowspan="2">East</td><td>Shanghai</td><td>1284</td><td>1102</td></tr>',
+    '    <tr><td>Hangzhou</td><td>1096</td><td>988</td></tr>',
+    '    <tr><td colspan="4">Totals</td></tr>',
+    '  </tbody>',
+    '</table></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const table = result.analysis.slides[0].nodes[0];
+  assert.equal(table.columnCount, 4, 'the grid is four columns wide');
+  // Rows are lopsided on purpose: PptxGenJS writes the merge placeholders itself, so a
+  // row holds only the cells that *start* in it.
+  assert.equal(table.rows[0].length, 3);
+  assert.equal(table.rows[0][0].options.colspan, 2);
+  assert.equal(table.rows[1].length, 4);
+  assert.equal(table.rows[1][0].options.rowspan, 2);
+  assert.equal(table.rows[2].length, 3, 'the rowspan cell does not repeat in the next row');
+  assert.equal(table.rows[3].length, 1);
+  assert.equal(table.rows[3][0].options.colspan, 4);
+  const element = result.deck.slides[0].elements.find((entry) => entry.type === 'table');
+  assert.equal(element.options.colW.length, 4);
+  assert.equal(element.rows.length, 4);
+  assert.equal(element.options.rowH.length, 4);
+});
+
+test('a rowspan is clipped to the rows that exist and an unused slot becomes an empty cell', () => {
+  const clipped = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 800px; } td, th { padding: 6px; font-size: 12px; }',
+    '</style></head><body><main class="slide"><table>',
+    '  <tr><td rowspan="5">only one row exists</td><td>b</td></tr>',
+    '</table></main></body></html>'
+  ].join('\n'));
+  const report = clipped.report.unsupportedDetails.find((entry) => entry.property === 'rowspan');
+  assert.ok(report, 'the clipped span is reported');
+  const table = clipped.analysis.slides[0].nodes[0];
+  assert.equal(table.rows.length, 1);
+  assert.equal(table.rows[0][0].options.rowspan, undefined, 'a span of one row is not a merge');
+
+  // A row that stops short of the grid leaves empty cells in a browser; they are emitted
+  // so PowerPoint draws the same rectangle.
+  const ragged = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 800px; } td, th { padding: 6px; font-size: 12px; }',
+    '</style></head><body><main class="slide"><table>',
+    '  <tr><td>a</td><td>b</td><td>c</td></tr>',
+    '  <tr><td>only one</td></tr>',
+    '</table></main></body></html>'
+  ].join('\n'));
+  const raggedTable = ragged.analysis.slides[0].nodes[0];
+  assert.equal(raggedTable.columnCount, 3);
+  assert.equal(raggedTable.rows[1].length, 3, 'the short row is padded');
+  assert.equal(raggedTable.rows[1][2].text, '');
+});
+
