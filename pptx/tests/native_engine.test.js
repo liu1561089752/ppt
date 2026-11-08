@@ -2022,3 +2022,72 @@ test('html pipeline honours flex-grow and flex-basis longhands', () => {
   assert.equal(result.report.unsupportedDetails.length, 0);
 });
 
+
+test('html pipeline spans grid tracks with grid-column and grid-row', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; padding: 60px; }',
+    '  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; width: 1160px; }',
+    '  .cell { background: #F7F9F9; padding: 18px; }',
+    '  .wide { grid-column: span 2; background: #F2A24C; }',
+    '  .tall { grid-row: span 2; background: #2FA8A0; }',
+    '</style></head><body><main class="slide">',
+    '<div class="grid">',
+    '  <div class="cell wide"><div>宽</div></div>',
+    '  <div class="cell tall"><div>高</div></div>',
+    '  <div class="cell"><div>C</div></div>',
+    '  <div class="cell"><div>D</div></div>',
+    '  <div class="cell wide"><div>E</div></div>',
+    '  <div class="cell"><div>F</div></div>',
+    '</div></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const grid = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(grid, 'the grid must stay a declarative container');
+  const track = (1160 - 2 * 20) / 3 / 96; // (content 1160px - two gaps) / 3 tracks
+  assert.ok(Math.abs(grid.children[0].columnSpan - 2) < 0.0001);
+  assert.ok(Math.abs(grid.children[1].rowSpan - 2) < 0.0001);
+
+  // Wide item spans two tracks plus the gap between them.
+  const wide = grid.children[0];
+  assert.equal(wide.w, undefined, 'a stretched grid item must not bake a width');
+  const tall = grid.children[1];
+
+  const { layoutSlide } = require('../native/engine/layout');
+  const laid = layoutSlide(result.deck.slides[0], { width: 13.333, height: 7.5 }, result.deck.theme || {}, {});
+  const elements = Array.isArray(laid) ? laid : (laid.elements || []);
+  const shapes = elements.filter((element) => element.fill === 'F7F9F9' || element.fill === 'F2A24C' || element.fill === '2FA8A0');
+  assert.ok(shapes.length >= 6, 'every cell surface must be emitted, got ' + shapes.length);
+
+  const firstWide = shapes[0];
+  assert.ok(Math.abs(firstWide.w - (track * 2 + 20 / 96)) < 0.02,
+    'wide cell width ' + firstWide.w + ' expected ' + (track * 2 + 20 / 96));
+  const tallCell = shapes.find((element) => element.fill === '2FA8A0');
+  assert.ok(tallCell, 'the row-spanning cell must be emitted');
+  assert.ok(Math.abs(tallCell.x - (0.625 + 2 * (track + 20 / 96))) < 0.02,
+    'row-spanning cell x ' + tallCell.x);
+  assert.ok(tallCell.h > 1.5, 'a two-row cell must be taller than one row: ' + tallCell.h);
+  // Nothing was guessed: no unsupported entries and no absolute fallbacks.
+  assert.equal(result.report.unsupportedDetails.length, 0,
+    JSON.stringify(result.report.unsupportedDetails));
+  assert.deepEqual(result.report.containerFallbacks, []);
+});
+
+test('html pipeline reports explicit grid line placement', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .grid { display: grid; grid-template-columns: 1fr 1fr; width: 1000px; }',
+    '  .a { grid-column: 2 / 4; }',
+    '</style></head><body><main class="slide">',
+    '<div class="grid"><div class="a"><div>x</div></div><div><div>y</div></div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const reported = result.report.unsupportedDetails.filter((entry) => entry.property === 'gridColumn');
+  assert.equal(reported.length, 1, JSON.stringify(result.report.unsupportedDetails));
+  assert.match(reported[0].reason, /Explicit grid line placement/u);
+});
+

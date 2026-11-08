@@ -37,11 +37,19 @@ const {
   parseBackgroundFocus
 } = require('./css');
 const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
+const {
+  placeGridItems,
+  gridRowCount,
+  resolveRowHeights,
+  rowTops,
+  spannedHeight
+} = require('../engine/grid_place');
 
 const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
-  'flexWrap', 'flexGrow', 'flexBasis', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'alignItems',
+  'flexWrap', 'flexGrow', 'flexBasis', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
+  'gridColumn', 'gridRow', 'alignItems',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
@@ -57,7 +65,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
-  'gridTemplateRows', 'gridAutoRows', 'gridColumn', 'gridRow',
+  'gridTemplateRows', 'gridAutoRows',
   'flexShrink', 'justifySelf'
 ]);
 
@@ -1177,6 +1185,56 @@ function resolveGridSizes(tracks, totalWidth, gap) {
   });
 }
 
+/** Parse `grid-column`/`grid-row` into a span, flagging explicit line placement. */
+function gridSpanOf(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim().toLowerCase();
+  if (!text || text === 'auto') return { span: 1, explicit: false };
+  const spanToken = (token) => {
+    const match = /^span\s+(\d+)$/u.exec(token);
+    return match ? Number(match[1]) : null;
+  };
+  const parts = text.split('/').map((part) => part.trim());
+  if (parts.length === 1) {
+    const span = spanToken(parts[0]);
+    if (span !== null) return { span, explicit: false };
+    return { span: 1, explicit: Number.isFinite(Number(parts[0])) };
+  }
+  const endSpan = spanToken(parts[1]);
+  if (endSpan !== null) return { span: endSpan, explicit: parts[0] !== 'auto' };
+  const start = Number(parts[0]);
+  const end = Number(parts[1]);
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+    return { span: end - start, explicit: true };
+  }
+  return { span: 1, explicit: true };
+}
+
+/** The spans a grid item declares, plus whether it pinned an explicit line. */
+function gridPlacementOf(style) {
+  const column = gridSpanOf(style.gridColumn);
+  const row = gridSpanOf(style.gridRow);
+  return {
+    columnSpan: column.span,
+    rowSpan: row.span,
+    explicitColumn: column.explicit,
+    explicitRow: row.explicit
+  };
+}
+
+function visibleChildren(domNode, ctx) {
+  return elementChildren(domNode).filter((child) => {
+    const childStyle = ctx.styles.computed(child);
+    return childStyle.display !== 'none' && childStyle.visibility !== 'hidden';
+  });
+}
+
+/** Move a laid-out subtree vertically (heights never depend on y). */
+function shiftSubtree(node, deltaY) {
+  if (!node || !Number.isFinite(node.y) || !deltaY) return;
+  node.y += deltaY;
+  (node.children || []).forEach((child) => shiftSubtree(child, deltaY));
+}
+
 function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   const columnGap = inchesOf(style.columnGap || style.gap, 'x', {}) || 0;
   const rowGap = inchesOf(style.rowGap || style.gap, 'x', {}) || 0;
@@ -1187,31 +1245,73 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
     : [Math.max(0, contentBox.w)];
   const columnLeft = (column) => {
     let left = contentBox.x;
-    for (let index = 0; index < column; index += 1) left += sizes[index] + columnGap;
+    for (let index = 0; index < column; index += 1) left += sizes[Math.min(index, sizes.length - 1)] + columnGap;
     return left;
   };
-  const kids = sortByOrder(elementChildren(domNode), ctx);
-  const nodes = [];
-  let cursorY = contentBox.y;
-  for (let start = 0; start < kids.length; start += columns) {
-    const row = kids.slice(start, start + columns);
-    const rowNodes = [];
-    row.forEach((child, column) => {
-      const node = analyzeNode(child, {
-        x: columnLeft(column),
-        y: cursorY,
-        w: sizes[Math.min(column, sizes.length - 1)],
-        h: null
-      }, inherited, ctx);
-      if (node) rowNodes.push(node);
-    });
-    const rowHeight = rowNodes.reduce((max, node) => Math.max(max, node.h), 0);
-    rowNodes.forEach((node) => { node.h = Math.max(node.h, rowHeight); });
-    nodes.push(...rowNodes);
-    cursorY += rowHeight + rowGap;
-  }
-  nodes.gridTracks = tracks;
-  return nodes;
+  const spanWidth = (column, span) => {
+    let width = 0;
+    for (let index = column; index < column + span; index += 1) {
+      width += sizes[Math.min(index, sizes.length - 1)];
+    }
+    return width + columnGap * Math.max(0, span - 1);
+  };
+
+  const kids = sortByOrder(visibleChildren(domNode, ctx), ctx);
+  const plans = kids.map((child) => {
+    const childStyle = ctx.styles.computed(child);
+    const placement = gridPlacementOf(childStyle);
+    if (placement.explicitColumn) {
+      recordUnsupported(ctx, child, 'gridColumn', childStyle.gridColumn,
+        'Explicit grid line placement is not modelled; the item is auto-placed with its span width');
+    }
+    if (placement.explicitRow) {
+      recordUnsupported(ctx, child, 'gridRow', childStyle.gridRow,
+        'Explicit grid line placement is not modelled; the item is auto-placed with its span height');
+    }
+    return { columnSpan: placement.columnSpan, rowSpan: placement.rowSpan };
+  });
+
+  const placements = placeGridItems(plans, columns);
+  const nodes = kids.map((child, index) => {
+    const place = placements[index];
+    return analyzeNode(child, {
+      x: columnLeft(place.column),
+      y: contentBox.y,
+      w: spanWidth(place.column, place.columnSpan),
+      h: null
+    }, inherited, ctx);
+  });
+
+  // A declared height is authoritative: it neither grows nor gets stretched.
+  const declared = kids.map((child) => ctx.styles.computed(child).height !== undefined);
+  const heights = nodes.map((node) => (node && Number.isFinite(node.h) ? node.h : 0));
+  const rows = gridRowCount(placements);
+  const rowHeights = resolveRowHeights(placements, heights, rows, rowGap);
+  const tops = rowTops(rowHeights, contentBox.y, rowGap);
+  const alignItems = String(style.alignItems || 'stretch').toLowerCase();
+  const aligned = [];
+  nodes.forEach((node, index) => {
+    if (!node) return;
+    const place = placements[index];
+    const total = spannedHeight(rowHeights, place, rowGap);
+    const top = tops[place.row] === undefined ? contentBox.y : tops[place.row];
+    const childAlign = alignSelfOf(ctx.styles.computed(kids[index])) || alignItems;
+    // The child was measured at the top of the grid, so move its whole subtree.
+    shiftSubtree(node, top - node.y);
+    node.x = columnLeft(place.column);
+    node.w = spanWidth(place.column, place.columnSpan);
+    node.y = top;
+    if (!declared[index]) node.h = total;
+    const height = node.h;
+    if (childAlign === 'center') node.y = top + (total - height) / 2;
+    else if (childAlign === 'end' || childAlign === 'flex-end') node.y = top + total - height;
+    if (childAlign && childAlign !== 'stretch') node.alignSelf = childAlign;
+    if (place.columnSpan > 1) node.columnSpan = place.columnSpan;
+    if (place.rowSpan > 1) node.rowSpan = place.rowSpan;
+    aligned.push(node);
+  });
+  aligned.gridTracks = tracks;
+  return aligned;
 }
 
 function spanOf(cell, attribute, limit) {

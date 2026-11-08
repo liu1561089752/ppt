@@ -1,6 +1,13 @@
 'use strict';
 
 const { estimateTextHeight, estimateRichTextHeight, wrapText } = require('./text_measure');
+const {
+  placeGridItems,
+  gridRowCount,
+  resolveRowHeights,
+  rowTops,
+  spannedHeight
+} = require('./grid_place');
 
 /**
  * Layout engine.
@@ -311,29 +318,51 @@ function placeGrid(container, box, theme, options, sink) {
   const children = container.children || [];
   if (!children.length) return padding.top + padding.bottom;
 
+  const spanWidth = (column, span) => {
+    let width = 0;
+    for (let index = column; index < column + span; index += 1) width += columnWidth(index);
+    return width + columnGap * Math.max(0, span - 1);
+  };
+  const plans = children.map((child) => ({ columnSpan: child.columnSpan, rowSpan: child.rowSpan }));
+  const placements = placeGridItems(plans, columns);
+  // A child that declares its own height keeps it and does not size the rows.
+  const declared = children.map((child) => child.h !== undefined);
+  const heights = children.map((child, index) => {
+    const place = placements[index];
+    return measureElementHeight(child, spanWidth(place.column, place.columnSpan), theme, options);
+  });
+  const rowHeights = resolveRowHeights(placements, heights, gridRowCount(placements), rowGap);
+  const tops = rowTops(rowHeights, contentY, rowGap);
   const align = container.align || 'stretch';
-  let cursorY = contentY;
-  for (let start = 0; start < children.length; start += columns) {
-    const row = children.slice(start, start + columns);
-    const heights = row.map((child, column) => measureElementHeight(child, columnWidth(column), theme, options));
-    const rowHeight = Math.max(...heights);
-    row.forEach((child, column) => {
-      const childAlign = child.alignSelf || align;
-      let height = heights[column];
-      let y = cursorY;
-      if (childAlign === 'stretch') height = rowHeight;
-      else if (childAlign === 'center') y = cursorY + (rowHeight - height) / 2;
-      else if (childAlign === 'end') y = cursorY + rowHeight - height;
-      emitElement(child, {
-        x: columnLeft(column),
-        y,
-        w: columnWidth(column),
-        h: height
-      }, theme, options, sink);
-    });
-    cursorY += rowHeight + rowGap;
+  if (process.env.NATIVE_DEBUG_GRID) {
+    process.stderr.write('[placeGrid] columns=' + columns + ' rowGap=' + rowGap.toFixed(4)
+      + ' sizes=' + sizes.map((v) => v.toFixed(3)).join('/')
+      + ' heights=' + heights.map((v) => v.toFixed(3)).join('/')
+      + ' rows=' + rowHeights.map((v) => v.toFixed(3)).join('/')
+      + ' placements=' + placements.map((p) => p.row + ':' + p.column + 'x' + p.columnSpan + 'x' + p.rowSpan).join(' ') + '\n');
   }
-  return padding.top + (cursorY - contentY - rowGap) + padding.bottom;
+
+  children.forEach((child, index) => {
+    const place = placements[index];
+    const total = spannedHeight(rowHeights, place, rowGap);
+    const top = tops[place.row] === undefined ? contentY : tops[place.row];
+    const childAlign = child.alignSelf || align;
+    let height = heights[index];
+    let y = top;
+    if (childAlign === 'stretch' && !declared[index]) height = total;
+    else if (childAlign === 'center') y = top + (total - height) / 2;
+    else if (childAlign === 'end') y = top + total - height;
+    emitElement(child, {
+      x: columnLeft(place.column),
+      y,
+      w: spanWidth(place.column, place.columnSpan),
+      h: height
+    }, theme, options, sink);
+  });
+
+  const lastRow = rowHeights.length - 1;
+  const contentHeight = lastRow < 0 ? 0 : tops[lastRow] + rowHeights[lastRow] - contentY;
+  return padding.top + contentHeight + padding.bottom;
 }
 
 function emitElement(source, box, theme, options, sink) {

@@ -397,7 +397,13 @@ function noteFallback(report, reason) {
 function containerPlan(node, state) {
   if (!isGroup(node)) return { ok: false, reason: 'no children' };
   if (state && state.blocked && state.blocked.has(node.id)) {
-    return { ok: false, reason: 'engine geometry disagreed' };
+    const delta = state.blockedDeltas && state.blockedDeltas.get(node.id);
+    return {
+      ok: false,
+      reason: delta === undefined
+        ? 'engine geometry disagreed'
+        : 'engine geometry disagreed by ' + delta.toFixed(3) + 'in'
+    };
   }
   if (node.backgroundImage) return { ok: false, reason: 'group paints a background image' };
 
@@ -674,6 +680,22 @@ function containerChild(node, parentPlan, context) {
     if (parentPlan.display === 'block') element.boxMargin = marginsOf(node);
     if (node.alignSelf) element.alignSelf = node.alignSelf;
   }
+  // A grid child may span several tracks; the engine replays the same placement.
+  if (node.columnSpan) element.columnSpan = node.columnSpan;
+  if (node.rowSpan) element.rowSpan = node.rowSpan;
+  // The engine derives a grid item's box from its tracks, so only the sizes the
+  // CSS actually declared may be baked in - a stretched height would otherwise be
+  // measured back as the item's natural size and inflate the row.
+  if (parentPlan.columns) {
+    if (!(node.style && node.style.width !== undefined)) delete element.w;
+    if (!(node.style && node.style.height !== undefined)) delete element.h;
+  }
+  if (process.env.NATIVE_DEBUG_GRID) {
+    process.stderr.write('[grid] node ' + String(node.id) + ' tag=' + String(node.tag)
+      + ' display=' + String(parentPlan.display)
+      + ' nodeSpan=' + String(node.columnSpan) + '/' + String(node.rowSpan)
+      + ' elementSpan=' + String(element.columnSpan) + '/' + String(element.rowSpan) + '\n');
+  }
   delete element.x;
   delete element.y;
   element._probe = node.id;
@@ -767,6 +789,7 @@ function verifySlide(elements, pageSize, theme, probes, owners) {
     owners.forEach((ownerId) => { if (ownerId !== undefined) mismatched.add(ownerId); });
     return { mismatched, maxDelta: Number.POSITIVE_INFINITY, error };
   }
+  const deltas = new Map();
   resolved.forEach((element) => {
     const probe = element._probe;
     if (probe === undefined) return;
@@ -774,7 +797,10 @@ function verifySlide(elements, pageSize, theme, probes, owners) {
     if (!expected) return;
     if (![element.x, element.y, element.w, element.h].every(Number.isFinite)) {
       const owner = owners.get(probe);
-      if (owner !== undefined && owner !== null) mismatched.add(owner);
+      if (owner !== undefined && owner !== null) {
+        mismatched.add(owner);
+        deltas.set(owner, Number.POSITIVE_INFINITY);
+      }
       maxDelta = Number.POSITIVE_INFINITY;
       return;
     }
@@ -787,10 +813,20 @@ function verifySlide(elements, pageSize, theme, probes, owners) {
     if (delta > maxDelta) maxDelta = delta;
     if (delta > BOX_TOLERANCE) {
       const owner = owners.get(probe);
-      if (owner !== undefined && owner !== null) mismatched.add(owner);
+      if (owner !== undefined && owner !== null) {
+        mismatched.add(owner);
+        if (delta > (deltas.get(owner) || 0)) deltas.set(owner, delta);
+      }
+      // Debugging aid: NATIVE_DEBUG_GEOMETRY=1 prints every disagreement.
+      if (process.env.NATIVE_DEBUG_GEOMETRY) {
+        process.stderr.write('[geometry] ' + String(probe) + ' delta=' + delta.toFixed(3)
+          + ' expected=' + [expected.x, expected.y, expected.w, expected.h].map((v) => Number(v).toFixed(3)).join(',')
+          + ' actual=' + [element.x, element.y, element.w, element.h].map((v) => Number(v).toFixed(3)).join(',')
+          + ' type=' + element.type + '\n');
+      }
     }
   });
-  return { mismatched, maxDelta };
+  return { mismatched, deltas, maxDelta };
 }
 
 function stripProbes(elements) {
@@ -863,7 +899,12 @@ function buildDeckSpec(analysis, options = {}) {
       if (!verification.mismatched.size) break;
       const newlyBlocked = [...verification.mismatched].filter((id) => !state.blocked.has(id));
       if (!newlyBlocked.length) break;
-      newlyBlocked.forEach((id) => state.blocked.add(id));
+      state.blockedDeltas = state.blockedDeltas || new Map();
+      newlyBlocked.forEach((id) => {
+        state.blocked.add(id);
+        const delta = verification.deltas && verification.deltas.get(id);
+        if (delta !== undefined) state.blockedDeltas.set(id, delta);
+      });
     }
 
     [

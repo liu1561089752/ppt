@@ -50,7 +50,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Cascade | stylesheet order + specificity (ids, classes, tags), then inline `style=""`, plus `var(--token, fallback)` |
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
-| Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), block flow, `display: flex` (row/column, `gap`, `flex`/`flex-grow`/`flex-basis`, `align-items`, `align-self`, `justify-content`, `order`), `display: grid` with fractional/fixed/percentage tracks (`repeat()`, `minmax()` max, `order` too) |
+| Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), block flow, `display: flex` (row/column, `gap`, `flex`/`flex-grow`/`flex-basis`, `align-items`, `align-self`, `justify-content`, `order`), `display: grid` with fractional/fixed/percentage tracks (`repeat()`, `minmax()` max, `order` too) plus `grid-column`/`grid-row` spans (`span N`, `A / span N`, `A / B`) |
 | Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring) |
 | Transforms | `transform: rotate(<deg|rad|grad|turn>)` on a text box, shape or picture → native shape rotation (clockwise, about the centre). A rotation combined with `scale`/`skew`/`translate` is reported rather than half-applied; a rotated *group* is reported because a native container cannot carry a rotation |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
@@ -79,6 +79,13 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   properties are resolved globally rather than per-subtree.
 - **Percentages** resolve against the direct parent's *content* box, which is the
   authored intent but differs from a browser when a parent's height is auto.
+- **Grid placement is row-major auto-flow.** `grid-column`/`grid-row` spans
+  (`span N`, `A / span N`, `A / B`) are honoured, but an explicit line number
+  (`grid-column: 2`) is reported: the item is still auto-placed and the report
+  says so. `grid-template-rows`, `grid-auto-rows`, named areas and
+  `grid-auto-flow: column` are not modelled. Rows are sized by their single-row
+  items; an item spanning several rows grows them only when they are too short,
+  and an item that declares its own `height` keeps it instead of stretching.
 - **Text measurement is an estimate**, not OpenType shaping. Wrapping can differ
   from the browser, especially with mixed scripts and unusual tracking.
 - **Unsupported visuals are reported, not approximated**: `filter`,

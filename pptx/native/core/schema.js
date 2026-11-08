@@ -143,6 +143,16 @@ function validateContainer(prefix, element, errors) {
   if (element.align !== undefined && !['start', 'center', 'end', 'stretch'].includes(element.align)) {
     errors.push(prefix + '.align must be one of: start, center, end, stretch');
   }
+  if (element.columnSpan !== undefined) {
+    if (!Number.isInteger(element.columnSpan) || element.columnSpan < 1) {
+      errors.push(prefix + '.columnSpan must be a positive integer');
+    }
+  }
+  if (element.rowSpan !== undefined) {
+    if (!Number.isInteger(element.rowSpan) || element.rowSpan < 1) {
+      errors.push(prefix + '.rowSpan must be a positive integer');
+    }
+  }
   if (element.overlays !== undefined) {
     if (!Array.isArray(element.overlays)) {
       errors.push(prefix + '.overlays must be an array');

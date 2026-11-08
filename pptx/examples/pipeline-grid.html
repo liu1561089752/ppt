@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Native Grid Spans</title>
+<style>
+  :root {
+    --bg: #0B1417;
+    --surface: #F6F8F8;
+    --ink: #12292C;
+    --muted: #5A6D72;
+    --accent: #F2A24C;
+    --teal: #2FA8A0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif; }
+
+  .slide {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    background: var(--bg);
+    padding: 56px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .kicker { font-size: 12px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--teal); }
+  h1 { font-size: 36px; line-height: 1.2; color: #F1F5F5; margin: 0; }
+  .lead { font-size: 14px; line-height: 1.7; color: #A6B6BA; width: 900px; margin: 0; }
+
+  /* A dashboard grid: the summary spans two columns, the rail spans two rows. */
+  .board {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 18px;
+    width: 1152px;
+  }
+  .panel {
+    height: 205px;
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .hero { grid-column: span 2; height: 205px; background: #14302F; }
+  .rail { grid-row: span 2; height: 428px; background: #10313A; }
+
+  .panel h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+  .panel p { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 0; }
+  .hero h3 { color: #EAF1F0; font-size: 19px; }
+  .hero p { color: #9FC0BE; font-size: 12.5px; }
+  .rail h3 { color: #CFE6E9; }
+  .rail p { color: #8FB2B8; }
+
+  .figure { font-size: 34px; font-weight: 700; color: #16363A; }
+  .hero .figure { color: var(--accent); }
+  .rail .figure { color: #7FD6D0; font-size: 26px; }
+  .unit { font-size: 12px; color: var(--muted); }
+
+  /* One row per channel: a nested flex line, still editable text and shapes. */
+  .channel {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 10px;
+  }
+  .channel .name { width: 84px; font-size: 12px; color: #B6D2D6; }
+  .channel .bar { height: 8px; border-radius: 4px; background: #2FA8A0; }
+  .channel .bar.w1 { width: 146px; }
+  .channel .bar.w2 { width: 88px; background: #1F7B7A; }
+  .channel .bar.w3 { width: 48px; background: #175A5E; }
+  .channel .pct { width: 42px; text-align: right; font-size: 12px; font-weight: 700; color: #CFE6E9; }
+  .delta { font-size: 12px; font-weight: 700; color: #7FD6D0; }
+  .total { font-size: 12.5px; font-weight: 700; color: #CFE6E9; padding-top: 14px; }
+  .source { font-size: 11px; color: #6E8F95; padding-top: 6px; }
+</style>
+</head>
+<body>
+
+<main class="slide">
+  <div class="kicker">native grid / track spans</div>
+  <h1>分区来自网格，不是逐个摆的方框</h1>
+  <p class="lead">下面的仪表盘由一个 CSS 网格声明：摘要跨两列、右栏跨两行，其余单元自动落位。转换后仍是可编辑的原生形状与文本。</p>
+
+  <div class="board">
+    <div class="panel hero">
+      <h3>季度净收入</h3>
+      <div class="figure">2.84<span class="unit"> 亿元</span></div>
+      <div class="delta">▲ 12.4% 同比</div>
+      <p>摘要区使用 <code>grid-column: span 2</code>：宽度等于两条轨道加一个间隙。</p>
+    </div>
+
+    <div class="panel rail">
+      <h3>渠道构成</h3>
+      <div class="figure">52%</div>
+      <p>右栏使用 <code>grid-row: span 2</code>，高度跨过两行。</p>
+      <div class="channel">
+        <div class="name">直销</div>
+        <div class="bar w1"></div>
+        <div class="pct">52%</div>
+      </div>
+      <div class="channel">
+        <div class="name">分销</div>
+        <div class="bar w2"></div>
+        <div class="pct">31%</div>
+      </div>
+      <div class="channel">
+        <div class="name">线上</div>
+        <div class="bar w3"></div>
+        <div class="pct">17%</div>
+      </div>
+      <div class="total">直销净额 1.42 亿元 · 分销 0.85 亿元</div>
+      <div class="source">数据来源：财务系统，2026 Q1 结算口径</div>
+    </div>
+
+    <div class="panel">
+      <h3>毛利率</h3>
+      <div class="figure">46%</div>
+      <p>环比提升 2.1 个百分点，主要由直营渠道拉动。</p>
+    </div>
+
+    <div class="panel">
+      <h3>客户留存</h3>
+      <div class="figure">91%</div>
+      <p>连续四个季度高于 90%，续约率同步走高。</p>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>
