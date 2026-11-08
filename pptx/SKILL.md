@@ -767,6 +767,9 @@ Behaviour worth knowing:
 - A `direction: "column"` container may also carry `wrap: true`; `crossGap` is the space between columns. A wrapping column needs a definite height and every item needs a declared width: it breaks by height (the shared `flexColumns`), and `alignContent` then spreads the columns on the inline axis exactly as it spreads the lines of a wrapped row.
 - `writing-mode`: `vertical-rl` → `vert="eaVert"`, `sideways-rl` → `vert`, `sideways-lr` and Latin-only `vertical-lr` → `vert270`. `vertical-lr` over CJK is reported: DrawingML names no upright left-to-right direction.
 - `position: sticky` is static: a slide never scrolls, so its offsets never apply.
+- A `linear-gradient` layered above a `url()` picture is a scrim: the picture and a gradient shape are emitted, the shape above the picture and below the text.
+- `margin: auto` centres a fixed-width box (both sides) or pushes it to the end edge (one side); in a flex column the same decision travels to the engine as `align-self`.
+- A painted inline box, text mixed with element children, and a per-corner `border-radius` are reported rather than approximated silently.
 - Gradients: only `linear-gradient` is translated, and its direction is optional (`to bottom` when omitted, otherwise `deg`/`rad`/`grad`/`turn` or `to <side>`). `radial-`/`conic-`/`repeating-*` fills are reported and the box is left unpainted.
 - The gradient, `text-indent` and East-Asian-font patches rewrite `slideN.xml` by index, so they must walk the laid-out element list (container backgrounds, single-side border strips and overlays included), not the deck spec.
 - `writing-mode`: `vertical-rl` → `vert="eaVert"` (`white-space: nowrap` plus `overflow: hidden`): the analyzer keeps the widest fitting prefix plus `…`, flattens rich runs, and stays silent when the text already fits. A wrapping block or an unclipped box is reported instead.
@@ -848,7 +851,7 @@ Scope discipline: the pipeline covers absolute positioning (and `position: fixed
 
 ### Current Native quality gates
 
-- The CI suite runs Node engine tests (159 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
+- The CI suite runs Node engine tests (162 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
 - The visual comparator is active, but it only performs real deck comparisons when reviewed PNGs exist under `pptx/native/golden/<deck>/`. Its self-test is not a substitute for a real baseline.
 - Never add generated PNGs to Golden directories merely to make CI green. A human must review each paired HTML/Native slide and approve the baseline first.
 - LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.

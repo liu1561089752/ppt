@@ -17,12 +17,23 @@ function graphemes(text) {
   return Array.from(text);
 }
 
+/**
+ * Advance width in points. `letterSpacingPt` adds tracking to every character, which is
+ * what a tracked kicker actually occupies - ignoring it measured those labels too narrow
+ * to hold their own text, so an absolutely positioned one wrapped in half.
+ */
 function measureTextPt(text, fontSizePt, options = {}) {
+  const raw = String(text);
+  let width = null;
   if (options.fontManager) {
-    const measured = options.fontManager.measure(text, fontSizePt, options.fontFace);
-    if (measured !== null) return measured;
+    width = options.fontManager.measure(raw, fontSizePt, options.fontFace);
   }
-  return graphemes(String(text)).reduce((sum, char) => sum + glyphWidthFactor(char) * fontSizePt, 0);
+  if (width === null || width === undefined) {
+    width = graphemes(raw).reduce((sum, char) => sum + glyphWidthFactor(char) * fontSizePt, 0);
+  }
+  const tracking = Number(options.letterSpacingPt);
+  if (!Number.isFinite(tracking) || tracking === 0) return width;
+  return width + tracking * graphemes(raw).length;
 }
 
 function normalizeCjkLineBreaks(lines) {

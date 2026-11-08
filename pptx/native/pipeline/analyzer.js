@@ -34,6 +34,8 @@ const {
   backgroundOf,
   gradientOf,
   unsupportedGradientOf,
+  backgroundOverlayGradientOf,
+  untranslatedBackgroundLayers,
   backgroundImageOf,
   parseBackgroundFocus
 } = require('./css');
@@ -232,6 +234,29 @@ function descriptionFocus(value) {
   return parseBackgroundFocus(value);
 }
 
+/**
+ * The four corner radii in inches, in CSS order (top-left, top-right, bottom-right,
+ * bottom-left). `border-radius: 12px 12px 0 0` is a tab; a native rounded rectangle can
+ * only carry one radius, so the analyzer reports the corners it cannot keep.
+ */
+function radiusCorners(style) {
+  const sides = [style.borderTopLeftRadius, style.borderTopRightRadius,
+    style.borderBottomRightRadius, style.borderBottomLeftRadius].filter((value) => value);
+  const raw = sides.length ? sides.join(" ") : String(style.borderRadius || "");
+  if (!raw) return null;
+  const values = [];
+  for (const token of raw.trim().split(/\s+/u)) {
+    const length = parseLength(token);
+    if (!length) return null;
+    const inches = toInches(length, {});
+    values.push(Number.isFinite(inches) && inches > 0 ? Number(inches.toFixed(3)) : 0);
+  }
+  if (!values.length) return null;
+  // CSS repeats the list: one value means all four, two mean vertical/horizontal pairs.
+  const pick = (index) => values[index % values.length];
+  return [pick(0), pick(1), pick(2), pick(3)];
+}
+
 function radiusOf(style) {
   const raw = style.borderTopLeftRadius || style.borderRadius;
   if (!raw) return null;
@@ -255,7 +280,14 @@ function shrinkToFitWidth(domNode, style, options) {
   const fontSizePt = fontPxOf(style, options.fontSizePx) * 0.75;
   // A little slack: the glyph factors are estimates, and a box that hugs the text too
   // tightly wraps in the renderer, which is the one outcome shrink-to-fit must avoid.
-  const preferred = (measureTextPt(raw, fontSizePt, { fontManager: options.fontManager }) / 72) * 1.06 + 0.02;
+  const advance = measureTextPt(raw, fontSizePt, {
+    fontManager: options.fontManager,
+    letterSpacingPt: options.letterSpacingPt
+  }) / 72;
+  // The wrapper decides a line fits when `(width - 0.08) * 0.92 >= advance`, so a box
+  // that hugs its text has to undo exactly that: dividing instead of multiplying keeps
+  // a tracked label on one line, which a flat 1.06 did not.
+  const preferred = advance / 0.92 + 0.08 + 0.01;
   const available = Math.max(0, options.availableWidth);
   return Math.min(available, preferred) + options.insetLeft + options.insetRight;
 }
@@ -515,6 +547,13 @@ function buildRuns(domNode, baseStyle, ctx) {
       return;
     }
     const style = ctx.styles.computed(node);
+    // An inline box that paints a fill or a border draws a rectangle around its words. A
+    // text run has no such rectangle, so the words are kept and the paint is reported
+    // rather than dropped in silence.
+    if (backgroundOf(style) || gradientOf(style) || style.border || style.boxShadow) {
+      recordUnsupported(ctx, node, 'inlineBox', node.tag,
+        'An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped');
+    }
     const merged = Object.assign({}, inheritedStyle || baseStyle, style);
     if (!node.children.length) {
       pushText(normalizedText(node), merged);
@@ -527,6 +566,15 @@ function buildRuns(domNode, baseStyle, ctx) {
   const text = runs.map((run) => run.text).join('');
   const hasFormatting = runs.some((run) => run.options);
   return { runs, text, hasFormatting };
+}
+
+/** Text nodes that belong to this element and not to a child element. */
+function ownText(domNode) {
+  return (domNode.children || []).filter((child) => child.type === 'text')
+    .map((child) => String(child.text || ''))
+    .join(' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
 }
 
 function resolveKind(domNode, style, children) {
@@ -597,6 +645,8 @@ function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx
   const built = buildRuns(domNode, Object.assign({ fontSize: fontPx + 'px' }, style), ctx);
   const textIndent = textIndentOf(style, { parentWidth: availableWidth, fontSizePx: fontPx });
   const measureOptions = { lineHeight: multiple, safetyFactor: 0.92 };
+  const trackingPt = letterSpacingPtOf(style);
+  if (trackingPt) measureOptions.letterSpacingPt = trackingPt;
   // A positive indent narrows the first line, which can add a line. A negative one
   // (a hanging indent) widens it; the box model around it is not modelled, so it is
   // reported instead of half-applied.
@@ -712,12 +762,47 @@ function applyWritingMode(node, domNode, style, measured, explicitHeight, ctx) {
   }
 }
 
+/**
+ * A background gradient that sits above a picture is painted by its own shape, on top of
+ * the picture. Emitting it as a sibling node keeps the layout, the emission and the
+ * index-aligned XML patches working exactly as they do for a declared shape.
+ */
+function insertOverlayNodes(node, ctx) {
+  (node.children || []).forEach((child) => insertOverlayNodes(child, ctx));
+  if (!node.children || !node.children.length) return;
+  const decorated = [];
+  node.children.forEach((child) => {
+    decorated.push(child);
+    if (!child.overlayCss) return;
+    decorated.push({
+      id: ctx.nextId++,
+      tag: child.tag,
+      classes: child.classes,
+      kind: 'shape',
+      style: { backgroundImage: child.overlayCss },
+      override: { backgroundImage: child.overlayCss },
+      x: child.x,
+      y: child.y,
+      w: child.w,
+      h: child.h,
+      contentWidth: child.contentWidth,
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      border: null,
+      radius: child.radius,
+      overlayOf: child.id,
+      children: []
+    });
+  });
+  node.children.splice(0, node.children.length, ...decorated);
+}
+
 function analyzeNode(domNode, slot, inherited, ctx) {
   const node = analyzeNodeTree(domNode, slot, inherited, ctx);
   if (!node) return null;
   applyHeightConstraints(node, slot, ctx);
   attachDecorations(domNode, node, ctx);
   absoluteChildOverlays(node);
+  insertOverlayNodes(node, ctx);
   // One declared border side, on any kind of box, becomes a thin native shape along
   // that edge; the engine places it from the resolved box, so nothing is baked in.
   const isTableCell = domNode.tag === 'td' || domNode.tag === 'th';
@@ -766,6 +851,11 @@ function absoluteChildOverlays(node) {
     if (child.italic) overlay.italic = true;
     if (child.fontFace) overlay.fontFace = child.fontFace;
     if (child.lineSpacingMultiple) overlay.lineSpacingMultiple = child.lineSpacingMultiple;
+    // The node itself travels with the descriptor: a leaf that is not a container emits
+    // its overlays as ordinary text elements, and those want the full style (colour,
+    // tracking, font, role) rather than the handful of fields the engine's overlay
+    // builder understands.
+    overlay.node = child;
     if (node.overlays) node.overlays.push(overlay);
     else node.overlays = [overlay];
     added = true;
@@ -984,6 +1074,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     if (styleWidth === null) {
       const shrink = shrinkToFitWidth(domNode, style, {
         fontSizePx,
+        letterSpacingPt: letterSpacingPtOf(style),
         fontManager: ctx.fontManager,
         insetLeft,
         insetRight,
@@ -1023,6 +1114,20 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   const elementKids = elementChildren(domNode);
   const kind = resolveKind(domNode, style, elementKids);
   const unsupportedGradient = unsupportedGradientOf(style);
+  // A block that holds both text and elements has an inline formatting context: its text
+  // would share a line box with those children, which this shape does not model, so the
+  // text is not translated at all. Silence here would lose words, so it is reported.
+  if (kind === 'block' && elementKids.length && ownText(domNode)) {
+    recordUnsupported(ctx, domNode, 'element', domNode.tag,
+      'Text directly inside a block that also has element children does not share a line box with them, so it is not translated: wrap it in an element ("'
+      + ownText(domNode).slice(0, 32) + '")');
+  }
+  const corners = radiusCorners(style);
+  if (corners && new Set(corners).size > 1) {
+    recordUnsupported(ctx, domNode, 'borderRadius', style.borderRadius || style.borderTopLeftRadius,
+      'A native rounded rectangle carries one radius: corners ' + corners.map((value) => value.toFixed(2)).join('/')
+      + ' keep only the first value');
+  }
   if (unsupportedGradient) {
     recordUnsupported(ctx, domNode, 'backgroundImage', style.backgroundImage || style.background,
       'PowerPoint fills are linear only: ' + unsupportedGradient + ' cannot be translated, so the box keeps its geometry and is left unpainted');
@@ -1123,6 +1228,14 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       node.objectFit = layer.fit;
       node.focus = layer.focus;
       node.radius = radiusOf(style);
+      // A gradient layer above the picture is a scrim: a second native object paints it.
+      const overlay = backgroundOverlayGradientOf(style);
+      if (overlay) node.overlayCss = overlay;
+      untranslatedBackgroundLayers(style).forEach((what) => {
+        recordUnsupported(ctx, domNode, 
+          'backgroundImage', style.backgroundImage || style.background,
+          'Only one picture layer and one linear gradient above it can be painted: ' + what + ' is dropped');
+      });
       return node;
     }
     const attrWidth = Number(domNode.attrs.width);
@@ -1165,7 +1278,15 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   }
 
   const backgroundLayer = backgroundImageOf(style);
-  if (backgroundLayer) node.backgroundImage = backgroundLayer;
+  if (backgroundLayer) {
+    node.backgroundImage = backgroundLayer;
+    // The scrim above the picture is painted by the emitter (deck_builder reads the
+    // layer); what matters here is reporting the layers nothing can paint.
+    untranslatedBackgroundLayers(style).forEach((what) => {
+      recordUnsupported(ctx, domNode, 'backgroundImage', style.backgroundImage || style.background,
+        'Only one picture layer and one linear gradient above it can be painted: ' + what + ' is dropped');
+    });
+  }
 
   // Container-ish node: lay out children.
   const display = style.display;
@@ -1238,6 +1359,26 @@ function applyRelativeShift(node, style, parentWidth) {
 
 function relativeDy(node) {
   return node && node.relativeShift ? node.relativeShift.dy : 0;
+}
+
+/**
+ * A block with a declared width and `margin: auto` centres itself in the free space.
+ * One auto side pushes the box the other way, two split the space. The free space needs
+ * a declared width, so a box that hugs its text is reported instead of guessed.
+ */
+function autoMarginSlotX(style, contentBox, margins, explicitWidth, child, ctx) {
+  const left = String(style.marginLeft === undefined ? '' : style.marginLeft).trim().toLowerCase();
+  const right = String(style.marginRight === undefined ? '' : style.marginRight).trim().toLowerCase();
+  const autoLeft = left === 'auto';
+  const autoRight = right === 'auto';
+  if (!autoLeft && !autoRight) return contentBox.x + margins.left;
+  if (explicitWidth === null) {
+    recordUnsupported(ctx, child, 'margin', style.marginLeft || style.marginRight,
+      'An auto margin distributes the free space, which needs a declared width: this box hugs its text');
+    return contentBox.x + margins.left;
+  }
+  const free = Math.max(0, contentBox.w - explicitWidth);
+  return contentBox.x + (autoLeft && autoRight ? free / 2 : (autoLeft ? free : 0));
 }
 
 function childMargins(childStyle, context) {
@@ -1351,7 +1492,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     const slot = isAbsolute(childStyle)
       ? anchoredSlot(childStyle, containingBlockFor(childStyle, anchorBox, ctx), inherited)
       : {
-        x: contentBox.x + margins.left,
+        x: autoMarginSlotX(childStyle, contentBox, margins, explicitWidth, child, ctx),
         y: cursor + margins.top,
         w: explicitWidth === null ? slotWidth : explicitWidth,
         explicitWidth: explicitWidth !== null,
@@ -1825,6 +1966,23 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
 
     // Cross-axis alignment inside a column; align-self wins for one child.
     nodes.filter((node) => !node.absolute).forEach((node) => {
+      const style = node.style || {};
+      const autoLeft = String(style.marginLeft || '').trim().toLowerCase() === 'auto';
+      const autoRight = String(style.marginRight || '').trim().toLowerCase() === 'auto';
+      // An auto margin absorbs the free space on the cross axis before `align-items` gets
+      // a say, which is how a fixed-width paragraph centres itself in a flex column.
+      // The shift keeps the analyzer box right; `alignSelf` is how the same decision
+      // reaches the engine, which places a declarative column child from that field.
+      if (autoLeft && autoRight && Number.isFinite(node.w)) {
+        node.alignSelf = 'center';
+        shiftSubtree(node, 0, (contentBox.x + (contentBox.w - node.w) / 2) - node.x);
+        return;
+      }
+      if (autoLeft && !autoRight && Number.isFinite(node.w)) {
+        node.alignSelf = 'end';
+        shiftSubtree(node, 0, (contentBox.x + contentBox.w - node.w) - node.x);
+        return;
+      }
       const align = node.alignSelf || alignItems;
       let targetX = node.x;
       if (align === 'center') targetX = contentBox.x + (contentBox.w - node.w) / 2;
@@ -2981,6 +3139,9 @@ function analyzeHtml(html, options = {}) {
         ? layoutFlex(slideNode, contentBox, rootContext, ctx)
         : layoutFlow(slideNode, contentBox, rootContext, ctx));
     assignRoles(children);
+    // The root list is built here rather than by `analyzeNode`, so the scrim pass that
+    // turns a gradient-over-picture into a sibling shape has to run on it too.
+    insertOverlayNodes({ children }, ctx);
 
     // The root is not emitted as a container, so a decoration on it has no host.
     ['before', 'after'].forEach((pseudo) => {

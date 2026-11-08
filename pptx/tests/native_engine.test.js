@@ -4227,3 +4227,119 @@ test('a linear gradient reads its direction only when it has one', () => {
   });
 });
 
+
+test('a gradient above a background picture is a native scrim, not a lost layer', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 0; }',
+    '  .hero { width: 1280px; height: 420px;',
+    '          background-image: linear-gradient(180deg, rgba(10,20,26,0.15) 0%, rgba(10,20,26,0.92) 100%),',
+    '            url(native-image-assets/sample-panorama.png);',
+    '          background-size: cover; }',
+    '  .hero h1 { position: absolute; left: 64px; bottom: 32px; margin: 0; font-size: 40px; color: #FFFFFF; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="hero"><h1>Caption above the scrim</h1></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const elements = result.deck.slides[0].elements;
+  const picture = elements.find((element) => element.type === 'image');
+  assert.ok(picture, 'the picture layer is emitted');
+  const scrim = elements.find((element) => element.type === 'shape' && element.gradient);
+  assert.ok(scrim, 'the gradient layer is emitted as its own shape');
+  assert.equal(scrim.w, picture.w, 'and covers the picture');
+  assert.equal(scrim.h, picture.h);
+  assert.equal(scrim.gradient.stops.length, 2);
+  assert.equal(scrim.gradient.stops[0].transparency, 85, 'the alpha stops travel');
+  assert.equal(scrim.gradient.stops[1].transparency, 8);
+  // The caption has to sit above the scrim: it comes after it in paint order.
+  const caption = elements.find((element) => element.type === 'text');
+  assert.ok(caption && caption.text === 'Caption above the scrim', 'the absolute caption survives');
+  assert.ok(elements.indexOf(caption) > elements.indexOf(scrim), 'and paints above the scrim');
+
+  // A fill PowerPoint cannot paint is reported instead of being swallowed.
+  const radial = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 0; }',
+    '  .hero { width: 600px; height: 300px;',
+    '          background-image: radial-gradient(circle, rgba(0,0,0,0.4), rgba(0,0,0,0)),',
+    '            url(native-image-assets/sample-panorama.png); }',
+    '</style></head><body><main class="slide"><div class="hero"></div></main></body></html>'
+  ].join('\n'));
+  const report = radial.report.unsupportedDetails.find((entry) => entry.property === 'backgroundImage');
+  assert.ok(report, 'the radial layer is reported');
+  assert.ok(report.reason.includes('radial-gradient'), 'and named: ' + report.reason);
+});
+
+test('one radius for four corners, and three reports for what a run cannot paint', () => {
+  const perCorner = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .tab { width: 240px; height: 80px; background: #4FA398; border-radius: 16px 16px 0 0; }',
+    '  .round { width: 240px; height: 80px; background: #4FA398; border-radius: 12px; }',
+    '</style></head><body><main class="slide"><div class="tab"></div><div class="round"></div></main></body></html>'
+  ].join('\n'));
+  const radiusReports = perCorner.report.unsupportedDetails.filter((entry) => entry.property === 'borderRadius');
+  assert.equal(radiusReports.length, 1, 'only the box with different corners is reported');
+  assert.equal(perCorner.analysis.slides[0].nodes[1].radius, 0.125, 'uniform radii are kept');
+
+  const inline = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .line { width: 600px; font-size: 14px; }',
+    '  .tag { background: #4FA398; color: #FFFFFF; padding: 2px 6px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="line"><span class="tag">tag</span> trailing words</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.ok(inline.report.unsupportedDetails.some((entry) => entry.property === 'inlineBox'),
+    'a painted inline box is reported, not silently flattened');
+  // The span carries its own colour, so the box becomes rich text: the words live in
+  // the runs, and they are all still there.
+  const kept = JSON.stringify(inline.deck.slides[0].elements[0].text);
+  assert.ok(kept.includes('tag') && kept.includes('trailing'), 'while its words are kept: ' + kept);
+
+  const mixed = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .wrap { width: 600px; font-size: 14px; }',
+    '  .card { background: #EEEEEE; padding: 8px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="wrap">Intro text<div class="card">card body</div>Outro text</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.ok(mixed.report.unsupportedDetails.some((entry) => entry.property === 'element'
+    && entry.reason.includes('does not share a line box')),
+  'text mixed with element children is reported');
+});
+
+test('margin: auto centres a fixed-width box, and tracking widens the measurement', () => {
+  const centred = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 0; }',
+    '  .note { width: 1000px; margin: 40px auto 0; font-size: 14px; }',
+    '  .pin { width: 800px; margin-left: auto; margin-right: 0; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '  <p class="note">centred</p><p class="pin">pushed right</p>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(centred.report.unsupportedDetails, []);
+  const [note, pin] = centred.analysis.slides[0].nodes;
+  assert.equal(Number(note.x.toFixed(3)), 1.458, 'both autos split the free space');
+  assert.equal(Number(pin.x.toFixed(3)), 5, 'a left auto pushes the box to the end edge');
+
+  // letter-spacing is part of the advance, so a tracked label still fits on one line.
+  const tracked = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .kicker { position: absolute; top: 80px; left: 56px; font-size: 12px;',
+    '            letter-spacing: 3px; text-transform: uppercase; }',
+    '</style></head><body><main class="slide"><div class="kicker">NATIVE PAINT</div></main></body></html>'
+  ].join('\n'));
+  const kicker = tracked.deck.slides[0].elements.find((element) => element.type === 'text');
+  assert.equal(kicker.text, 'NATIVE PAINT', 'the whole label is one run');
+  assert.equal(kicker.charSpacing, 2.25, 'and the tracking is written');
+  const plainWidth = require('../native/engine/text_measure').measureTextPt('NATIVE PAINT', 9) / 72;
+  assert.ok(kicker.w > plainWidth + 0.2, 'the box grew by the tracking: ' + kicker.w);
+});
+

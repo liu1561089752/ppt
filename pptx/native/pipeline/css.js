@@ -1037,6 +1037,49 @@ function backgroundOf(style) {
   return null;
 }
 
+/**
+ * The CSS layers of a background, topmost first, each tagged with what it is. A deck hero
+ * is usually `background-image: linear-gradient(...), url(photo.jpg)` - a picture with a
+ * scrim over it - which is two native objects (a picture and a gradient shape), not one.
+ */
+function backgroundLayersOf(style) {
+  const declaration = String(style.backgroundImage || style.background || '').trim();
+  if (!declaration) return [];
+  if (!/gradient\(|url\(/iu.test(declaration)) return [];
+  return splitTopLevel(declaration, ',').map((layer) => layer.trim()).filter(Boolean).map((layer) => {
+    const gradient = parseLinearGradient(layer);
+    if (gradient) return { kind: 'gradient', gradient, css: layer };
+    const name = unsupportedGradientOf({ backgroundImage: layer });
+    if (name) return { kind: 'unsupported-gradient', name, css: layer };
+    if (/url\(/iu.test(layer)) return { kind: 'image', css: layer };
+    return { kind: 'unknown', css: layer };
+  });
+}
+
+/** The gradient painted above a background image, as the CSS text of that layer. */
+function backgroundOverlayGradientOf(style) {
+  const layers = backgroundLayersOf(style);
+  const imageIndex = layers.findIndex((layer) => layer.kind === 'image');
+  if (imageIndex < 0) return null;
+  const overlay = layers.slice(0, imageIndex).find((layer) => layer.kind === 'gradient');
+  return overlay ? overlay.css : null;
+}
+
+/** Layers this translation cannot paint, described for the report. */
+function untranslatedBackgroundLayers(style) {
+  const layers = backgroundLayersOf(style);
+  const problems = [];
+  const imageIndex = layers.findIndex((layer) => layer.kind === 'image');
+  layers.forEach((layer, index) => {
+    if (layer.kind === 'unsupported-gradient') problems.push(layer.name + '()');
+    else if (layer.kind === 'unknown') problems.push('that layer');
+    else if (layer.kind === 'gradient' && imageIndex >= 0 && index > imageIndex) problems.push('a gradient behind the picture');
+    else if (layer.kind === 'image' && index !== imageIndex) problems.push('a second picture layer');
+  });
+  if (layers.filter((layer) => layer.kind === 'image').length > 1) problems.push('a second picture layer');
+  return [...new Set(problems)];
+}
+
 /** Resolve a linear gradient from `background-image` or the `background` shorthand. */
 function gradientOf(style) {
   if (!style) return null;
@@ -1142,6 +1185,9 @@ module.exports = {
   parseLinearGradient,
   gradientAngleOf,
   unsupportedGradientOf,
+  backgroundLayersOf,
+  backgroundOverlayGradientOf,
+  untranslatedBackgroundLayers,
   parseBoxShadow,
   parseBorder,
   backgroundOf,

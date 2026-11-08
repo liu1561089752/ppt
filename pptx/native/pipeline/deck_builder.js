@@ -1,4 +1,4 @@
-'use strict';
+'use strfot';
 
 /**
  * Layout tree → Native Deck Spec (stage 3 of the HTML → Native pipeline).
@@ -31,6 +31,7 @@ const {
   parseColor,
   parseBoxShadow,
   backgroundOf,
+  backgroundOverlayGradientOf,
   gradientOf
 } = require('./css');
 
@@ -683,10 +684,49 @@ function textWithSurface(node, resolvedTheme, report) {
   return spec;
 }
 
+/**
+ * Absolutely positioned children of a leaf are emitted as separate objects at the leaf's
+ * corner plus their own offsets. A leaf cannot hold them, but dropping them loses content:
+ * a `position: absolute` caption inside a card that is not a container used to vanish.
+ */
+function emitLeafOverlays(node, context, shapes) {
+  const { report, resolvedTheme } = context;
+  (node.overlays || []).forEach((overlay) => {
+    // The child node travels with the descriptor, so the emission reuses the ordinary
+    // element builder: colour, tracking, font, role and line spacing all come along.
+    if (overlay.node) {
+      const element = leafElement(overlay.node, resolvedTheme, report);
+      if (element) {
+        element._z = zIndexOf(node);
+        shapes.push(element);
+      }
+      return;
+    }
+    const box = {
+      x: Number((xOf(node) + (overlay.x || 0)).toFixed(4)),
+      y: Number((yOf(node) + (overlay.y || 0)).toFixed(4)),
+      w: Number(Math.max(0.02, overlay.w).toFixed(4)),
+      h: Number(Math.max(0.02, overlay.h).toFixed(4))
+    };
+    if (overlay.fill) {
+      const shape = Object.assign({ type: 'shape', line: false, fill: overlay.fill }, box);
+      if (overlay.radius) shape.radius = overlay.radius;
+      shapes.push(shape);
+      report.shapes += 1;
+    }
+    if (overlay.text) {
+      const caption = Object.assign({ type: 'text', text: overlay.text }, box);
+      ['color', 'fontSize', 'align', 'valign', 'bold', 'italic', 'fontFace'].forEach((field) => {
+        if (overlay[field] !== undefined) caption[field] = overlay[field];
+      });
+      shapes.push(caption);
+      report.textElements += 1;
+    }
+  });
+}
+
 /** Leaf element (text / image / table / line) for a node, with counters bumped. */
 function leafElement(node, resolvedTheme, report) {
-  // A decoration needs a container to overlay; a plain leaf cannot carry one.
-  if (node.overlays && node.overlays.length) report.droppedDecorations += node.overlays.length;
   const element = leafElementRotationFree(node, resolvedTheme, report);
   if (element) attachBoxFacts(element, node);
   if (!element || node.rotate === undefined) return element;
@@ -809,6 +849,7 @@ function containerChild(node, parentPlan, context) {
     report.declarativeContainers += 1;
     emitContainerChildren(element, node, plan, context);
   } else {
+    if (node.overlays && node.overlays.length) report.droppedDecorations += node.overlays.length;
     element = leafElement(node, resolvedTheme, report);
     if (!element) return null;
     element.h = round4(node.h);
@@ -898,6 +939,31 @@ function emitAbsolute(node, context) {
       report.images += 1;
       report.backgroundImages += 1;
     }
+    // A gradient declared above the picture is a scrim: its own shape, above the picture
+    // and below the children, so text inside the container still reads.
+    // The scrim is read from the CSS here rather than carried on the node: an overlay
+    // gradient above a picture only exists for this container path, and the picture path
+    // for a leaf already emits its scrim as a sibling shape.
+    const scrimCss = backgroundOverlayGradientOf(node.style || {});
+    if (scrimCss) {
+      const scrim = surfaceElementFromNode({
+        id: 'overlay-' + node.id,
+        tag: node.tag,
+        style: { backgroundImage: scrimCss },
+        x: xOf(node),
+        y: yOf(node),
+        w: node.w,
+        h: node.h,
+        radius: node.radius
+      }, resolvedTheme);
+      if (scrim) {
+        scrim._probe = 'scrim-' + node.id;
+        probes.set(scrim._probe, boxOf(node));
+        owners.set(scrim._probe, ownerId);
+        elements.push(scrim);
+        report.shapes += 1;
+      }
+    }
   }
 
   if (isGroup(node)) {
@@ -936,6 +1002,7 @@ function emitAbsolute(node, context) {
       elements.push(strip);
       report.shapes += 1;
     }
+    emitLeafOverlays(node, context, elements);
     return;
   }
   element._probe = node.id;
@@ -943,6 +1010,7 @@ function emitAbsolute(node, context) {
   probes.set(node.id, boxOf(node));
   owners.set(node.id, ownerId);
   elements.push(element);
+  emitLeafOverlays(node, context, elements);
 }
 
 /**
