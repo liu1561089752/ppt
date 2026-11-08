@@ -53,7 +53,11 @@ function textOptions(el, theme) {
     valign: el.valign || 'mid',
     align: el.align || 'left',
     paraSpaceAfterPt: el.paraSpaceAfterPt || 0,
-    fit: 'shrink',
+    // No autofit: the analyzer already measured this box to the line, so letting the
+    // renderer shrink the glyphs to fit would trade a designed size for a guess at
+    // metrics it never told us. Wrapping is 10% conservative, so it wraps at most as
+    // often as the renderer does and the box stays big enough.
+    fit: 'none',
     transparency: el.transparency || 0,
     rotate: el.rotate || 0,
     isTextBox: true

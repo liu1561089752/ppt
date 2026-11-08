@@ -116,7 +116,10 @@ function estimateLineCount(text, widthIn, fontSizePt, options = {}) {
 function estimateTextHeight(text, widthIn, fontSizePt, options = {}) {
   const lines = estimateLineCount(text, widthIn, fontSizePt, options);
   const lineHeight = options.lineHeight || 1.22;
-  const paddingPt = (options.marginIn === undefined ? 0.04 : options.marginIn) * 144;
+  // The writer emits a text box with zero insets, so n lines are n line boxes high.
+  // Charging a vertical inset here made every text box 0.08in too tall, and since each
+  // following block is placed after it, a page with a dozen paragraphs drifted an inch.
+  const paddingPt = (options.verticalInsetIn === undefined ? 0 : options.verticalInsetIn) * 72;
   return (lines * fontSizePt * lineHeight + paddingPt) / 72;
 }
 
@@ -160,7 +163,7 @@ function estimateRichTextHeight(runs, widthIn, fontSizePt, options = {}) {
       lineWidth += width;
     });
   });
-  const paddingPt = margin * 144;
+  const paddingPt = (options.verticalInsetIn === undefined ? 0 : options.verticalInsetIn) * 72;
   return (lines * tallest * lineHeight + paddingPt) / 72;
 }
 

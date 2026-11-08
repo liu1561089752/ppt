@@ -128,7 +128,16 @@ sitting on top of the stat cards.
   sizes the implicit rows. Otherwise rows are sized by their single-row items, an
   item spanning several rows grows only the flexible rows it covers, and an item
   that declares its own `height` keeps it instead of stretching.
-- **Text measurement is an estimate**, not OpenType shaping. Wrapping can differ
+- **Text height is the CSS line box**: `lines x fontSize x lineHeight`, with nothing added,
+  which is why a stack of paragraphs does not drift down the page. Wrapping, on the other
+  hand, is deliberately conservative: the usable width is 10% narrower than the box (plus
+  0.08in) because PowerPoint measures glyphs a little differently, so a long line breaks a
+  touch early instead of running over its neighbour. There is no OpenType shaping, so
+  mixed scripts and unusual tracking can still differ from the browser. The wrap is greedy
+  and breaks an over-long token at grapheme level, which is what `word-break: break-all`/
+  `break-word` ask for and what PowerPoint itself does - so those values are translated,
+  while `keep-all` (which forbids that break) is reported. `overflow-wrap` is not read at
+  all, so it is reported rather than claimed.
   from the browser, especially with mixed scripts and unusual tracking. It is greedy
   and breaks an over-long token at grapheme level, which is what
   `word-break: break-all`/`break-word` ask for and what PowerPoint's own renderer

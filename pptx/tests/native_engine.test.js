@@ -2069,7 +2069,7 @@ test('html pipeline spans grid tracks with grid-column and grid-row', () => {
   assert.ok(tallCell, 'the row-spanning cell must be emitted');
   assert.ok(Math.abs(tallCell.x - (0.625 + 2 * (track + 20 / 96))) < 0.02,
     'row-spanning cell x ' + tallCell.x);
-  assert.ok(tallCell.h > 1.5, 'a two-row cell must be taller than one row: ' + tallCell.h);
+  // Two single-line rows plus the gap: the span is one box, so it is roughly twice\n  // a single row. The exact value follows from the text line box, not from padding.\n  assert.ok(tallCell.h > 1.25, 'a two-row cell must be taller than one row: ' + tallCell.h);
   // Nothing was guessed: no unsupported entries and no absolute fallbacks.
   assert.equal(result.report.unsupportedDetails.length, 0,
     JSON.stringify(result.report.unsupportedDetails));
@@ -2857,9 +2857,9 @@ test('white-space: nowrap stays on one line and is written as wrap="none"', asyn
     ] }] }, output);
     const xml = await readSlideXml(output);
     assert.equal((xml.match(/wrap="none"/gu) || []).length, 1);
-    // Only the wrapping box autofits; the nowrap box has no autofit child at all,
-    // which is PowerPoint's "do not autofit" (normAutofit would re-wrap the text).
-    assert.equal((xml.match(/<a:normAutofit/gu) || []).length, 1);
+  // No box autofits: the analyzer measured each one, so the writer does not ask the
+  // renderer to shrink the glyphs to fit (that would re-wrap the text as well).
+  assert.equal((xml.match(/<a:normAutofit/gu) || []).length, 0);
     assert.equal((xml.match(/<a:spAutoFit/gu) || []).length, 0);
   });
 
@@ -3181,7 +3181,7 @@ test('writing-mode: vertical-rl becomes native vertical text, not a rotation', a
     ] }] }, output);
     const xml = await readSlideXml(output);
     assert.equal((xml.match(/vert="eaVert"/gu) || []).length, 1);
-    assert.equal((xml.match(/<a:normAutofit/gu) || []).length, 1);
+  assert.equal((xml.match(/<a:normAutofit/gu) || []).length, 0);
   });
 });
 
@@ -3274,5 +3274,43 @@ test('floats pack into a wrapping row and say where that stops being CSS', () =>
   const noWidthReport = noWidth.report.unsupportedDetails.filter((entry) => entry.property === 'float');
   assert.equal(noWidthReport.length, 1);
   assert.ok(/declared width/u.test(noWidthReport[0].reason), noWidthReport[0].reason);
+});
+
+
+test('a text box is exactly as tall as its lines, so stacked blocks do not drift', () => {
+  const build = (blocks) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .line { width: 600px; font-size: 20px; line-height: 1.5; }',
+    '  .para { width: 600px; font-size: 13px; line-height: 1.9; }',
+    '</style></head><body><main class="slide">' + blocks + '</main></body></html>'
+  ].join('\n'));
+
+  const nodes = (result) => {
+    const out = [];
+    const walk = (list) => (list || []).forEach((node) => { out.push(node); walk(node.children); });
+    walk(result.analysis.slides[0].nodes);
+    return out.filter((node) => node.kind === 'text');
+  };
+
+  // One line at 20px with line-height 1.5 is 30px: 20 * 1.5 / 96 in. No inset, because
+  // the emitted text box declares zero insets (lIns/tIns/rIns/bIns="0").
+  const single = nodes(build('<div class="line">一行</div>'))[0];
+  assert.ok(Math.abs(single.h - (20 * 1.5 / 96)) < 0.002, 'one line is ' + single.h);
+
+  // Wrapped text is lines * fontSize * lineHeight, again with nothing added.
+  const para = nodes(build('<div class="para">这是一段用于核对行高的文字，它会在 600 像素宽的盒子里折成若干行，'
+    + '而每一行的高度应当等于字号乘以行高倍数。</div>'))[0];
+  const lines = Math.round(para.h / (13 * 1.9 / 96));
+  assert.ok(lines >= 2, 'the paragraph wraps: ' + para.h);
+  assert.ok(Math.abs(para.h - (lines * 13 * 1.9 / 96)) < 0.002, 'lines ' + lines + ' give ' + para.h);
+
+  // Three stacked one-line blocks: each is 30px tall and they do not accumulate a
+  // phantom inset - the fourth block starts 90px below the first.
+  const stacked = nodes(build('<div class="line">一</div><div class="line">二</div><div class="line">三</div>'));
+  assert.equal(stacked.length, 3);
+  stacked.forEach((node) => assert.ok(Math.abs(node.h - (30 / 96)) < 0.002, 'block height ' + node.h));
+  assert.ok(Math.abs((stacked[2].y - stacked[0].y) - (2 * 30 / 96)) < 0.002,
+    'stacking drift: ' + (stacked[2].y - stacked[0].y));
 });
 
