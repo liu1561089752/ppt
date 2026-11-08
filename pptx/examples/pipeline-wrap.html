@@ -96,6 +96,20 @@
     color: #ffffff; font-size: 13px; line-height: 1.2; font-weight: 600;
   }
   .note .label { font-size: 13px; line-height: 1.6; color: var(--ink); }
+  /* 第五页：宽度不够时先截断再省略——内容真的变了，所以只在 CSS 要求时发生 */
+  .paths { width: 1104px; }
+  .path-row {
+    display: flex; flex-direction: row; align-items: center; gap: 16px;
+    width: 1104px; padding: 10px 0; border-bottom: 1px solid var(--line);
+  }
+  .path-row .index {
+    flex: 0 0 34px; font-size: 11px; letter-spacing: 2px; color: #a97a52;
+  }
+  .path-row .name {
+    flex: 0 0 430px; font-size: 13px; line-height: 1.6; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .path-row .hint { flex: 1 1 auto; font-size: 12px; line-height: 1.6; color: var(--muted); }
   .chip {
     flex: 0 0 150px; padding: 9px 12px;
     background: var(--page); border: 1px solid var(--line); border-radius: 9px;
@@ -188,6 +202,23 @@
     <div class="note"><div class="no">08</div><div class="label">浏览器怎么排，导出的 deck 就怎么排</div></div>
   </div>
   <p class="foot">八条说明按 380px 的高度分成两列：每列四条，列间用 space-between 顶到两侧，列内再用 justify-content 把四条摊开。</p>
+</main>
+
+<main class="slide">
+  <div class="kicker">native text overflow / ellipsis</div>
+  <h1>放不下的时候，先截断，再省略</h1>
+  <p class="lede" style="width: 1060px">截断会改变文字内容，所以只在 CSS 明确要求时发生：这一列路径都声明了 nowrap、hidden 与 ellipsis：超长的行按盒子宽度算出能放下的前缀，再补一个省略号；能放下的行一个字都不动。换行段落不适用，会被如实记进报告。</p>
+
+  <div class="paths">
+    <div class="path-row"><div class="index">01</div><div class="name">pptx/native/pipeline/analyzer.js</div><div class="hint">能放下，原样保留</div></div>
+    <div class="path-row"><div class="index">02</div><div class="name">pptx/native/scripts/verify_native_ooxml.py</div><div class="hint">能放下，原样保留</div></div>
+    <div class="path-row"><div class="index">03</div><div class="name">pptx/native/pipeline-converted/pipeline-very-long-fixture-name.pptx</div><div class="hint">放不下，截断并补省略号</div></div>
+    <div class="path-row"><div class="index">04</div><div class="name">pptx/examples/pipeline-structural-and-decorations-combined.html</div><div class="hint">放不下，截断并补省略号</div></div>
+    <div class="path-row"><div class="index">05</div><div class="name">README.md</div><div class="hint">能放下，原样保留</div></div>
+    <div class="path-row"><div class="index">06</div><div class="name">pptx/native/engine/flex_lines.js</div><div class="hint">能放下，原样保留</div></div>
+  </div>
+
+  <p class="foot" style="margin-top: 20px">截断后的文本仍然是可编辑文本：双击能改，只是那一行不再有完整的原文。</p>
 </main>
 
 </body>

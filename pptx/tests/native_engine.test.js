@@ -4087,3 +4087,46 @@ test('the bounds check flags what a page-level check cannot see', () => {
   assert.deepEqual(problems.map((problem) => problem.type), ['text', 'shape']);
 });
 
+
+test('an ellipsis truncates a single line, and only when the CSS asks', () => {
+  const build = (style, text) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { box-sizing: border-box; width: 180px; padding: 8px 10px; background: #EEEEEE; font-size: 13px; ' + style + ' }',
+    '</style></head><body><main class="slide"><div class="box">' + text + '</div></main></body></html>'
+  ].join('\n'));
+
+  const ellipsis = 'white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+  const long = 'A considerably longer label that will not fit';
+  const short = 'Short one';
+
+  // Text that fits is left exactly as it is: a declaration that changes no pixel is silent.
+  const small = build(ellipsis, short);
+  assert.deepEqual(small.report.unsupportedDetails, []);
+  const smallNode = small.analysis.slides[0].nodes[0];
+  assert.equal(smallNode.text, short);
+
+  // Text that does not fit is cut at the widest prefix that still leaves room for the
+  // ellipsis - and the result really is narrower than the box.
+  const big = build(ellipsis, long);
+  assert.deepEqual(big.report.unsupportedDetails, []);
+  const bigNode = big.analysis.slides[0].nodes[0];
+  assert.ok(bigNode.text.endsWith('\u2026'), 'the line ends with an ellipsis: ' + bigNode.text);
+  assert.ok(bigNode.text.length < long.length, 'it is shorter than the original');
+  assert.ok(!bigNode.text.startsWith(long.slice(0, long.length)), 'it is not the whole string');
+  const contentWidth = 180 / 96 - 20 / 96;
+  const measured = require('../native/engine/text_measure').measureTextPt(bigNode.text, 9.75) / 72;
+  assert.ok(measured <= contentWidth, 'the truncated line fits: ' + measured.toFixed(3) + ' vs ' + contentWidth.toFixed(3));
+
+  // A wrapping block cannot be ellipsized without losing text, so it is reported and kept.
+  const wrapped = build('overflow: hidden; text-overflow: ellipsis;', long);
+  assert.equal(wrapped.analysis.slides[0].nodes[0].text, long);
+  assert.ok(wrapped.report.unsupportedDetails.some((entry) => entry.property === 'textOverflow'),
+    'a wrapping block reports the ellipsis it cannot apply');
+
+  // And so is a box that does not clip at all: the browser needs `overflow: hidden`.
+  const visible = build('white-space: nowrap; text-overflow: ellipsis;', long);
+  assert.ok(visible.report.unsupportedDetails.some((entry) => entry.property === 'textOverflow'),
+    'an unclipped box reports the ellipsis');
+});
+

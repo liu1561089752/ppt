@@ -82,7 +82,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   // writing-mode is translated (see applyWritingMode) or reported there.
   'animation', 'transition', 'columns', 'columnCount',
   'backgroundClip', 'textShadow',
-  'textOverflow', 'hyphens', 'inset'
+  'hyphens', 'inset'
 ]);
 
 /** CSS align-self spelling → the native container's per-child alignment. */
@@ -350,7 +350,7 @@ const NOOP_VALUES = {
   columnCount: ['auto'],
   writingMode: ['horizontal-tb'],
   backgroundClip: ['border-box'],
-  textOverflow: ['clip'],
+  textOverflow: ['clip', 'ellipsis'],
   whiteSpace: ['normal'],
   wordBreak: ['normal'],
   hyphens: ['manual'],
@@ -559,6 +559,31 @@ function textIndentOf(style, options) {
   const indent = inchesOf(style.textIndent, 'x', options);
   if (indent === null || !Number.isFinite(indent) || indent === 0) return null;
   return indent;
+}
+
+/**
+ * `text-overflow: ellipsis` cuts a single line that does not fit and ends it with an
+ * ellipsis. That is a *content* change, so it only happens when the CSS asks for it, the
+ * line cannot wrap, and the box has a width to clip against - every other combination is
+ * reported instead. Returns null when the text already fits.
+ */
+function truncateWithEllipsis(rawText, maxWidthIn, fontSizePt, slack = 0.02) {
+  if (!(maxWidthIn > 0.05)) return null;
+  const budget = maxWidthIn * (1 - slack);
+  const widthOf = (value) => measureTextPt(value, fontSizePt) / 72;
+  if (widthOf(rawText) <= budget) return null;
+  const chars = Array.from(rawText);
+  const tail = '\u2026';
+  if (widthOf(tail) > budget) return tail;
+  let low = 0;
+  let high = chars.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (widthOf(chars.slice(0, middle).join('') + tail) <= budget) low = middle;
+    else high = middle - 1;
+  }
+  // Do not leave a dangling space before the ellipsis.
+  return chars.slice(0, low).join('').replace(/\s+$/u, '') + tail;
 }
 
 function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx) {
@@ -1041,6 +1066,28 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     // Padding and border are part of the box: leaving them out of the height made a
     // padded card shorter than it renders, so a wrapped row put the next line on top
     // of it. The text itself still measures at the content width.
+    // `text-overflow: ellipsis` only exists for a single line that cannot wrap; the other
+    // combinations are reported rather than half-applied.
+    const textOverflow = String(style.textOverflow || 'clip').toLowerCase();
+    if (textOverflow === 'ellipsis') {
+      const clips = String(style.overflow || 'visible').toLowerCase();
+      if (!node.noWrap) {
+        recordUnsupported(ctx, domNode, 'textOverflow', style.textOverflow,
+          'An ellipsis needs a single line: a wrapping block cannot be truncated without losing text');
+      } else if (clips === 'visible') {
+        recordUnsupported(ctx, domNode, 'textOverflow', style.textOverflow,
+          'The browser only ellipsizes a box that clips (overflow: hidden)');
+      } else if (Number.isFinite(contentWidth) && contentWidth > 0) {
+        const cut = truncateWithEllipsis(node.text, contentWidth, measured.fontSizePt);
+        if (cut !== null) {
+          node.text = cut;
+          // Rich runs no longer describe the string, so the line becomes plain text.
+          node.runs = null;
+          node.textHeight = estimateTextHeight(cut, Math.max(0.2, contentWidth), measured.fontSizePt,
+            { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92, noWrap: true });
+        }
+      }
+    }
     node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : explicitHeight;
     applyWritingMode(node, domNode, style, measured, explicitHeight, ctx);
     applyRelativeShift(node, style, parentWidth);
