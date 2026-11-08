@@ -262,8 +262,8 @@ function validateContainer(prefix, element, errors) {
   if (element.alignSelf !== undefined && !['start', 'center', 'end', 'stretch'].includes(element.alignSelf)) {
     errors.push(prefix + '.alignSelf must be one of: start, center, end, stretch');
   }
-  if (element.justify !== undefined && !['start', 'center', 'end', 'space-between', 'space-around'].includes(element.justify)) {
-    errors.push(prefix + '.justify must be one of: start, center, end, space-between, space-around');
+  if (element.justify !== undefined && !['start', 'center', 'end', 'space-between', 'space-around', 'space-evenly'].includes(element.justify)) {
+    errors.push(prefix + '.justify must be one of: start, center, end, space-between, space-around, space-evenly');
   }
   if (element.padding !== undefined) {
     if (typeof element.padding === 'number') {

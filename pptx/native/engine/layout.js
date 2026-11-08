@@ -239,6 +239,9 @@ function placeColumn(container, box, theme, options, sink) {
   else if (justify === 'space-around') {
     offset = free / (children.length * 2);
     extraGap = free / children.length;
+  } else if (justify === 'space-evenly') {
+    offset = free / (children.length + 1);
+    extraGap = free / (children.length + 1);
   }
 
   const align = container.align || 'stretch';
@@ -301,6 +304,9 @@ function placeRow(container, box, theme, options, sink) {
   else if (justify === 'space-around') {
     offset = free / (children.length * 2);
     extraGap = free / children.length;
+  } else if (justify === 'space-evenly') {
+    offset = free / (children.length + 1);
+    extraGap = free / (children.length + 1);
   }
 
   const align = container.align || 'stretch';
@@ -377,6 +383,9 @@ function placeWrappedColumn(container, box, theme, options, sink, frame) {
     } else if (justify === 'space-around') {
       offset = free / (2 * column.indices.length);
       extra = free / column.indices.length;
+    } else if (justify === 'space-evenly') {
+      offset = free / (column.indices.length + 1);
+      extra = free / (column.indices.length + 1);
     }
     let cursorY = contentY + offset;
     column.indices.forEach((index) => {
@@ -451,6 +460,9 @@ function placeWrappedRow(container, box, theme, options, sink, frame) {
     else if (justify === 'space-around') {
       offset = free / (count * 2);
       extraGap = free / count;
+    } else if (justify === 'space-evenly') {
+      offset = free / (count + 1);
+      extraGap = free / (count + 1);
     }
 
     let cursorX = contentX + offset;

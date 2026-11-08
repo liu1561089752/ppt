@@ -88,6 +88,11 @@ function alignLines(lineHeights, totalHeight, contentHeight, alignContent) {
     const step = free / count;
     return result.map((entry, index) => ({ top: step * (index + 0.5), extra: 0 }));
   }
+  if (value === 'space-evenly') {
+    // n+1 equal gaps, the two outer ones included.
+    const step = free / (count + 1);
+    return result.map((entry, index) => ({ top: step * (index + 1), extra: 0 }));
+  }
   return result;
 }
 

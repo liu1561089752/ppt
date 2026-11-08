@@ -96,6 +96,30 @@ const UNSUPPORTED_ALWAYS = new Set([
 ]);
 
 /** CSS align-self spelling → the native container's per-child alignment. */
+// `stretch` and `flex-start` are what an unmapped value already does, so only the values that
+// would move a box are named. `baseline` aligns baselines; `stretch` aligns box heights.
+const ALIGN_UNSUPPORTED = new Set(['baseline', 'last baseline', 'self-start', 'self-end', 'safe center', 'unsafe center']);
+
+/**
+ * Alignment values that would change a pixel but have no native spelling here.
+ * Value-level silence is the same lie as property-level silence: `align-items: baseline`
+ * became `stretch`, which moves every box in the row.
+ */
+function alignmentProblems(style, display) {
+  const problems = [];
+  const align = String(style.alignItems || '').trim().toLowerCase();
+  const justify = String(style.justifyContent || '').trim().toLowerCase();
+  const self = String(style.alignSelf || '').trim().toLowerCase();
+  const isFlexLike = display === 'flex' || display === 'grid';
+  if (isFlexLike && ALIGN_UNSUPPORTED.has(align)) {
+    problems.push({ property: 'alignItems', value: style.alignItems, note: align });
+  }
+  if (ALIGN_UNSUPPORTED.has(self)) {
+    problems.push({ property: 'alignSelf', value: style.alignSelf, note: self });
+  }
+  return problems;
+}
+
 const ALIGN_SELF_NATIVE = {
   stretch: 'stretch',
   'flex-start': 'start',
@@ -174,7 +198,8 @@ function alignContentOf(style) {
   if (value === 'center') return 'center';
   if (value === 'flex-end' || value === 'end') return 'end';
   if (value === 'space-between') return 'space-between';
-  if (value === 'space-around' || value === 'space-evenly') return 'space-around';
+  if (value === 'space-around') return 'space-around';
+  if (value === 'space-evenly') return 'space-evenly';
   if (value === 'stretch') return 'stretch';
   return 'start';
 }
@@ -1262,6 +1287,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       'A closed details element shows only its summary in a browser; its other content is kept here');
   }
   const kind = resolveKind(domNode, style, elementKids);
+  const displayValue = String(style.display || '').trim().toLowerCase();
+  alignmentProblems(style, displayValue).forEach(({ property, value, note }) => {
+    recordUnsupported(ctx, domNode, property, value,
+      'No native spelling for ' + note + ': the box falls back to the flex default, and the'
+        + ' alignment the design asked for is not applied');
+  });
   const unsupportedGradient = unsupportedGradientOf(style);
   const shadowNote = boxShadowNote(style.boxShadow);
   if (shadowNote) recordUnsupported(ctx, domNode, 'boxShadow', style.boxShadow, shadowNote);
@@ -1538,6 +1569,16 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.src = domNode.attrs.src || null;
     node.alt = domNode.attrs.alt || '';
     node.objectFit = (style.objectFit || 'cover').toLowerCase();
+  // `none` shows the picture at its own size and `scale-down` at the smaller of that and the
+  // box; both are approximated as `contain`, which scales. Naming it beats scaling quietly.
+  if (node.objectFit === 'none' || node.objectFit === 'scale-down') {
+    recordUnsupported(ctx, domNode, 'objectFit', style.objectFit,
+      'This value is approximated as contain: the picture is scaled to the box instead of'
+        + ' keeping its own size');
+  } else if (!['cover', 'contain', 'fill'].includes(node.objectFit)) {
+    recordUnsupported(ctx, domNode, 'objectFit', style.objectFit,
+      'Unknown object-fit value: the picture is cropped to cover the box instead');
+  }
     node.focus = descriptionFocus(style.objectPosition);
     node.radius = radiusOf(style);
     applyRelativeShift(node, style, parentWidth);
@@ -2186,6 +2227,10 @@ function layoutWrappedColumn(domNode, style, contentBox, inherited, ctx, flow) {
     else if (justify === 'space-around') {
       offset = free / (2 * entriesHere.length);
       extra = free / entriesHere.length;
+    } else if (justify === 'space-evenly') {
+      // Each of the n+1 gaps - both edges included - is the same width.
+      offset = free / (entriesHere.length + 1);
+      extra = free / (entriesHere.length + 1);
     }
     let cursor = contentBox.y + offset;
     entriesHere.forEach((entry) => {
@@ -2330,6 +2375,9 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       else if (justify === 'space-around') {
         offset = free / (2 * measured.length);
         extra = free / measured.length;
+      } else if (justify === 'space-evenly') {
+        offset = free / (measured.length + 1);
+        extra = free / (measured.length + 1);
       }
       {
         let line = contentBox.y + offset;
@@ -2390,6 +2438,9 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     else if (justify === 'space-around') {
       startX += slack / (count * 2);
       extraGap = slack / count;
+    } else if (justify === 'space-evenly') {
+      startX += slack / (count + 1);
+      extraGap = slack / (count + 1);
     }
 
     let cursor = startX;

@@ -75,7 +75,8 @@ const JUSTIFY_BY_CSS = {
   'flex-end': 'end',
   end: 'end',
   'space-between': 'space-between',
-  'space-around': 'space-around'
+  'space-around': 'space-around',
+  'space-evenly': 'space-evenly'
 };
 
 function round4(value) {

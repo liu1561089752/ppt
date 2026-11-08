@@ -5068,3 +5068,68 @@ test('a table caption becomes its own text box above the table', () => {
   assert.equal(result.report.unsupported, 0, JSON.stringify(result.report.unsupportedDetails));
 });
 
+
+test('justify-content: space-evenly gives every gap the same width', () => {
+  const rows = (value) => {
+    const slide = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 80px; }',
+    '  .row { display: flex; justify-content: ' + value + '; }',
+    '  .row div { width: 100px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row"><div>a</div><div>b</div><div>c</div></div>',
+    '</main></body></html>'
+    ].join('\n')).deck.slides[0];
+  // A container positions its children when the deck is written, so the boxes come from the
+  // engine that writes them rather than from the spec.
+  const { layoutSlide } = require('../native/engine/layout');
+  return Object.values(layoutSlide(
+    { elements: JSON.parse(JSON.stringify(slide.elements)), margin: 0, gap: 0 },
+    { width: 13.3333, height: 7.5 }, {}, {}
+  )).map((element) => Number(element.x.toFixed(3)));
+  };
+
+  // The container is 11.6663in wide, holds three 1.0417in boxes, so free is 8.5412in and each
+  // of the four gaps - the two outer ones included - is 2.1353in.
+  const evenly = rows('space-evenly');
+  const evened = rows('space-around');
+  assert.equal(evenly.length, 3);
+  assert.equal(evened.length, 3);
+  // Both sides of the middle box must be the same distance: that is what "evenly" means.
+  const leftGap = evenly[1] - evenly[0];
+  const rightGap = evenly[2] - evenly[1];
+  assert.ok(Math.abs(leftGap - rightGap) < 0.002, 'gaps are equal on both sides');
+  assert.ok(evenly[0] > 0.85, 'the outer gaps exist');
+  // The two outer boxes differ from space-around (a wider outer gap); the middle one does not,
+  // because both distribute symmetrically about the centre - which is why this compares the edge.
+  assert.ok(evenly[0] > evened[0], 'space-evenly is not space-around in disguise');
+});
+
+test('alignment and fit values that would move a pixel are named', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    '<div class="row"><div class="small">small</div><div style="font-size: 30px">BIG</div></div>',
+    '</main></body></html>'
+  ].join('\n')).report.unsupportedDetails.map((item) => item.property);
+
+  // `align-items: baseline` was silently stretched: every box in the row moved.
+  assert.ok(build('.row { display: flex; align-items: baseline; }').includes('alignItems'));
+  // Exactly-mapped values stay silent, or the report becomes noise nobody reads.
+  assert.deepEqual(build('.row { display: flex; align-items: center; }'), []);
+
+  const fit = (value) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .p { width: 200px; height: 120px; } .p img { width: 100%; height: 100%; object-fit: ' + value + '; }',
+    '</style></head><body><main class="slide">',
+    '<div class="p"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt=""></div>',
+    '</main></body></html>'
+  ].join('\n')).report.unsupportedDetails.map((item) => item.property);
+  assert.deepEqual(fit('cover'), [], 'cover is translated exactly');
+  assert.ok(fit('none').includes('objectFit'), 'none is approximated, so it is named');
+  assert.ok(fit('scale-down').includes('objectFit'), 'scale-down is approximated too');
+});
+
