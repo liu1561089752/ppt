@@ -56,7 +56,7 @@ function overlayElements(container, box) {
         color: overlay.color,
         fontSize: overlay.fontSize,
         align: overlay.align || 'center',
-        valign: 'mid',
+        valign: 'middle',
         margin: 0
       }, frame));
     }

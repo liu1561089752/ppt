@@ -50,7 +50,7 @@ function textOptions(el, theme) {
     paraSpaceBeforePt: el.paraSpaceBeforePt,
     bullet: el.bullet,
     margin: Number.isFinite(el.margin) ? el.margin : 0,
-    valign: el.valign || 'mid',
+    valign: el.valign || 'middle',
     align: el.align || 'left',
     paraSpaceAfterPt: el.paraSpaceAfterPt || 0,
     // No autofit: the analyzer already measured this box to the line, so letting the

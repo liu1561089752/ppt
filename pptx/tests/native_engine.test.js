@@ -3571,3 +3571,58 @@ test('chart styling that cannot be translated is reported instead of dropped', (
   assert.deepEqual(chart.options.chartColors, ['123456']);
 });
 
+
+test('table cells keep their padding, alignment and row heights', async () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 900px; font-size: 14px; }',
+    '  td { padding: 10px 14px; vertical-align: middle; border-bottom: 1px solid #DDD; }',
+    '  th { padding: 12px 14px; letter-spacing: 1px; text-align: left; }',
+    '  td.big { font-size: 24px; padding: 18px 14px; }',
+    '</style></head><body><main class="slide">',
+    '  <table><thead><tr><th>项目</th><th>本月</th></tr></thead>',
+    '  <tbody><tr><td>华东</td><td>1,284</td></tr>',
+    '  <tr><td class="big">华南</td><td>1,096</td></tr></tbody></table>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.report.unsupportedDetails, [], 'padding and vertical-align on a cell are translated');
+  const table = result.deck.slides[0].elements.find((element) => element.type === 'table');
+  assert.ok(table, 'the table element exists');
+
+  const header = table.rows[0][0].options;
+  // 10px/14px padding is 7.5pt/10.5pt in PowerPoint's order: top, right, bottom, left.
+  assert.deepEqual(table.rows[1][0].options.margin, [7.5, 10.5, 7.5, 10.5]);
+  assert.deepEqual(header.margin, [9, 10.5, 9, 10.5]);
+  assert.equal(table.rows[1][0].options.valign, 'middle');
+  assert.equal(header.charSpacing, 0.75, 'letter-spacing travels as charSpacing');
+
+  // Rows are measured, not assumed: the 24px row is taller, and the heights add up.
+  const rowHeights = table.options.rowH;
+  assert.equal(rowHeights.length, 3);
+  assert.ok(rowHeights[0] > rowHeights[1], 'the padded header is taller than a plain row');
+  assert.ok(rowHeights[2] > rowHeights[1], 'a 24px cell makes its row taller');
+  const total = rowHeights.reduce((sum, height) => sum + height, 0);
+  assert.ok(Math.abs(total - table.h) < 0.01, 'the element height is the sum of the rows: ' + table.h);
+
+  await withTempDir('native-table-', async (directory) => {
+    const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+    const { generatePptx } = require('../native/engine/native_pptx');
+    const output = require('node:path').join(directory, 'table.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(require('node:fs').readFileSync(output));
+    const slideName = Object.keys(zip.files).find((name) => /slides\/slide1\.xml$/u.test(name));
+    const xml = await zip.file(slideName).async('string');
+    assert.ok(xml.includes('marT="114300"'), 'the 9pt header padding reaches the cell');
+    assert.ok(xml.includes('marL="133350"'), 'the 10.5pt horizontal padding reaches the cell');
+    assert.ok(xml.includes('anchor="ctr"'), 'middle alignment is a valid anchor');
+    assert.ok(!xml.includes('anchor="mid"'), 'anchor="mid" is not valid OOXML');
+    assert.ok(xml.includes('spc="75"'), 'letter-spacing is written');
+    const heights = (xml.match(/<a:tr h="(\d+)"/gu) || []).map((match) => Number(match.replace(/\D/gu, '')));
+    assert.equal(heights.length, 3, 'three rows are drawn');
+    assert.ok(heights[2] > heights[1], 'the drawn rows follow the measured heights');
+  });
+});
+

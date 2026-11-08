@@ -184,7 +184,7 @@ function textElementFromNode(node, theme, resolvedTheme) {
     bold: weight === 'bold' || weight === 'bolder' || Number(weight) >= 600,
     italic: String(style.fontStyle || '').toLowerCase() === 'italic',
     align: ['left', 'center', 'right', 'justify'].includes(align) ? align : 'left',
-    valign: role === 'caption' || role === 'body' ? 'top' : 'mid',
+    valign: role === 'caption' || role === 'body' ? 'top' : 'middle',
     lineSpacingMultiple: node.lineSpacingMultiple
   };
   const transparency = transparencyOf(color);
@@ -367,12 +367,19 @@ function tableElementFromNode(node, resolvedTheme) {
     rows: node.rows,
     options: {
       colW: tableColumnWidths(node, columns, width),
+      // PowerPoint draws the rows at these heights, so the box reserved by
+      // the analyzer and the drawn table agree instead of drifting apart.
+      rowH: Array.isArray(node.rowHeights) && node.rowHeights.length === node.rows.length
+        ? node.rowHeights
+        : undefined,
       fontFace: resolvedTheme.fonts.body,
       fontSize: Math.max(6, Number((node.fontSizePt || 11).toFixed(1))),
       // Each cell carries the four sides its CSS asked for, so the table must not
       // invent a grid: an undeclared side stays empty.
       border: { type: 'none' },
-      valign: 'mid'
+      // PptxGenJS turns 'middle' into anchor="ctr"; 'mid' would be written
+      // verbatim and produce an invalid anchoring value.
+      valign: 'middle'
     }
   };
 }

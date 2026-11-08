@@ -1031,7 +1031,11 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     node.rows = table.rows;
     node.columnCount = table.columns;
     node.colWidths = table.colWidths;
-    node.h = explicitHeight === null ? Math.max(0.4, node.rows.length * 0.34) : explicitHeight;
+    node.rowHeights = table.rowHeights;
+    // The height a declared CSS table already knows; otherwise the rows measured from
+    // their real padding and line boxes, so the box reserved here matches what is drawn.
+    const estimatedRows = (table.rowHeights || []).reduce((sum, height) => sum + height, 0);
+    node.h = explicitHeight === null ? Math.max(0.4, estimatedRows) : explicitHeight;
     applyRelativeShift(node, style, parentWidth);
     return node;
   }
@@ -2256,18 +2260,38 @@ function readTable(domNode, ctx, contentWidth) {
   collect(domNode, backgroundOf(ctx.styles.computed(domNode)));
 
   let columns = 0;
+  // Per cell, the numbers a row height needs later: the text, the size it is set in,
+  // the padding around it and which columns it covers.
+  const metrics = [];
   rowNodes.forEach(({ rowNode, sectionBackground }) => {
     const rowBackground = backgroundOf(ctx.styles.computed(rowNode)) || sectionBackground;
     const cells = elementChildren(rowNode).filter((child) => child.tag === 'td' || child.tag === 'th');
     let spanTotal = 0;
+    const rowMetrics = [];
     const mapped = cells.map((cell) => {
       const style = ctx.styles.computed(cell);
       const color = parseColor(style.color);
       const background = backgroundOf(style) || rowBackground;
       const weight = String(style.fontWeight || '').toLowerCase();
       const sizePt = parseLength(style.fontSize);
+      const fontSizePt = sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(2)) : 10.5;
       const colspan = spanOf(cell, 'colspan', 12);
       const rowspan = spanOf(cell, 'rowspan', 64);
+      const padding = boxShorthand(style, 'padding');
+      const paddingPt = [padding.top, padding.right, padding.bottom, padding.left]
+        .map((value) => Number((value * 72).toFixed(2)));
+      const text = normalizedText(cell);
+      rowMetrics.push({
+        column: spanTotal,
+        colspan,
+        text,
+        fontSizePt,
+        lineHeight: lineSpacingOf(style, fontSizePt).multiple,
+        paddingTop: padding.top,
+        paddingBottom: padding.bottom,
+        paddingLeft: padding.left,
+        paddingRight: padding.right
+      });
       spanTotal += colspan;
       const options = {
         bold: cell.tag === 'th' || weight === 'bold' || Number(weight) >= 600,
@@ -2277,16 +2301,70 @@ function readTable(domNode, ctx, contentWidth) {
         align: style.textAlign || (cell.tag === 'th' ? 'left' : undefined),
         border: cellBorderOptions(style)
       };
+      // A cell margin is the CSS padding. PowerPoint stores it in points as
+      // top/right/bottom/left and PptxGenJS writes marT/marR/marB/marL from it.
+      if (paddingPt.some((value) => value > 0)) options.margin = paddingPt;
+      const verticalAlign = String(style.verticalAlign || '').trim().toLowerCase();
+      if (verticalAlign === 'middle' || verticalAlign === 'bottom' || verticalAlign === 'top') {
+        options.valign = verticalAlign;
+      }
+      if (String(style.fontStyle || '').toLowerCase() === 'italic') options.italic = true;
+      const spacingPt = letterSpacingPtOf(style);
+      if (spacingPt) options.charSpacing = spacingPt;
       if (colspan > 1) options.colspan = colspan;
       if (rowspan > 1) options.rowspan = rowspan;
-      return { text: normalizedText(cell), options };
+      return { text, options };
     });
     columns = Math.max(columns, spanTotal);
     rows.push(mapped);
+    metrics.push(rowMetrics);
   });
 
   const colWidths = resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, 16);
-  return { rows, columns, colWidths };
+  // A row is as tall as its tallest cell: the measured line boxes plus the padding the
+  // CSS declared. `rowH` then makes PowerPoint draw that height instead of its own
+  // guess, so the reserved box and the drawing agree instead of drifting apart.
+  // `colWidths` can be null when the table is laid out by content; the height estimate
+  // then works from an equal split rather than skipping the row.
+  const measureWidths = Array.isArray(colWidths) && colWidths.length
+    ? colWidths
+    : Array.from({ length: Math.max(1, columns) }, () => contentWidth / Math.max(1, columns));
+  const rowHeights = metrics.map((cells) => {
+    const tallest = cells.reduce((max, cell) => {
+      const width = cellSpanWidth(measureWidths, cell.column, cell.colspan);
+      const usable = Math.max(0.1, width - cell.paddingLeft - cell.paddingRight);
+      const height = estimateTextHeight(cell.text, usable, cell.fontSizePt, {
+        marginIn: 0,
+        lineHeight: cell.lineHeight,
+        verticalInsetIn: cell.paddingTop + cell.paddingBottom
+      });
+      return Math.max(max, height);
+    }, 0);
+    return Number(Math.max(0.16, tallest).toFixed(4));
+  });
+  return { rows, columns, colWidths, rowHeights };
+}
+
+/** Width of the columns a cell spans, from the resolved track widths. */
+function cellSpanWidth(colWidths, column, span) {
+  let width = 0;
+  for (let index = column; index < column + span; index += 1) {
+    width += Number.isFinite(colWidths[index]) ? colWidths[index] : 0;
+  }
+  return width;
+}
+
+/** `letter-spacing` in points, or 0 when it is absent or unparseable. */
+function letterSpacingPtOf(style) {
+  const raw = style.letterSpacing;
+  if (raw === undefined || raw === null) return 0;
+  const match = /^(-?[\d.]+)(px|pt|em|rem)?$/u.exec(String(raw).trim());
+  if (!match) return 0;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return 0;
+  const unit = match[2] || 'px';
+  const points = unit === 'pt' ? value : (unit === 'em' || unit === 'rem' ? value * 12 : value * 0.75);
+  return Number(points.toFixed(2));
 }
 
 /** Assign semantic roles to text nodes from class hints and the size ranking. */
