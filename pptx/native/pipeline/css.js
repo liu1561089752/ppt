@@ -869,10 +869,12 @@ function toInches(length, context = {}) {
     case 'px': return value / 96;
     case 'em': return (value * (context.fontSizePx || 16)) / 96;
     case 'rem': return (value * (context.rootFontSizePx || 16)) / 96;
-    // A digit is about half an em in every UI face these decks use, so both relative
-    // units resolve to the same estimate rather than being dropped.
-    case 'ex':
-    case 'ch': return (value * (context.fontSizePx || 16) * 0.5) / 96;
+    // `ch` is the advance of a zero and `ex` is the x-height. Half an em for both was a
+    // sixth too narrow for `ch` in every UI face these decks use, which matters when a
+    // box is measured in characters: `width: 40ch` came out ~10% short and the words
+    // wrapped a line early. The two factors are the usual values for a Latin UI face.
+    case 'ch': return (value * (context.fontSizePx || 16) * 0.58) / 96;
+    case 'ex': return (value * (context.fontSizePx || 16) * 0.52) / 96;
     case 'vw': return (value * view.width) / 9600;
     case 'vh': return (value * view.height) / 9600;
     case 'vmin': return (value * view.min) / 9600;

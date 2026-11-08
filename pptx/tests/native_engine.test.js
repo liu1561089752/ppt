@@ -4363,7 +4363,10 @@ test('CSS math and viewport units resolve against the slide viewport', () => {
   assert.equal(inches('clamp(14px, 1.2vw, 18px)'), 0.16, '1.2vw of a 1280px viewport');
   assert.equal(inches('60vw'), 8);
   assert.equal(inches('90vh'), 6.75);
-  assert.equal(inches('40ch'), 3.3333, 'ch is half an em');
+  // A zero is ~0.58em and an x-height ~0.52em; half an em for both made `40ch` a sixth
+  // too narrow, so a box measured in characters wrapped a line early.
+  assert.equal(inches('40ch'), 3.8667, 'ch is the advance of a zero');
+  assert.equal(inches('10ex'), 0.8667, 'ex is the x-height');
   assert.equal(inches('fit-content'), null, 'what cannot be resolved stays null');
   assert.equal(inches('calc(100% - env(safe-area-inset-left))'), null);
 
@@ -4739,5 +4742,24 @@ test('!important outranks a normal declaration wherever it appears', () => {
     '</style></head><body><main class="slide"><div class="box">x</div></main></body></html>'
   ].join('\n')).deck.slides[0].elements[0];
   assert.ok(padded.h > 0.5, 'the important padding survives a later reset: ' + padded.h);
+});
+
+
+test('ch and ex resolve from font ratios, not from half an em', () => {
+  const width = (declaration) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { font-size: 16px; ' + declaration + ' }',
+    '</style></head><body><main class="slide"><div class="box">x</div></main></body></html>'
+  ].join('\n')).deck.slides[0].elements[0].w;
+
+  // A zero is ~0.58em in the UI faces these decks use, an x-height ~0.52em. Half an em for
+  // both made `width: 40ch` about a sixth too narrow, so the words wrapped a line early.
+  assert.equal(Number(width('width: 40ch').toFixed(4)), Number((40 * 16 * 0.58 / 96).toFixed(4)));
+  assert.equal(Number(width('width: 10ex').toFixed(4)), Number((10 * 16 * 0.52 / 96).toFixed(4)));
+  assert.notEqual(Number(width('width: 40ch').toFixed(4)), Number(width('width: 40ex').toFixed(4)),
+    'a character is wider than an x-height');
+  // The plain em still means what it says.
+  assert.equal(Number(width('width: 20em').toFixed(4)), Number((20 * 16 / 96).toFixed(4)));
 });
 
