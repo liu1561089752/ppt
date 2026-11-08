@@ -297,6 +297,13 @@ function applyDeclarations(style, declarations, variables) {
       style[property] = resolvedValue;
       return;
     }
+    if (property === 'gap' || property === 'grid-gap') {
+      // `gap: <row> <column>`; a single value applies to both axes.
+      const parts = String(resolvedValue || '').trim().split(/\s+/u);
+      style.rowGap = parts[0];
+      style.columnGap = parts.length > 1 ? parts[1] : parts[0];
+      return;
+    }
     if (property === 'padding' || property === 'margin') {
       const [top, right, bottom, left] = expandBoxShorthand(resolvedValue);
       const suffix = property === 'padding' ? 'padding' : 'margin';

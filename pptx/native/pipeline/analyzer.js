@@ -1651,7 +1651,7 @@ function analyzeHtml(html, options = {}) {
     const rootDisplay = String(style.display || 'block').toLowerCase();
     // The root is a real box: honour flex/grid instead of forcing block flow.
     const children = rootDisplay === 'grid'
-      ? layoutGrid(slideNode, contentBox, rootContext, ctx)
+      ? layoutGrid(slideNode, style, contentBox, rootContext, ctx)
       : (rootDisplay === 'flex'
         ? layoutFlex(slideNode, contentBox, rootContext, ctx)
         : layoutFlow(slideNode, contentBox, rootContext, ctx));

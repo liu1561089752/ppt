@@ -2091,3 +2091,61 @@ test('html pipeline reports explicit grid line placement', () => {
   assert.match(reported[0].reason, /Explicit grid line placement/u);
 });
 
+
+test('the gap shorthand splits into row and column gap', () => {
+  // `gap: 10px 30px` used to be dropped silently, collapsing the spacing to zero.
+  const column = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; display: flex;',
+    '    flex-direction: column; gap: 10px 30px; }',
+    '  .cell { background: #DDDDDD; height: 100px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="cell"><div>a</div></div><div class="cell"><div>b</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const cells = column.deck.slides[0].elements.filter((element) => element.type === 'container');
+  assert.equal(cells.length, 2);
+  // A column flex stacks along the row axis, so the row gap (10px) applies.
+  assert.ok(Math.abs((cells[1].y - (cells[0].y + 100 / 96)) - 10 / 96) < 0.002,
+    'row gap ' + (cells[1].y - (cells[0].y + 100 / 96)));
+  assert.deepEqual(column.report.unsupportedDetails, []);
+
+  const grid = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; display: grid;',
+    '    grid-template-columns: 1fr 1fr; gap: 20px 40px; }',
+    '  .cell { background: #EEEEEE; height: 100px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="cell"><div>a</div></div><div class="cell"><div>b</div></div>',
+    '<div class="cell"><div>c</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const boxes = grid.deck.slides[0].elements;
+  // 1280 - 80 padding = 1200px, minus a 40px column gap, split in two.
+  assert.ok(Math.abs(boxes[0].w - (1200 - 40) / 2 / 96) < 0.01, 'column width ' + boxes[0].w);
+  assert.ok(Math.abs(boxes[1].x - (boxes[0].x + boxes[0].w + 40 / 96)) < 0.01, 'column gap ' + boxes[1].x);
+  // The third cell wraps below the row: 100px cell + 20px row gap.
+  assert.ok(Math.abs(boxes[2].y - (boxes[0].y + 100 / 96 + 20 / 96)) < 0.01, 'row gap ' + boxes[2].y);
+});
+
+test('a slide root declared as a grid lays its children out in columns', () => {
+  // The root dispatch used to pass the wrong arguments, so a grid slide silently
+  // became a single column.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; padding: 40px;',
+    '    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }',
+    '  .cell { background: #EEEEEE; height: 100px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="cell"><div>a</div></div><div class="cell"><div>b</div></div>',
+    '<div class="cell"><div>c</div></div><div class="cell"><div>d</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const boxes = result.deck.slides[0].elements;
+  assert.equal(boxes.length, 4);
+  const xs = new Set(boxes.slice(0, 3).map((element) => Math.round(element.x * 100)));
+  assert.equal(xs.size, 3, 'the three cells must sit in three columns');
+  assert.ok(Math.abs(boxes[3].x - boxes[0].x) < 0.001, 'the fourth cell wraps to column one');
+  assert.ok(boxes[3].y > boxes[0].y + 0.5, 'the fourth cell wraps to a new row');
+});
+
