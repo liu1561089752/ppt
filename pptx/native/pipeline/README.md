@@ -81,6 +81,16 @@ This exists because a wrong text measurement is invisible until something stacks
 the fixture that produced it looked fine in isolation and had a second card row
 sitting on top of the stat cards.
 
+## OOXML audit
+
+`scripts/verify_native_ooxml.py` counts the editable features a deck should contain and
+also checks every **enumerated attribute** the pipeline writes — text anchoring
+(`t`/`ctr`/`b`/`just`/`dist`), `bodyPr vert`, paragraph alignment, and the chart enums
+(`legendPos`, `barDir`, `grouping`, `dLblPos`). A value outside the schema set is not a
+cosmetic slip: PowerPoint treats the file as damaged, and it is invisible in a rendered
+screenshot. `valign: 'mid'` shipped `anchor="mid"` on every table and every middle-anchored
+text box until this check existed, which is why the gate is unconditional.
+
 ## Known limitations (by design, not oversights)
 
 - **Not a browser.** There is no UA default stylesheet, no inline formatting
