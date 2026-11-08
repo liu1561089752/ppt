@@ -325,6 +325,9 @@ function validateElement(p, element, errors) {
             (!Number.isFinite(element.lineSpacingMultiple) || element.lineSpacingMultiple <= 0)) {
           errors.push(p + '.lineSpacingMultiple must be finite and greater than zero');
         }
+        if (element.textIndent !== undefined && !Number.isFinite(element.textIndent)) {
+          errors.push(p + '.textIndent must be a number of inches');
+        }
         if (element.bullet !== undefined && typeof element.bullet !== 'boolean' &&
             (typeof element.bullet !== 'object' || element.bullet === null || Array.isArray(element.bullet))) {
           errors.push(p + '.bullet must be a boolean or options object');

@@ -202,6 +202,11 @@ function textElementFromNode(node, theme, resolvedTheme) {
     }
   }
   if (node.bullet) element.bullet = true;
+  // First-line indent travels as a paragraph property; the writer patches
+  // `<a:pPr indent="…">` because PptxGenJS has no option for it.
+  if (Number.isFinite(node.textIndent) && node.textIndent > 0) {
+    element.textIndent = Number(node.textIndent.toFixed(4));
+  }
   return element;
 }
 

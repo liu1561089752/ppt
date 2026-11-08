@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>text-indent</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .slide { position: relative; width: 1280px; height: 720px; background: #FBFAF7; padding: 48px 64px; }
+  .kicker { font-size: 12px; font-weight: 700; letter-spacing: 3px; color: #B4552D; }
+  h1 { font-size: 30px; color: #1D2A2E; margin: 10px 0 20px 0; }
+
+  .col { display: flex; flex-direction: row; gap: 22px; width: 1152px; }
+  .card { flex: 1; background: #FFFFFF; border-radius: 12px; padding: 18px 22px; }
+  .card h2 { font-size: 13px; color: #B4552D; margin: 0 0 10px 0; letter-spacing: 1px; }
+  .card p { font-size: 13px; line-height: 1.95; color: #37474B; margin: 0 0 8px 0; }
+
+  /* 中文正文的标准写法：首行缩进两个字符 */
+  .indented p { text-indent: 2em; }
+  /* 只缩进第一段：h2 是第一个子元素，所以用 -of-type 而不是 :first-child */
+  .selective p:first-of-type { text-indent: 2em; }
+  /* 百分比按父元素宽度解析 */
+  .percent p { text-indent: 6%; }
+
+  .compare { margin-top: 22px; width: 1152px; background: #F2EFE9; border-radius: 12px; padding: 18px 22px; }
+  .compare h2 { font-size: 13px; color: #1D2A2E; margin: 0 0 10px 0; }
+  .pair { display: flex; flex-direction: row; gap: 26px; }
+  .half { flex: 1; }
+  .label { font-size: 11px; letter-spacing: 1px; color: #8C6A54; }
+  .half p { font-size: 13px; line-height: 1.95; color: #2C3B3F; margin: 6px 0 0 0; }
+  .half.on p { text-indent: 2em; }
+
+  .foot { margin-top: 16px; font-size: 12px; line-height: 1.8; color: #7A8C90; width: 1060px; text-indent: 2em; }
+</style>
+</head>
+<body>
+<main class="slide">
+  <div class="kicker">text-indent</div>
+  <h1>首行缩进是段落属性，文字仍然是可编辑文本</h1>
+
+  <div class="col">
+    <div class="card indented">
+      <h2>2EM 缩进</h2>
+      <p>正文按中文排版惯例首行缩进两个字符，后面各行顶格。缩进只影响第一行，换行位置也因此少了一个字宽。</p>
+      <p>第二段同样缩进。导出后每段仍是 PowerPoint 里的一个段落，缩进写在段落的 pPr 上，可以在段落设置里直接改。</p>
+    </div>
+    <div class="card selective">
+      <h2>仅首段缩进</h2>
+      <p>这一段带缩进，因为它是同类型元素里的第一个。</p>
+      <p>这一段没有缩进，哪些段落继承缩进由结构选择器决定。</p>
+    </div>
+    <div class="card percent">
+      <h2>6% 缩进</h2>
+      <p>百分比缩进按父元素宽度解析，和 CSS 的定义一致。</p>
+      <p>卡片一窄，缩进的绝对值就随之变小。</p>
+    </div>
+  </div>
+
+  <div class="compare">
+    <h2>对照：同一段文字，有无首行缩进</h2>
+    <div class="pair">
+      <div class="half">
+        <div class="label">TEXT-INDENT: 0</div>
+        <p>首行不缩进时，段落的左边界是一条直线，读者靠段间留白来分辨段落从哪里开始，这也是西文排版的习惯。</p>
+      </div>
+      <div class="half on">
+        <div class="label">TEXT-INDENT: 2EM</div>
+        <p>首行缩进两个字符时，段落起点一眼可辨，这是中文长文的传统做法，也是公文与教材的常见要求。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">缩进值支持 em、px 与百分比；负数（悬挂缩进）需要内边距配合，当前会上报而不是半途应用。</div>
+</main>
+</body>
+</html>

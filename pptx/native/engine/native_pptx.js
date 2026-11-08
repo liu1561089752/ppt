@@ -449,11 +449,78 @@ async function applyEastAsianFontPatch(outputPath, fontFace) {
   fs.writeFileSync(outputPath, buffer);
 }
 
+/**
+ * Add `<a:pPr indent="…">` to every paragraph of a text box that declares a
+ * first-line indent (`text-indent`). DrawingML calls it `indent` on the paragraph
+ * properties; PptxGenJS has no option for it and reads `indent` as bullet spacing,
+ * so the attribute is written here instead of being approximated in layout.
+ *
+ * Shape order in `slideN.xml` matches the deck spec's text/shape/line order, the
+ * same alignment `patchGradientFills` relies on.
+ */
+function applyTextIndent(xml, indentIn) {
+  const emu = Math.round(indentIn * 914400);
+  if (!emu) return xml;
+  return xml.replace(/<a:p>([\s\S]*?)<\/a:p>/gu, (whole, body) => {
+    const pPr = /<a:pPr([^>]*?)(\/?)>/u.exec(body);
+    if (!pPr) return '<a:p><a:pPr indent="' + emu + '"/>' + body + '</a:p>';
+    const existing = /\bindent="(-?\d+)"/u.exec(pPr[1]);
+    // A hanging bullet indent is negative; a first-line indent adds to it, which is
+    // what CSS does when both apply to the same paragraph.
+    const merged = existing
+      ? pPr[1].replace(/\bindent="(-?\d+)"/u, 'indent="' + (Number(existing[1]) + emu) + '"')
+      : pPr[1] + ' indent="' + emu + '"';
+    return '<a:p>' + body.replace(pPr[0], '<a:pPr' + merged + (pPr[2] || '') + '>') + '</a:p>';
+  });
+}
+
+async function patchTextIndents(outputPath, deck) {
+  const slides = (deck && deck.slides) || [];
+  const needed = slides.some((slide) => flattenElements(slide.elements)
+    .some((element) => element.type === 'text' && Number.isFinite(element.textIndent) && element.textIndent > 0));
+  if (!needed) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const shapeElements = flattenElements(slides[slideIndex].elements).filter((element) =>
+      element.type === 'text' || element.type === 'shape' || element.type === 'line'
+    );
+    if (!shapeElements.some((element) => element.type === 'text' && Number.isFinite(element.textIndent))) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    let shapeIndex = 0;
+    let patched = 0;
+    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapeElements[shapeIndex++];
+      if (!element || element.type !== 'text' || !Number.isFinite(element.textIndent) || element.textIndent <= 0) return whole;
+      const updated = applyTextIndent(inner, element.textIndent);
+      if (updated !== inner) patched += 1;
+      return '<p:sp>' + updated + '</p:sp>';
+    });
+    if (shapeIndex !== shapeElements.length) {
+      throw new Error('Text indent patch alignment mismatch on slide ' + (slideIndex + 1) +
+        ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has ' + shapeIndex + ' p:sp elements');
+    }
+    const expected = shapeElements.filter((element) => element.type === 'text'
+      && Number.isFinite(element.textIndent) && element.textIndent > 0).length;
+    if (patched !== expected) {
+      throw new Error('Text indent patch count mismatch on slide ' + (slideIndex + 1) +
+        ': expected ' + expected + ', patched ' + patched);
+    }
+    zip.file(name, next);
+  }
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
   await result.pptx.writeFile({ fileName: outputPath });
   if (deck.slides.some((slide) => flattenElements(slide.elements).some((element) => element.type === 'shape' && element.gradient))) await patchGradientFills(outputPath, deck);
+  await patchTextIndents(outputPath, deck);
   await patchImageEffects(outputPath, result.imagePlans);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
@@ -467,5 +534,6 @@ async function generatePptx(deck, outputPath, options = {}) {
 
 module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
-  shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects
+  shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects,
+  applyTextIndent, patchTextIndents
 };

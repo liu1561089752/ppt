@@ -2490,3 +2490,101 @@ test('a single-side border outside a table is still reported', () => {
   assert.ok(/uniform/.test(reported[0].reason), reported[0].reason);
 });
 
+
+test('text-indent becomes a first-line indent and widens the wrap', () => {
+  const make = (indent) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .para { width: 200px; font-size: 14px; line-height: 1.8; ' + indent + ' }',
+    '</style></head><body><main class="slide">',
+    '<div class="para">中文正文需要首行缩进两个字符，这样读者一眼就能看出段落从哪里开始，而不是靠段间留白。</div>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const plain = make('');
+  const indented = make('text-indent: 2em;');
+  const find = (result) => result.deck.slides[0].elements.find((element) => element.type === 'text');
+  // 2em at 14px is 28px = 0.2917in.
+  assert.ok(Math.abs(find(indented).textIndent - 28 / 96) < 0.001, String(find(indented).textIndent));
+  assert.equal(find(plain).textIndent, undefined);
+  assert.deepEqual(indented.report.unsupportedDetails, []);
+
+  // A wide indent eats into the first line, so the box must not come out shorter.
+  const wide = make('text-indent: 10em;');
+  assert.ok(find(wide).h >= find(plain).h,
+    'indented height ' + find(wide).h + ' vs plain ' + find(plain).h);
+  assert.ok(find(wide).h > find(plain).h - 1e-9);
+});
+
+test('a negative text-indent is reported, not half-applied', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .entry { width: 400px; text-indent: -1em; padding-left: 1em; }',
+    '</style></head><body><main class="slide">',
+    '<div class="entry">悬挂缩进的词条</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const reported = result.report.unsupportedDetails.filter((entry) => entry.property === 'textIndent');
+  assert.equal(reported.length, 1, JSON.stringify(result.report.unsupportedDetails));
+  const text = result.deck.slides[0].elements.find((element) => element.type === 'text');
+  assert.equal(text.textIndent, undefined);
+});
+
+test('the writer patches a:pPr indent without touching other paragraphs', () => {
+  const { applyTextIndent } = require('../native/engine/native_pptx');
+  const emu = Math.round(0.25 * 914400);
+
+  // No pPr at all: one is inserted as the first paragraph child.
+  const bare = applyTextIndent('<a:p><a:r><a:t>x</a:t></a:r></a:p>', 0.25);
+  assert.ok(bare.includes('<a:pPr indent="' + emu + '"/>'), bare);
+  assert.ok(bare.startsWith('<a:p><a:pPr indent="' + emu + '"/><a:r>'), bare);
+
+  // An existing indent (a hanging bullet) is added to, not replaced.
+  const hanging = applyTextIndent('<a:p><a:pPr marL="171450" indent="-171450"/><a:r><a:t>y</a:t></a:r></a:p>', 0.25);
+  assert.ok(hanging.includes('indent="' + (-171450 + emu) + '"'), hanging);
+  assert.ok(hanging.includes('marL="171450"'), hanging);
+
+  // Every paragraph of a multi-paragraph box is patched.
+  const multi = applyTextIndent('<a:p><a:r><a:t>a</a:t></a:r></a:p><a:p><a:pPr algn="l" indent="0"/><a:r><a:t>b</a:t></a:r></a:p>', 0.25);
+  assert.equal((multi.match(/indent="(\d+)"/gu) || []).length, 2, multi);
+});
+
+test('a converted deck really carries the indent in the pptx', async () => {
+  const fsSync = require('node:fs');
+  const osSync = require('node:os');
+  const pathSync = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .para { width: 300px; font-size: 14px; text-indent: 2em; }',
+    '  .flush { width: 300px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="para">缩进段落</div>',
+    '<div class="flush">顶格段落</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const output = pathSync.join(osSync.tmpdir(), 'native-indent-' + process.pid + '.pptx');
+  await generatePptx(result.deck, output);
+  const zip = await JSZip.loadAsync(fsSync.readFileSync(output));
+  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+  fsSync.unlinkSync(output);
+
+  // The writer rounds inches to 4 decimals, so derive the EMU from the spec value.
+  const textElement = result.deck.slides[0].elements.find((element) => element.type === 'text' && element.textIndent);
+  assert.ok(textElement, 'the indent must survive into the deck spec');
+  const expected = String(Math.round(textElement.textIndent * 914400));
+  const indented = /<a:t>缩进段落<\/a:t>/u;
+  assert.ok(indented.test(xml));
+  assert.ok(xml.includes('indent="' + expected + '"'), 'missing indent="' + expected + '"');
+  // The flush paragraph keeps an indent of 0.
+  const blocks = xml.match(/<p:sp>[\s\S]*?<\/p:sp>/gu) || [];
+  const flushBlock = blocks.find((block) => block.includes('<a:t>顶格段落</a:t>'));
+  assert.ok(flushBlock, 'flush paragraph must exist');
+  const flushIndent = (/<a:pPr[^>]*indent="(-?\d+)"/u.exec(flushBlock) || [])[1];
+  assert.ok(flushIndent === undefined || Number(flushIndent) === 0, 'flush indent was ' + flushIndent);
+});
+

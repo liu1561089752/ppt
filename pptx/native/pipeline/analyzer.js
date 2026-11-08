@@ -58,7 +58,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
-  'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform',
+  'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
@@ -459,12 +459,32 @@ function transformText(value, transform) {
   return value;
 }
 
+/**
+ * A first-line indent in inches (`text-indent: 2em` in a Chinese paragraph is the
+ * common case). DrawingML carries it as `<a:pPr indent="…">`, so it is a text-box
+ * property, not a layout shift of the box itself.
+ */
+function textIndentOf(style, options) {
+  const indent = inchesOf(style.textIndent, 'x', options);
+  if (indent === null || !Number.isFinite(indent) || indent === 0) return null;
+  return indent;
+}
+
 function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx) {
   const fontPx = fontPxOf(style, inheritedFontPx);
   const fontSizePt = Number((fontPx * 0.75).toFixed(2));
   const { multiple } = lineSpacingOf(style, fontPx);
   const built = buildRuns(domNode, Object.assign({ fontSize: fontPx + 'px' }, style), ctx);
+  const textIndent = textIndentOf(style, { parentWidth: availableWidth, fontSizePx: fontPx });
   const measureOptions = { lineHeight: multiple, safetyFactor: 0.92 };
+  // A positive indent narrows the first line, which can add a line. A negative one
+  // (a hanging indent) widens it; the box model around it is not modelled, so it is
+  // reported instead of half-applied.
+  if (textIndent && textIndent > 0) measureOptions.firstLineIndentPt = textIndent * 72;
+  if (textIndent && textIndent < 0) {
+    recordUnsupported(ctx, domNode, 'textIndent', style.textIndent,
+      'A negative first-line indent (hanging indent) needs box insets we do not model');
+  }
   const transform = String(style.textTransform || '').toLowerCase();
   if (transform && transform !== 'none') {
     built.text = transformText(built.text, transform);
@@ -476,6 +496,7 @@ function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx
     lineSpacingMultiple: multiple,
     runs: built.hasFormatting ? built.runs : null,
     text: built.text.replace(/\s*\n\s*/gu, '\n').trim(),
+    textIndent: textIndent && textIndent > 0 ? textIndent : undefined,
     textHeight: estimateTextHeight(built.text, Math.max(0.2, availableWidth), fontSizePt, measureOptions)
   };
 }

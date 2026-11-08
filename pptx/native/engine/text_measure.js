@@ -56,6 +56,13 @@ const TOKEN_PATTERN = new RegExp('\\s+|[' + CJK_RANGES + ']|[^\\s' + CJK_RANGES 
 
 function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
   if (!paragraph) return [''];
+
+  const indentPt = Number(options.firstLineIndentPt) > 0 ? Number(options.firstLineIndentPt) : 0;
+  // A first-line indent eats into the first line's width, so the wrap can produce
+  // one more line than the bare text would.
+  const firstLimit = Math.max(1, maxWidthPt - indentPt);
+  let limit = firstLimit;
+
   const tokens = paragraph.match(TOKEN_PATTERN) || [paragraph];
   const lines = [];
   let line = '';
@@ -64,6 +71,7 @@ function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
     lines.push(line.replace(/\s+$/u, ''));
     line = '';
     lineWidth = 0;
+    limit = maxWidthPt;
   };
 
   for (const token of tokens) {
@@ -72,8 +80,8 @@ function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
       if (line) { line += token; lineWidth += tokenWidth; }
       continue;
     }
-    if (tokenWidth <= maxWidthPt) {
-      if (line && lineWidth + tokenWidth > maxWidthPt) push();
+    if (tokenWidth <= limit) {
+      if (line && lineWidth + tokenWidth > limit) push();
       line += token;
       lineWidth += tokenWidth;
       continue;
@@ -81,7 +89,7 @@ function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
     if (line) push();
     for (const unit of graphemes(token)) {
       const unitWidth = measureTextPt(unit, fontSizePt, options);
-      if (line && lineWidth + unitWidth > maxWidthPt) push();
+      if (line && lineWidth + unitWidth > limit) push();
       line += unit;
       lineWidth += unitWidth;
     }
@@ -122,6 +130,8 @@ function estimateRichTextHeight(runs, widthIn, fontSizePt, options = {}) {
   const usableWidthPt = Math.max(1, (widthIn - margin * 2) * 72 * (options.safetyFactor || 0.9));
   const lineHeight = options.lineHeight || 1.22;
   const list = Array.isArray(runs) ? runs : [];
+  const indentPt = Number(options.firstLineIndentPt) > 0 ? Number(options.firstLineIndentPt) : 0;
+  let limit = Math.max(1, usableWidthPt - indentPt);
   let lines = 1;
   let lineWidth = 0;
   let tallest = fontSizePt;
@@ -135,12 +145,14 @@ function estimateRichTextHeight(runs, widthIn, fontSizePt, options = {}) {
       if (character === '\n') {
         lines += 1;
         lineWidth = 0;
+        limit = usableWidthPt;
         return;
       }
       const width = measureTextPt(character, runSize, options);
-      if (lineWidth > 0 && lineWidth + width > usableWidthPt) {
+      if (lineWidth > 0 && lineWidth + width > limit) {
         lines += 1;
         lineWidth = 0;
+        limit = usableWidthPt;
       }
       lineWidth += width;
     });
