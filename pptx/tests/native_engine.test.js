@@ -1998,3 +1998,27 @@ test('html pipeline anchors right/bottom absolute children inside a flex column'
   assert.ok(stamp.w < 6, 'the box must hug its text, got ' + stamp.w);
 });
 
+
+test('html pipeline honours flex-grow and flex-basis longhands', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; display: flex;',
+    '    flex-direction: row; gap: 20px; padding: 40px; }',
+    '  .a { flex-basis: 200px; }',
+    '  .b { flex-grow: 3; }',
+    '  .c { flex-grow: 1; }',
+    '</style></head><body><main class="slide">',
+    '<div class="a"><div>a</div></div><div class="b"><div>b</div></div><div class="c"><div>c</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const [first, second, third] = result.deck.slides[0].elements;
+
+  // flex-basis wins over the default flex: 1 sharing.
+  assert.ok(Math.abs(first.w - 200 / 96) < 0.01, 'first width ' + first.w);
+  // 1280 - 80 padding - 40 gaps - 200 basis = 960px, split 3:1.
+  assert.ok(Math.abs(second.w - (960 * 0.75) / 96) < 0.02, 'second width ' + second.w);
+  assert.ok(Math.abs(third.w - (960 * 0.25) / 96) < 0.02, 'third width ' + third.w);
+  assert.equal(result.report.unsupportedDetails.length, 0);
+});
+

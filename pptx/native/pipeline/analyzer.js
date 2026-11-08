@@ -41,7 +41,7 @@ const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
 const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
-  'flexWrap', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'alignItems',
+  'flexWrap', 'flexGrow', 'flexBasis', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'alignItems',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
@@ -58,7 +58,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
   'gridTemplateRows', 'gridAutoRows', 'gridColumn', 'gridRow',
-  'flexBasis', 'flexGrow', 'flexShrink', 'justifySelf'
+  'flexShrink', 'justifySelf'
 ]);
 
 /** CSS align-self spelling → the native container's per-child alignment. */
@@ -977,6 +977,26 @@ function applyAnchorHints(node, slot) {
   return node;
 }
 
+/**
+ * The growth factor of a flex item: the `flex-grow` longhand wins, then the
+ * `flex` shorthand, then 1 (a flex item grows by default).
+ */
+function flexWeightOf(style) {
+  const grow = Number(style.flexGrow);
+  if (Number.isFinite(grow) && grow >= 0) return grow;
+  const shorthand = String(style.flex === undefined ? '' : style.flex).trim().toLowerCase();
+  if (shorthand === 'none') return 0;
+  const first = Number(shorthand.split(/\s+/u)[0]);
+  return Number.isFinite(first) && first >= 0 ? first : 1;
+}
+
+/** A flex item's base size: the declared width, then `flex-basis`, then auto. */
+function flexBasisOf(style, options) {
+  const width = inchesOf(style.width, 'x', options);
+  if (width !== null) return width;
+  return inchesOf(style.flexBasis, 'x', options);
+}
+
 function layoutFlex(domNode, contentBox, inherited, ctx) {
   const style = ctx.styles.computed(domNode);
   const direction = String(style.flexDirection || 'row').startsWith('column') ? 'column' : 'row';
@@ -1036,14 +1056,12 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     return nodes.concat(absolute);
   }
 
-  const fixed = flow.map((child) => {
-    const childStyle = ctx.styles.computed(child);
-    return inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
-  });
+  const fixed = flow.map((child) => flexBasisOf(ctx.styles.computed(child),
+    { parentWidth: contentBox.w, fontSizePx: inherited.fontPx }));
   const weights = flow.map((child, index) => {
     if (fixed[index] !== null) return 0;
-    const value = Number(ctx.styles.computed(child).flex);
-    return Number.isFinite(value) && value > 0 ? value : 1;
+    const weight = flexWeightOf(ctx.styles.computed(child));
+    return weight > 0 ? weight : 1;
   });
   const fixedTotal = fixed.reduce((sum, value) => sum + (value || 0), 0);
   const weightTotal = weights.reduce((sum, value) => sum + value, 0);
