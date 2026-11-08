@@ -6,11 +6,12 @@
  * Supported: type/class/id selectors (with descendant and child combinators
  * treated alike), structural pseudo-classes (`:first-child`, `:last-child`,
  * `:only-child`, `:nth-child()`, `:nth-of-type()`, and their `-last-`/`-of-type`
- * forms), simple compound selectors, CSS custom properties via `var()`, inline
- * styles, and a declared-value cascade with specificity.
+ * forms), `:not()`/`:is()`/`:where()` over simple selectors, simple compound
+ * selectors, CSS custom properties via `var()`, inline styles, and a
+ * declared-value cascade with specificity.
  *
  * Not supported (recorded as unsupported by the analyzer): @media queries,
- * pseudo-elements, attribute selectors, `:not()`, sibling combinators, shorthands
+ * pseudo-elements, attribute selectors, sibling combinators, shorthands
  * outside the handled set, animations, transforms, filters, blend modes.
  */
 
@@ -160,7 +161,7 @@ function collectRules(css, viewport, state) {
       if (declaration.property.startsWith('--')) variables[declaration.property] = declaration.value;
     });
 
-    selectorText.split(',').forEach((rawSelector) => {
+    splitSelectorList(selectorText).forEach((rawSelector) => {
       const parsed = parseSelector(rawSelector);
       if (!parsed) return;
       if (parsed.pseudo) {
@@ -292,19 +293,118 @@ function matchesStructural(node, test) {
 }
 
 /**
- * Read one compound segment: structural pseudo-classes become match tests, every
- * other pseudo-class is left to the caller to report.
+ * Split a selector list on top-level commas. A comma inside `:is(.a, .b)` belongs
+ * to the argument, not to the rule.
  */
-function readSegment(segment) {
+function splitSelectorList(text) {
+  const source = String(text || '');
+  const parts = [];
+  let current = '';
+  let depth = 0;
+  for (const char of source) {
+    if (char === '(') depth += 1;
+    else if (char === ')') depth = Math.max(0, depth - 1);
+    if (char === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  parts.push(current);
+  return parts;
+}
+
+/**
+ * Find the first `:name(...)` functional pseudo-class with balanced parentheses,
+ * so an argument may itself contain one (`:not(:nth-child(2n))`).
+ */
+function findFunctionalPseudo(text, names) {
+  const source = String(text || '');
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] !== ':') continue;
+    const match = /^:([\w-]+)\(/u.exec(source.slice(index));
+    if (!match) continue;
+    const name = match[1].toLowerCase();
+    if (!names.includes(name)) continue;
+    let depth = 0;
+    for (let cursor = index + match[0].length - 1; cursor < source.length; cursor += 1) {
+      if (source[cursor] === '(') depth += 1;
+      else if (source[cursor] === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          return {
+            name,
+            inner: source.slice(index + match[0].length, cursor),
+            start: index,
+            end: cursor + 1
+          };
+        }
+      }
+    }
+    return null;
+  }
+  return null;
+}
+
+/** Parse a comma-separated list of simple selectors; null when one is untranslatable. */
+function parseSimpleList(inner, depth) {
+  if (depth > 2) return null;
+  const parts = String(inner || '').split(',');
+  const selectors = [];
+  for (const part of parts) {
+    const read = readSegment(part, depth + 1);
+    if (!read || read.others.length) return null;
+    if (!read.simple.tag && !read.simple.id && !read.simple.classes.length
+      && !read.simple.universal && !read.simple.structural.length
+      && !read.simple.negations && !read.simple.alternatives) return null;
+    selectors.push(read.simple);
+  }
+  return selectors.length ? selectors : null;
+}
+
+/**
+ * Read one compound segment: structural pseudo-classes become match tests, `:not()`
+ * `:is()` and `:where()` are evaluated as nested simple selectors, and every other
+ * pseudo-class is left to the caller to report.
+ */
+function readSegment(segment, depth = 0) {
   const structural = [];
-  let rest = String(segment || '').replace(STRUCTURAL_PSEUDO, (whole, kind, arg) => {
+  const negations = [];
+  const alternatives = [];
+  let zeroSpecificity = false;
+  let rest = String(segment || '');
+
+  // Pull out the functional pseudo-classes first: their argument may itself be a
+  // structural pseudo-class (`:not(:first-child)`), which must survive until the
+  // recursion strips it.
+  for (let guard = 0; guard < 6; guard += 1) {
+    const found = findFunctionalPseudo(rest, ['not', 'is', 'where']);
+    if (!found) break;
+    const inner = parseSimpleList(found.inner, depth);
+    // An argument we cannot translate is left in place so the rule is reported
+    // instead of silently matching too much.
+    if (!inner) break;
+    if (found.name === 'not') negations.push(...inner);
+    else {
+      if (found.name === 'where') zeroSpecificity = true;
+      alternatives.push(...inner);
+    }
+    rest = rest.slice(0, found.start) + rest.slice(found.end);
+  }
+
+  rest = rest.replace(STRUCTURAL_PSEUDO, (whole, kind, arg) => {
     structural.push({ kind: String(kind).toLowerCase(), arg: arg === undefined ? null : arg });
     return '';
   });
+
   const others = rest.match(/::?[\w-]+(?:\([^)]*\))?/gu) || [];
   rest = rest.replace(/::?[\w-]+(?:\([^)]*\))?/gu, '');
   const simple = parseSimpleSelector(rest.trim());
   simple.structural = structural;
+  if (negations.length) simple.negations = negations;
+  if (alternatives.length) simple.alternatives = alternatives;
+  simple.zeroSpecificity = zeroSpecificity;
   return { simple, others };
 }
 
@@ -323,16 +423,23 @@ function parseSelector(rawSelector) {
     ? (/:{1,2}([\w-]+)/u.exec(others[others.length - 1]) || [])[1] || null
     : null;
   const structuralCount = parts.reduce((sum, part) => sum + (part.structural ? part.structural.length : 0), 0);
+  // `:not()` and `:is()` contribute one class of specificity, `:where()` none.
+  const functionalCount = parts.reduce((sum, part) => {
+    if (part.zeroSpecificity) return sum;
+    const count = (part.negations ? 1 : 0) + (part.alternatives && !part.zeroSpecificity ? 1 : 0);
+    return sum + count;
+  }, 0);
   // A selector that names nothing (`:root { --x: ... }`, a lone `:hover`) cannot
   // describe an element, so it is not reported as an untranslated selector.
   const identifies = parts.some((part) => part.tag || part.id || part.classes.length
-    || part.universal || (part.structural && part.structural.length));
+    || part.universal || (part.structural && part.structural.length)
+    || part.negations || part.alternatives);
   if (!identifies) return null;
   const specificity = parts.reduce((accumulator, part) => ({
     ids: accumulator.ids + (part.id ? 1 : 0),
-    classes: accumulator.classes + part.classes.length,
+    classes: accumulator.classes + (part.zeroSpecificity ? 0 : part.classes.length),
     tags: accumulator.tags + (part.tag ? 1 : 0)
-  }), { ids: 0, classes: structuralCount, tags: 0 });
+  }), { ids: 0, classes: structuralCount + functionalCount, tags: 0 });
   return {
     parts,
     specificity,
@@ -353,6 +460,12 @@ function matchesSimple(node, simple) {
     for (const test of simple.structural) {
       if (!matchesStructural(node, test)) return false;
     }
+  }
+  if (simple.alternatives && simple.alternatives.length) {
+    if (!simple.alternatives.some((alternative) => matchesSimple(node, alternative))) return false;
+  }
+  if (simple.negations && simple.negations.length) {
+    if (simple.negations.some((negation) => matchesSimple(node, negation))) return false;
   }
   return true;
 }

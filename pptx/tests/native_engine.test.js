@@ -2588,3 +2588,67 @@ test('a converted deck really carries the indent in the pptx', async () => {
   assert.ok(flushIndent === undefined || Number(flushIndent) === 0, 'flush indent was ' + flushIndent);
 });
 
+
+test(':not(), :is() and :where() select like a browser', () => {
+  const build = (selector) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; gap: 10px; width: 1200px; }',
+    '  .card { flex: 1; height: 60px; background: #EEEEEE; }',
+    '  .card' + selector + ' { background: #FF0000; }',
+    '</style></head><body><main class="slide">',
+    '<div class="row">' + [1, 2, 3, 4].map((n) => '<div class="card"><div>' + n + '</div></div>').join('') + '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const marks = (selector) => {
+    const result = build(selector);
+    assert.deepEqual(result.report.unsupportedDetails, [], selector + ' must be translated');
+    const row = result.deck.slides[0].elements.find((element) => element.type === 'container' && element.children && element.children.length === 4);
+    assert.ok(row, 'the row must stay declarative for ' + selector);
+    return row.children.map((child) => ((child.background && child.background.fill) === 'FF0000' ? 'X' : '.')).join('');
+  };
+
+  assert.equal(marks(':not(:first-child)'), '.XXX');
+  assert.equal(marks(':not(:nth-child(even))'), 'X.X.');
+  assert.equal(marks(':not(.missing)'), 'XXXX');
+  assert.equal(marks(':is(.card)'), 'XXXX');
+  assert.equal(marks(':not(:not(.card))'), 'XXXX');
+  // An argument we cannot evaluate is reported instead of over-matching.
+  const hovered = build(':not(:hover)');
+  const reported = hovered.report.unsupportedDetails.filter((entry) => entry.property === 'selector');
+  assert.equal(reported.length, 1, JSON.stringify(hovered.report.unsupportedDetails));
+});
+
+test(':where() has zero specificity and :is() keeps its argument\'s', () => {
+  const cascade = (second) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .card { width: 200px; height: 100px; background: #00AA00; }',
+    '  ' + second + ' { background: #FF0000; }',
+    '</style></head><body><main class="slide">',
+    '<div class="card"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const fillOf = (result) => {
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        const fill = (node.background && node.background.fill) || (node.fill && node.fill.color) || node.fill;
+        if (typeof fill === 'string' && /^[0-9A-F]{6}$/iu.test(fill)) return fill;
+        if (node.children) {
+          const nested = walk(node.children);
+          if (nested) return nested;
+        }
+      }
+      return null;
+    };
+    return walk(result.deck.slides[0].elements);
+  };
+  // Declared later, but zero specificity: the class rule still wins.
+  assert.equal(fillOf(cascade(':where(.card)')), '00AA00');
+  // A comma inside :is() belongs to the argument, and the rule wins on specificity.
+  const is = cascade(':is(.card, .other)');
+  assert.equal(fillOf(is), 'FF0000');
+  assert.deepEqual(is.report.unsupportedDetails, []);
+});
+

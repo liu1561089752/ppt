@@ -46,7 +46,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 | Area | Supported |
 |---|---|
-| Selectors | type, `.class`, `#id`, compound (`tag.class`), descendant and child combinators (both treated as descendant), `*`, and the structural pseudo-classes `:first-child`, `:last-child`, `:only-child`, `:nth-child()`, `:nth-last-child()`, `:first-of-type`, `:last-of-type`, `:only-of-type`, `:nth-of-type()`, `:nth-last-of-type()` (with `an+b`, `odd`, `even`) |
+| Selectors | type, `.class`, `#id`, compound (`tag.class`), descendant and child combinators (both treated as descendant), `*`, the structural pseudo-classes `:first-child`, `:last-child`, `:only-child`, `:nth-child()`, `:nth-last-child()`, `:first-of-type`, `:last-of-type`, `:only-of-type`, `:nth-of-type()`, `:nth-last-of-type()` (with `an+b`, `odd`, `even`), and `:not()`, `:is()`, `:where()` over simple selectors — arguments may contain the structural pseudo-classes (`:not(:first-child)`), `:where()` adds no specificity, and a comma inside `:is()`/`:not()` does not end the rule |
 | Cascade | stylesheet order + specificity (ids, classes, tags), then inline `style=""`, plus `var(--token, fallback)` |
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
@@ -76,12 +76,14 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   translated when they have a placeable box (see the Decorations row); the
   structural pseudo-classes listed above are matched against element siblings,
   counting only elements (so an interleaved `<br>` does not shift the index).
-  Other pseudo-classes and pseudo-elements, attribute selectors, `:not()`, `:is()`/
-  `:where()`, sibling combinators and `!important` are ignored, and a rule whose
-  selector is ignored is listed in the report. A selector that names no element at
-  all (`:root { --x: ... }`) is not listed, because its declarations are only
-  custom properties. Custom properties are resolved globally rather than
-  per-subtree.
+  `:not()`, `:is()` and `:where()` are evaluated when every argument is a simple
+  selector we can match; an argument that is not (`.card:not(:hover)`) makes the
+  whole rule reported instead of silently matching too much. Other pseudo-classes
+  and pseudo-elements, attribute selectors, sibling combinators and `!important`
+  are ignored, and a rule whose selector is ignored is listed in the report. A
+  selector that names no element at all (`:root { --x: ... }`) is not listed,
+  because its declarations are only custom properties. Custom properties are
+  resolved globally rather than per-subtree.
 - **Percentages** resolve against the direct parent's *content* box, which is the
   authored intent but differs from a browser when a parent's height is auto.
 - **Flex sizing is a single pass, with no min-content floor.** Bases come from
