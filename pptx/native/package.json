@@ -38,11 +38,11 @@
     "preview:layouts": "python scripts/preview_deck.py native-layouts-demo.pptx --output-dir preview/layouts --sheet preview/layouts-sheet.png",
     "preview:parity": "python scripts/preview_deck.py native-design-parity-demo.pptx --output-dir preview/parity --sheet preview/parity-sheet.png",
     "preview:theme": "python scripts/preview_deck.py native-design-migration-demo.pptx --output-dir preview/theme --sheet preview/theme-sheet.png",
-    "preview:all": "npm run preview:demo && npm run preview:components && npm run preview:theme && npm run preview:parity && npm run preview:layouts && npm run preview:images && npm run preview:pipeline-stress && npm run preview:pipeline && npm run preview:chart && npm run preview:decor && npm run preview:grid && npm run preview:structural && npm run preview:indent && npm run preview:wrap && npm run preview:pipeline-vertical",
+    "preview:all": "npm run preview:demo && npm run preview:components && npm run preview:theme && npm run preview:parity && npm run preview:layouts && npm run preview:images && npm run preview:pipeline-stress && npm run preview:pipeline && npm run preview:chart && npm run preview:decor && npm run preview:grid && npm run preview:structural && npm run preview:indent && npm run preview:wrap && npm run preview:pipeline-vertical && npm run preview:pipeline-float",
     "pipeline:chart": "node pipeline/cli.js ../examples/pipeline-chart.html --out pipeline-converted/chart.json --report pipeline-converted/chart-report.json --pptx pipeline-converted/pipeline-chart.pptx",
     "preview:chart": "python scripts/preview_deck.py pipeline-converted/pipeline-chart.pptx --output-dir preview/chart --sheet preview/chart-sheet.png",
     "render:chart": "python scripts/render_check.py pipeline-converted/pipeline-chart.pptx --output-dir render-check/pipeline-chart",
-    "render:all": "npm run render:demo && npm run render:components && npm run render:theme && npm run render:parity && npm run render:layouts && npm run render:images && npm run render:pipeline-stress && npm run render:pipeline && npm run render:chart && npm run render:decor && npm run render:grid && npm run render:structural && npm run render:indent && npm run render:wrap && npm run render:pipeline-vertical",
+    "render:all": "npm run render:demo && npm run render:components && npm run render:theme && npm run render:parity && npm run render:layouts && npm run render:images && npm run render:pipeline-stress && npm run render:pipeline && npm run render:chart && npm run render:decor && npm run render:grid && npm run render:structural && npm run render:indent && npm run render:wrap && npm run render:pipeline-vertical && npm run render:pipeline-float",
     "pipeline:decor": "node pipeline/cli.js ../examples/pipeline-decorations.html --out pipeline-converted/decorations.json --pptx pipeline-converted/pipeline-decorations.pptx",
     "preview:decor": "python scripts/preview_deck.py pipeline-converted/pipeline-decorations.pptx --output-dir preview/decor --sheet preview/decor-sheet.png",
     "render:decor": "python scripts/render_check.py pipeline-converted/pipeline-decorations.pptx --output-dir render-check/pipeline-decorations",
@@ -63,7 +63,10 @@
     "render:pipeline-stress": "python scripts/render_check.py pipeline-converted/pipeline-stress.pptx --output-dir render-check/pipeline-stress",
     "pipeline:vertical": "node pipeline/cli.js ../examples/pipeline-vertical.html --out pipeline-converted/vertical.json --pptx pipeline-converted/pipeline-vertical.pptx",
     "preview:pipeline-vertical": "python scripts/preview_deck.py pipeline-converted/pipeline-vertical.pptx --output-dir preview/pipeline-vertical --sheet preview/pipeline-vertical-sheet.png",
-    "render:pipeline-vertical": "python scripts/render_check.py pipeline-converted/pipeline-vertical.pptx --output-dir render-check/pipeline-vertical"
+    "render:pipeline-vertical": "python scripts/render_check.py pipeline-converted/pipeline-vertical.pptx --output-dir render-check/pipeline-vertical",
+    "pipeline:float": "node pipeline/cli.js ../examples/pipeline-float.html --out pipeline-converted/float.json --pptx pipeline-converted/pipeline-float.pptx",
+    "preview:pipeline-float": "python scripts/preview_deck.py pipeline-converted/pipeline-float.pptx --output-dir preview/pipeline-float --sheet preview/pipeline-float-sheet.png",
+    "render:pipeline-float": "python scripts/render_check.py pipeline-converted/pipeline-float.pptx --output-dir render-check/pipeline-float"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

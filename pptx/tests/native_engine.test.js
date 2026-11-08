@@ -1986,13 +1986,14 @@ test('html pipeline anchors right/bottom absolute children inside a flex column'
   const result = pipeline.convertHtml(html);
   const stamp = result.deck.slides[0].elements.find((element) => element.text === 'NATIVE DECORATIONS');
   assert.ok(stamp, 'the stamp must survive absolute positioning inside a flex column');
-  // right: 72px against the padding box → 64px padding + 72px inset.
+  // CSS anchors an absolute child to the padding box of its containing block, which
+  // excludes the border and not the padding, so the 64px padding is not subtracted
+  // from a right/bottom offset: 72px means 72px from the slide edge.
   const rightEdge = stamp.x + stamp.w;
-  assert.ok(Math.abs(rightEdge - (13.333 - 64 / 96 - 72 / 96)) < 0.02,
+  assert.ok(Math.abs(rightEdge - (13.333 - 72 / 96)) < 0.02,
     'right edge ' + rightEdge.toFixed(3));
-  // bottom: 56px against the padded content box.
   const bottomEdge = stamp.y + stamp.h;
-  assert.ok(Math.abs(bottomEdge - (7.5 - 64 / 96 - 56 / 96)) < 0.02,
+  assert.ok(Math.abs(bottomEdge - (7.5 - 56 / 96)) < 0.02,
     'bottom edge ' + bottomEdge.toFixed(3));
   // A shrink-to-fit box: the measured width is far narrower than the container.
   assert.ok(stamp.w < 6, 'the box must hug its text, got ' + stamp.w);
@@ -3211,5 +3212,67 @@ test('word-break is translated where the wrap already behaves that way', () => {
   const reported = keepAll.report.unsupportedDetails.filter((entry) => entry.property === 'wordBreak');
   assert.equal(reported.length, 1, JSON.stringify(keepAll.report.unsupportedDetails));
   assert.ok(/keep-all/u.test(reported[0].reason), reported[0].reason);
+});
+
+
+test('floats pack into a wrapping row and say where that stops being CSS', () => {
+  const build = (body, extra = '') => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .cell { float: left; width: 400px; height: 80px; ' + extra + ' }',
+    '</style></head><body><main class="slide">' + body + '</main></body></html>'
+  ].join('\n'));
+
+  const boxes = (result) => {
+    const out = [];
+    const walk = (nodes) => (nodes || []).forEach((node) => { out.push(node); walk(node.children); });
+    walk(result.analysis.slides[0].nodes);
+    return out;
+  };
+  const cells = (result) => boxes(result).filter((node) => (node.classes || []).includes('cell'));
+
+  // Two floats share a line; the second one sits exactly after the first.
+  const pair = build('<div class="cell"></div><div class="cell"></div>');
+  assert.deepEqual(pair.report.unsupportedDetails, []);
+  const two = cells(pair);
+  assert.equal(two.length, 2);
+  assert.equal(two[0].floated, 'left');
+  assert.ok(Math.abs(two[0].x - 40 / 96) < 0.005, 'first float starts at the padding edge: ' + two[0].x);
+  assert.ok(Math.abs(two[1].x - (40 / 96 + 400 / 96)) < 0.005, 'second float follows it: ' + two[1].x);
+  assert.equal(two[0].y, two[1].y);
+
+  // A 1200px line holds two 500px floats, so the third wraps below the tallest.
+  const wide = ' style="width: 500px"';
+  const three = cells(build('<div class="cell"' + wide + '></div><div class="cell"' + wide
+    + '></div><div class="cell"' + wide + '></div>'));
+  assert.equal(three.length, 3);
+  assert.ok(three[2].y > three[0].y + 0.5, 'the third float wraps: ' + three[2].y);
+  assert.equal(three[2].x, three[0].x);
+
+  // `float: right` packs against the end edge.
+  const right = cells(build('<div class="cell" style="float: right"></div>'));
+  assert.ok(Math.abs((right[0].x + right[0].w) - (40 / 96 + 1200 / 96)) < 0.005,
+    'right float hugs the right edge: ' + (right[0].x + right[0].w));
+
+  // A block that follows a float is placed below it, which CSS would not do.
+  const wrapped = build('<div class="cell"></div><p>text next to the float</p>');
+  const reported = wrapped.report.unsupportedDetails.filter((entry) => entry.property === 'float');
+  assert.equal(reported.length, 1, JSON.stringify(wrapped.report.unsupportedDetails));
+  assert.ok(/wrap its lines beside/u.test(reported[0].reason), reported[0].reason);
+
+  // ...unless it clears first, which is exactly what `clear: both` asks for.
+  const cleared = build('<div class="cell"></div><div style="clear: both"></div><p>text below</p>');
+  assert.deepEqual(cleared.report.unsupportedDetails, []);
+
+  // Shrink-to-fit floats are max-content, which a container cannot measure.
+  const noWidth = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .tag { float: left; font-size: 12px; }',
+    '</style></head><body><main class="slide"><div class="tag">标签</div></main></body></html>'
+  ].join('\n'));
+  const noWidthReport = noWidth.report.unsupportedDetails.filter((entry) => entry.property === 'float');
+  assert.equal(noWidthReport.length, 1);
+  assert.ok(/declared width/u.test(noWidthReport[0].reason), noWidthReport[0].reason);
 });
 

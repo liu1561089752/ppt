@@ -462,6 +462,11 @@ function containerPlan(node, state) {
   if (children.some((child) => child.absolute)) {
     return { ok: false, reason: 'child uses absolute positioning' };
   }
+  // A run of floats is packed by the analyzer (margins, wrapping, edge packing). The
+  // engine's row model has no margins, so the placed boxes are the honest answer.
+  if (children.some((child) => child.floated)) {
+    return { ok: false, reason: 'children are floated' };
+  }
 
   let direction = 'column';
   let columns = null;

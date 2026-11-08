@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>float · 浮动行</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+  .slide { width: 1280px; height: 720px; padding: 56px 64px; background: #FAF8F3; color: #22302E; }
+
+  .kicker { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: #B4633A; }
+  h1 { margin: 12px 0 10px; font-size: 30px; line-height: 1.3; font-weight: 600; }
+  .lede { margin: 0 0 22px; font-size: 13px; line-height: 1.9; color: #6E7A76; width: 900px; }
+
+  /* 浮动行：连续的浮动元素打包成一行，宽度不够就换行 */
+  .figure {
+    float: left;
+    width: 300px; height: 224px;
+    padding: 20px;
+    background: #17332F; border-radius: 14px;
+    color: #F3EFE6;
+  }
+  .figure .num { font-size: 54px; font-weight: 600; line-height: 1.1; }
+  .figure .cap { margin-top: 8px; font-size: 13px; line-height: 1.7; color: #A9C3B8; }
+
+  .column {
+    float: left;
+    width: 640px;
+    margin-left: 28px;
+    padding-top: 4px;
+  }
+  .column h2 { margin: 0 0 10px; font-size: 19px; }
+  .column p { margin: 0 0 12px; font-size: 13px; line-height: 1.95; color: #4A5A56; }
+
+  .clear { clear: both; height: 12px; }
+
+  .chips { }
+  .chip {
+    float: left;
+    width: 208px; height: 44px;
+    margin: 0 12px 12px 0;
+    padding: 12px 14px;
+    background: #FFFFFF; border-radius: 8px;
+    font-size: 12px; color: #3C4C49;
+    border-left: 3px solid #B4633A;
+  }
+
+  .stat {
+    float: left;
+    width: 300px; height: 104px;
+    margin-right: 16px;
+    padding: 16px 18px;
+    background: #FFFFFF; border-radius: 10px;
+  }
+  .stat .value { font-size: 26px; font-weight: 600; }
+  .stat .label { margin-top: 4px; font-size: 11px; letter-spacing: 1px; color: #96A29E; }
+
+  .foot { position: absolute; left: 64px; bottom: 40px; font-size: 11px; color: #9AA5A1; }
+</style>
+</head>
+<body>
+<main class="slide">
+  <div class="kicker">float</div>
+  <h1>浮动元素打包成行，宽度不够就换行</h1>
+  <p class="lede">这张页面的每一块都用 <code>float: left</code> 摆放：左侧色块与右侧正文同行，标签云与数据条各自换行。<code>clear: both</code> 用来结束上一行，与浏览器里的行为一致。</p>
+
+  <div class="figure">
+    <div class="num">12</div>
+    <div class="cap">连续浮动元素打包进同一行<br>超出容器宽度时换行</div>
+  </div>
+
+  <div class="column">
+    <h2>浮动不是网格，也不是弹性行</h2>
+    <p>浮动元素的宽度是声明出来的，它们按顺序挤在同一行里，直到放不下为止；换行之后，下一行从上一行最高元素的下方开始。</p>
+    <p>这里把连续的浮动兄弟打包成一行，所以左色块与右正文并列；<code>clear: both</code> 之后的标签云从新的一行开始。</p>
+    <p>浏览器还会让后续段落的行框绕过浮动元素，这一条没有实现——那种情况下会上报，而不是悄悄压到浮动物件上。</p>
+  </div>
+
+  <div class="clear"></div>
+
+  <div class="chips">
+    <div class="chip">按声明宽度打包</div>
+    <div class="chip">放不下时换行</div>
+    <div class="chip">每行独立取高</div>
+    <div class="chip">clear 结束上一行</div>
+    <div class="chip">绕排会上报</div>
+  </div>
+
+  <div class="clear"></div>
+
+  <div class="stat">
+    <div class="value">5</div>
+    <div class="label">同一行的浮动块</div>
+  </div>
+  <div class="stat">
+    <div class="value">2</div>
+    <div class="label">换行后的行数</div>
+  </div>
+  <div class="stat">
+    <div class="value">0</div>
+    <div class="label">整页栅格化</div>
+  </div>
+
+  <div class="foot">浮动行 · float: left → 打包成行 · 文本绕排未实现</div>
+</main>
+</body>
+</html>

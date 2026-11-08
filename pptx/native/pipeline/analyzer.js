@@ -60,7 +60,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
-  'writingMode', 'wordBreak',
+  'writingMode', 'wordBreak', 'float', 'clear',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
@@ -71,7 +71,7 @@ const POST_LAYOUT_PROPERTIES = new Set(['overflow']);
 const UNSUPPORTED_ALWAYS = new Set([
   'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   // writing-mode is translated (see applyWritingMode) or reported there.
-  'animation', 'transition', 'float', 'columns', 'columnCount',
+  'animation', 'transition', 'columns', 'columnCount',
   'backgroundClip', 'textShadow',
   'textOverflow', 'hyphens', 'aspectRatio', 'inset',
   'justifySelf'
@@ -295,6 +295,7 @@ const NOOP_VALUES = {
   animation: ['none'],
   transition: ['none'],
   float: ['none'],
+  clear: ['none'],
   columns: ['auto'],
   columnCount: ['auto'],
   writingMode: ['horizontal-tb'],
@@ -339,6 +340,12 @@ function checkUnsupported(ctx, domNode, style) {
   });
   if (style.display === 'inline' || style.display === 'inline-block') {
     recordUnsupported(ctx, domNode, 'display', style.display, 'Inline flow is approximated as a block box');
+  }
+  // A float value this solver does not know would otherwise be laid out as a block.
+  const floatValue = String(style.float || 'none').toLowerCase();
+  if (!FLOAT_VALUES.has(floatValue)) {
+    recordUnsupported(ctx, domNode, 'float', style.float,
+      'Only float: left/right (and their inline-start/inline-end spellings) are laid out');
   }
   // The wrap already breaks a token that cannot fit at grapheme level, which is what
   // `overflow-wrap: break-word`/`anywhere` and `word-break: break-all` ask for, so
@@ -1031,8 +1038,11 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     const childBottom = child.absolute ? bottom : child.y + child.h;
     return Math.max(bottom, childBottom);
   }, contentBox.y);
-  const autoHeight = contentBottom - y + insetBottom;
-  node.h = explicitHeight === null ? Math.max(0, Number(autoHeight.toFixed(4))) : explicitHeight;
+  const autoHeight = Math.max(0, Number((contentBottom - y + insetBottom).toFixed(4)));
+  // A declared height is the box the author asked for, so it is not grown here even
+  // when the content measures taller: CSS would let the content spill out, and hiding
+  // that difference behind a taller box is how a clipped design stops being reported.
+  node.h = explicitHeight === null ? autoHeight : explicitHeight;
   if (node.h <= 0) node.h = 0.02;
   return node;
 }
@@ -1053,6 +1063,8 @@ function childMargins(childStyle, context) {
 }
 
 function layoutFlow(domNode, contentBox, inherited, ctx) {
+  // CSS anchors absolute children to the padding box of their containing block.
+  const anchorBox = (inherited && inherited.parentPaddingBox) || contentBox;
   const nodes = [];
   let cursor = contentBox.y;
   const visible = elementChildren(domNode).filter((child) => {
@@ -1062,14 +1074,45 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
   // A lone chart child has no content to measure, so a definite parent height is
   // its height; with siblings that would just overlap them.
   const soloHeight = visible.length === 1 ? contentBox.h : null;
-  elementChildren(domNode).forEach((child) => {
+  let floatedBefore = false;
+  for (let index = 0; index < visible.length; index += 1) {
+    const child = visible[index];
     const childStyle = ctx.styles.computed(child);
-    if (childStyle.display === 'none' || childStyle.visibility === 'hidden') return;
+    if (floatOf(childStyle)) {
+      // A run of consecutive floats is a row: `float: left` packs from the start edge
+      // and wraps when the width runs out, which is a wrapping flex row. What a float
+      // also does - shorten the line boxes of the blocks beside it - is not modelled
+      // and is reported where it would show.
+      const run = [];
+      while (index < visible.length) {
+        const next = visible[index];
+        const nextStyle = ctx.styles.computed(next);
+        if (!floatOf(nextStyle)) break;
+        run.push({ child: next, style: nextStyle });
+        index += 1;
+      }
+      index -= 1;
+      const placed = layoutFloatRun(run, contentBox, cursor, inherited, ctx);
+      placed.nodes.forEach((node) => nodes.push(node));
+      cursor = placed.bottom;
+      floatedBefore = true;
+      continue;
+    }
+    if (floatedBefore) {
+      // Only the block that directly follows the run would have been shortened by it;
+      // everything after that one is already below the float anyway.
+      const clears = hasClear(childStyle);
+      if (!clears && String(normalizedText(child) || '').trim().length > 0) {
+        recordUnsupported(ctx, child, 'float', 'left/right',
+          'A block that follows a float is placed below it; the browser would wrap its lines beside the float');
+      }
+      floatedBefore = false;
+    }
     const margins = childMargins(childStyle, { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
     const slotWidth = Math.max(0, contentBox.w - margins.left - margins.right);
     const explicitWidth = inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
     const slot = isAbsolute(childStyle)
-      ? anchoredSlot(childStyle, containingBlockFor(childStyle, contentBox, ctx), inherited)
+      ? anchoredSlot(childStyle, containingBlockFor(childStyle, anchorBox, ctx), inherited)
       : {
         x: contentBox.x + margins.left,
         y: cursor + margins.top,
@@ -1079,12 +1122,91 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
         parentContentHeight: soloHeight
       };
     const node = applyAnchorHints(analyzeNode(child, slot, inherited, ctx), slot);
-    if (!node) return;
+    if (!node) continue;
     node.absolute = isAbsolute(childStyle);
     nodes.push(node);
     if (!node.absolute) cursor = node.y + node.h + margins.bottom;
-  });
+  }
   return nodes;
+}
+
+/**
+ * `clear` asks to start below the floats above. This flow always places the next
+ * block after a float run, so the declaration is already honoured.
+ */
+function hasClear(style) {
+  return String(style.clear || 'none').toLowerCase() !== 'none';
+}
+
+/** `float: left|right` that has to be laid out; `none` and unset are not floats. */
+function floatOf(style) {
+  const value = String(style.float || 'none').toLowerCase();
+  if (value === 'left' || value === 'inline-start') return 'left';
+  if (value === 'right' || value === 'inline-end') return 'right';
+  return null;
+}
+
+const FLOAT_VALUES = new Set(['none', 'left', 'right', 'inline-start', 'inline-end']);
+
+/**
+ * Lay a run of floated siblings out as a wrapping row and report the bottom of the
+ * run. Floats pack against one edge and wrap when the line is full, so a line is as
+ * tall as its tallest item and the next line starts below it.
+ */
+function layoutFloatRun(run, contentBox, top, inherited, ctx) {
+  const options = { parentWidth: contentBox.w, fontSizePx: inherited.fontPx };
+  const directions = new Set(run.map((entry) => floatOf(entry.style)));
+  if (directions.size > 1) {
+    recordUnsupported(ctx, run[0].child, 'float', 'left and right',
+      'Left and right floats on one line pack from opposite edges; this run is packed from one edge');
+  }
+  const direction = floatOf(run[0].style) || 'left';
+  const tolerance = 0.01;
+  const nodes = [];
+  let lineTop = top;
+  let lineHeight = 0;
+  let cursorX = direction === 'right' ? contentBox.x + contentBox.w : contentBox.x;
+  const startLine = () => {
+    lineTop += lineHeight;
+    lineHeight = 0;
+    cursorX = direction === 'right' ? contentBox.x + contentBox.w : contentBox.x;
+  };
+
+  run.forEach((entry) => {
+    const margins = childMargins(entry.style, options);
+    const declared = inchesOf(entry.style.width, 'x', options);
+    if (declared === null) {
+      // Shrink-to-fit is max-content, which a container does not measure.
+      recordUnsupported(ctx, entry.child, 'float', floatOf(entry.style),
+        'A floated box needs a declared width here: its shrink-to-fit width is not measured');
+    }
+    const width = Math.max(0.02, declared === null ? contentBox.w : declared);
+    const outer = width + margins.left + margins.right;
+    const fits = direction === 'right'
+      ? cursorX - outer >= contentBox.x - tolerance
+      : cursorX + outer <= contentBox.x + contentBox.w + tolerance;
+    if (!fits && lineHeight > 0) startLine();
+    const slot = {
+      x: direction === 'right' ? cursorX - margins.right - width : cursorX + margins.left,
+      y: lineTop + margins.top,
+      w: width,
+      explicitWidth: declared !== null,
+      h: null,
+      parentContentHeight: contentBox.h === undefined ? null : contentBox.h
+    };
+    const node = applyAnchorHints(analyzeNode(entry.child, slot, inherited, ctx), slot);
+    if (!node) return;
+    node.absolute = false;
+    // The emitted geometry of a float row is the analyzer's; a declarative container
+    // would re-run the flow as a column and stack the very items that pack in a row.
+    node.floated = direction;
+    nodes.push(node);
+    const height = node.h + margins.top + margins.bottom;
+    if (height > lineHeight) lineHeight = height;
+    cursorX = direction === 'right' ? cursorX - outer : cursorX + outer;
+  });
+
+  return { nodes, bottom: nodes.length ? lineTop + lineHeight : top };
 }
 
 /**
@@ -1229,7 +1351,8 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     .filter((child) => isAbsolute(ctx.styles.computed(child)))
     .map((child) => {
       const childStyle = ctx.styles.computed(child);
-      const slot = anchoredSlot(childStyle, containingBlockFor(childStyle, contentBox, ctx), inherited);
+      const anchorBox = (inherited && inherited.parentPaddingBox) || contentBox;
+      const slot = anchoredSlot(childStyle, containingBlockFor(childStyle, anchorBox, ctx), inherited);
       return applyAnchorHints(analyzeNode(child, slot, inherited, ctx), slot);
     })
     .filter(Boolean)
