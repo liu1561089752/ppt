@@ -240,6 +240,25 @@ function radiusOf(style) {
   return inches && inches > 0 ? Number(inches.toFixed(3)) : null;
 }
 
+/**
+ * `position: absolute|fixed` without a declared width is shrink-to-fit, not "as wide as
+ * the containing block": a pinned box that hugs its text. Only a leaf has a max-content
+ * width here - a container would need a max-content layout pass this shape does not run,
+ * so it keeps the containing-block width.
+ */
+function shrinkToFitWidth(domNode, style, options) {
+  const hasElementChild = (domNode.children || []).some((child) => child.type === 'element');
+  if (hasElementChild) return null;
+  const raw = textContent(domNode).replace(/\s+/gu, ' ').trim();
+  if (!raw) return null;
+  const fontSizePt = fontPxOf(style, options.fontSizePx) * 0.75;
+  // A little slack: the glyph factors are estimates, and a box that hugs the text too
+  // tightly wraps in the renderer, which is the one outcome shrink-to-fit must avoid.
+  const preferred = (measureTextPt(raw, fontSizePt, { fontManager: options.fontManager }) / 72) * 1.06 + 0.02;
+  const available = Math.max(0, options.availableWidth);
+  return Math.min(available, preferred) + options.insetLeft + options.insetRight;
+}
+
 function isAbsolute(style) {
   return style.position === 'absolute' || style.position === 'fixed';
 }
@@ -920,6 +939,18 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     const right = inchesOf(style.right, 'x', { parentWidth: absoluteParentWidth, fontSizePx });
     const top = inchesOf(style.top, 'y', { parentWidth: absoluteParentWidth, parentHeight: parentBox.h, fontSizePx });
     const bottom = inchesOf(style.bottom, 'y', { parentWidth: absoluteParentWidth, parentHeight: parentBox.h, fontSizePx });
+    // A pinned box with no width hugs its content, so a footer at `left: 56px` does not
+    // become a 13in box that hangs off the page.
+    if (styleWidth === null) {
+      const shrink = shrinkToFitWidth(domNode, style, {
+        fontSizePx,
+        fontManager: ctx.fontManager,
+        insetLeft,
+        insetRight,
+        availableWidth: parentBox.w - (left === null ? 0 : left) - (right === null ? 0 : right)
+      });
+      if (shrink !== null) width = shrink;
+    }
     if (left !== null) x = parentBox.x + left;
     else if (right !== null) x = parentBox.x + parentBox.w - right - width;
     if (top !== null) y = parentBox.y + top;

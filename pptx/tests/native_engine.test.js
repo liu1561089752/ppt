@@ -4047,3 +4047,43 @@ test('a wrapping column that cannot be translated is reported, not guessed', () 
     'a wrapping column with auto-width items is reported');
 });
 
+
+test('a generated multi-page deck keeps every layout invariant', () => {
+  const stress = require('../native/scripts/stress_html');
+  const html = stress.generate({ slides: 9, seed: 3 });
+  // Deterministic by construction: the same seed has to reproduce a failure exactly.
+  assert.equal(html, stress.generate({ slides: 9, seed: 3 }));
+  assert.notEqual(html, stress.generate({ slides: 9, seed: 4 }));
+  const started = Date.now();
+  const result = pipeline.convertHtml(html);
+  const elapsed = Date.now() - started;
+  const problems = stress.checkDeck(result, { slides: 9 });
+  assert.deepEqual(problems, [], 'generated deck problems: ' + JSON.stringify(problems, null, 1));
+  assert.equal(result.deck.slides.length, 9);
+  // Seven archetypes cycle, so a nine-page deck has to exercise most of them.
+  const kinds = new Set(result.deck.slides.map((slide) => (slide.elements || []).length));
+  assert.ok(kinds.size > 1, 'the pages are not identical');
+  assert.ok(result.report.unsupportedDetails.length === 0, 'the generated CSS stays inside the supported subset');
+  assert.ok(result.report.declarativeContainers > 20, 'containers stayed declarative: ' + result.report.declarativeContainers);
+  assert.ok(elapsed < 20000, 'nine pages should convert in well under 20s, took ' + elapsed + 'ms');
+});
+
+test('the bounds check flags what a page-level check cannot see', () => {
+  const stress = require('../native/scripts/stress_html');
+  const pageSize = { width: 13.333, height: 7.5 };
+  // A text box off the right edge and a shape entirely outside are both errors; a
+  // decorative shape that hangs over the edge is not, because the page clips it.
+  const deck = {
+    slides: [{
+      elements: [
+        { type: 'text', x: 12.5, y: 1, w: 2, h: 0.4, text: 'spills' },
+        { type: 'shape', x: 20, y: 1, w: 2, h: 2 },
+        { type: 'shape', x: 12.9, y: 0.5, w: 3, h: 3 }
+      ]
+    }]
+  };
+  const problems = stress.checkBounds(deck, pageSize);
+  assert.equal(problems.length, 2, 'expected the text and the far shape: ' + JSON.stringify(problems));
+  assert.deepEqual(problems.map((problem) => problem.type), ['text', 'shape']);
+});
+

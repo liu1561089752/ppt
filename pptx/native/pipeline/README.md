@@ -118,6 +118,20 @@ question worth recording — **WPS Presentation opens the corrupted deck without
 same slide and shape count. A second renderer tolerating the defect is exactly why the audit
 cannot be replaced by "it renders, therefore it is valid".
 
+## Multi-page stress deck
+
+`scripts/stress_html.js` generates a deck the way a person would: dozens of pages, seven
+archetypes cycling (cover, card row, steps, grid, table + chart, column wrap, metrics),
+seeded so a failure reproduces exactly. `npm run stress:html` builds 40 pages; the
+twelve-page version runs in the test suite.
+
+The point is what it asserts, because these are the properties a page-level fixture cannot
+see: `unsupportedDetails` empty (the generated CSS stays inside the subset), no container
+fallback, `maxBoxDelta` small, no empty slide, **nothing outside the slide box** (text is
+held strictly; a decoration may hang over the edge, which is what a clipped shape means),
+and a wall-clock budget. Forty pages convert in about 650 ms and open in the second reader
+as 40 slides.
+
 ## Second reader
 
 Microsoft PowerPoint is **not installed on the development machine** (Office is absent; the

@@ -98,6 +98,13 @@ jobs:
           # Declared charts must be live chart parts, not pictures, and the
           # rotated watermark must carry a real xfrm rotation.
           python scripts/verify_native_ooxml.py pipeline-converted/pipeline-chart.pptx --require-chart --require-rotation
+      - name: Generate and check a multi-page stress deck
+        working-directory: pptx/native
+        run: |
+          # Several dozen generated pages: the layout has to stay declarative, keep every
+          # box on the slide, and convert in seconds rather than minutes.
+          npm run stress:html
+          python scripts/verify_native_ooxml.py pipeline-converted/stress40.pptx
       - name: Audit every converted deck for invalid enumerated values
         working-directory: pptx/native
         run: |
