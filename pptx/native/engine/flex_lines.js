@@ -73,7 +73,9 @@ function alignLines(lineHeights, totalHeight, contentHeight, alignContent) {
   if (!(free > 0.001)) return result;
   const value = String(alignContent === undefined || alignContent === null ? '' : alignContent)
     .trim().toLowerCase();
-  if (value === 'stretch') {
+  // `align-content: normal` is `stretch` for a flex container, and an absent declaration is
+  // the same thing - both sides resolve it here so they cannot disagree about the default.
+  if (value === 'stretch' || value === '' || value === 'normal') {
     const extra = free / count;
     return result.map(() => ({ top: 0, extra }));
   }
@@ -89,4 +91,13 @@ function alignLines(lineHeights, totalHeight, contentHeight, alignContent) {
   return result;
 }
 
-module.exports = { flexLines, alignLines };
+/**
+ * `flex-direction: column` + `flex-wrap: wrap`: the same break rule with the main axis
+ * turned, so an item's *height* is its base and the container's height is what runs out.
+ * The returned `widths` are therefore the per-column heights.
+ */
+function flexColumns(items, available, gap) {
+  return flexLines(items, available, gap);
+}
+
+module.exports = { flexLines, flexColumns, alignLines };

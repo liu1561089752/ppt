@@ -172,6 +172,9 @@ function validateContainer(prefix, element, errors) {
       errors.push(prefix + '.rowSpan must be a positive integer');
     }
   }
+  if (element.crossGap !== undefined && (!(Number.isFinite(element.crossGap)) || element.crossGap < 0)) {
+    errors.push(prefix + '.crossGap must be a non-negative number');
+  }
   if (element.alignContent !== undefined
     && !['start', 'center', 'end', 'flex-start', 'flex-end', 'space-between', 'space-around', 'space-evenly', 'stretch', 'normal'].includes(element.alignContent)) {
     errors.push(prefix + '.alignContent is not a recognised value');

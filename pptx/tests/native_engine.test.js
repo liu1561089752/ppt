@@ -3962,3 +3962,88 @@ test('a stretched row fills the height its parent gave it', () => {
   assert.ok(result.report.maxBoxDelta < 0.012, 'delta was ' + result.report.maxBoxDelta);
 });
 
+
+test('a wrapping column breaks by height and starts the next column', () => {
+  const build = (containerCss, itemCss) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .cols { display: flex; flex-direction: column; flex-wrap: wrap; width: 900px; ' + containerCss + ' }',
+    '  .c { ' + itemCss + ' background: #CCCCCC; }',
+    '</style></head><body><main class="slide"><div class="cols">',
+    '  <div class="c">1</div><div class="c">2</div><div class="c">3</div>',
+    '  <div class="c">4</div><div class="c">5</div>',
+    '</div></main></body></html>'
+  ].join('\n'));
+
+  // 300px of height, items of 120px and a 12px gap: three fit (120*3 + 12*2 = 384 > 300),
+  // so two per column and the third item opens the second column.
+  const first = build('height: 300px; gap: 12px;', 'width: 200px; height: 120px;');
+  assert.deepEqual(first.report.unsupportedDetails, []);
+  assert.deepEqual(first.report.containerFallbacks, []);
+  const firstColumn = first.analysis.slides[0].nodes[0];
+  const xs = firstColumn.children.map((node) => Number(node.x.toFixed(3)));
+  const ys = firstColumn.children.map((node) => Number(node.y.toFixed(3)));
+  // Two items per column: 0+1, 2+3, then 4 opens a third column.
+  assert.deepEqual(xs.slice(0, 2), [xs[0], xs[0]], 'the first column holds two: ' + xs.join(','));
+  assert.deepEqual(xs.slice(2, 4), [xs[2], xs[2]], 'the second column holds two: ' + xs.join(','));
+  assert.ok(xs[4] > xs[2] && xs[2] > xs[0], 'each column starts further right: ' + xs.join(','));
+  assert.ok(Math.abs(ys[1] - ys[0]) > 0.5, 'items stack down a column');
+  assert.deepEqual([ys[0], ys[2], ys[4]], [ys[0], ys[0], ys[0]], 'each column starts at the top: ' + ys.join(','));
+  assert.ok(Math.abs(ys[1] - ys[3]) < 0.01, 'both columns put their second item at the same offset');
+
+  assert.ok(first.report.maxBoxDelta < 0.012, 'delta was ' + first.report.maxBoxDelta);
+
+  // `align-content` puts the columns on the inline axis, like the lines of a wrapped row.
+  const spread = build('height: 300px; gap: 12px; align-content: space-between;', 'width: 200px; height: 120px;');
+  const spreadColumn = spread.analysis.slides[0].nodes[0];
+  const spreadXs = spreadColumn.children.map((node) => node.x);
+  // 900px wide, three columns of 200px: the last one is pushed to the far edge and the
+  // one before it sits between the two.
+  assert.ok(Math.abs(spreadXs[4] - (spreadColumn.x + 900 / 96 - 200 / 96)) < 0.02,
+    'space-between pushes the last column to the edge: ' + spreadXs[4]);
+  assert.ok(spreadXs[2] > spreadXs[0] && spreadXs[2] < spreadXs[4],
+    'the middle column sits between them: ' + spreadXs.join(','));
+  assert.deepEqual(spread.report.containerFallbacks, []);
+
+  // A column is as wide as its widest item, so a narrower item is centred inside it.
+  const centred = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .cols { display: flex; flex-direction: column; flex-wrap: wrap; width: 900px; gap: 12px; height: 260px; align-content: flex-start; align-items: center; }',
+    '  .c { height: 100px; background: #CCCCCC; }',
+    '  .wide { width: 200px; }',
+    '  .narrow { width: 160px; }',
+    '</style></head><body><main class="slide"><div class="cols">',
+    '  <div class="c wide">A</div><div class="c narrow">B</div>',
+    '  <div class="c wide">C</div><div class="c wide">D</div>',
+    '</div></main></body></html>'
+  ].join('\n'));
+  const centredColumn = centred.analysis.slides[0].nodes[0];
+  const [a, b] = centredColumn.children;
+  // 200px column, 160px item: 20px of slack on each side.
+  assert.ok(Math.abs(b.x - (a.x + 20 / 96)) < 0.005, 'the narrow item is centred: ' + b.x + ' vs ' + a.x);
+  assert.deepEqual(centred.report.containerFallbacks, []);
+});
+
+test('a wrapping column that cannot be translated is reported, not guessed', () => {
+  const build = (containerCss, itemCss) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .cols { display: flex; flex-direction: column; flex-wrap: wrap; width: 900px; ' + containerCss + ' }',
+    '  .c { ' + itemCss + ' background: #CCCCCC; }',
+    '</style></head><body><main class="slide"><div class="cols">',
+    '  <div class="c">1</div><div class="c">2</div><div class="c">3</div>',
+    '</div></main></body></html>'
+  ].join('\n'));
+
+  // Without a height there is nothing to break against.
+  const noHeight = build('gap: 12px;', 'width: 200px; height: 120px;');
+  assert.ok(noHeight.report.unsupportedDetails.some((entry) => entry.property === 'flexWrap'),
+    'a wrapping column without a definite height is reported');
+
+  // A column takes its width from its items; without one the break cannot be measured.
+  const autoWidth = build('height: 300px; gap: 12px;', 'height: 120px;');
+  assert.ok(autoWidth.report.unsupportedDetails.some((entry) => entry.property === 'flexWrap'),
+    'a wrapping column with auto-width items is reported');
+});
+

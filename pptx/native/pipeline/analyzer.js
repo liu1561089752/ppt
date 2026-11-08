@@ -38,7 +38,7 @@ const {
 } = require('./css');
 const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
 const { flexWidths } = require('../engine/flex_size');
-const { flexLines, alignLines } = require('../engine/flex_lines');
+const { flexLines, flexColumns, alignLines } = require('../engine/flex_lines');
 const {
   placeGridItems,
   gridRowCount,
@@ -1552,6 +1552,101 @@ function applyRowStretch(node) {
   }
   (node.children || []).forEach(applyRowStretch);
 }
+
+/**
+ * `flex-direction: column; flex-wrap: wrap`: items stack until the container's height runs
+ * out, then a new column starts beside it.
+ *
+ * Two declarations are load-bearing and are reported when missing: the container needs a
+ * definite height (that is what the break is measured against) and every item needs a
+ * declared width (that is the column's cross size - an auto-width item would be sized by
+ * its max-content width, which this shape measures nowhere). Everything else comes from
+ * the shared break/distribution helpers, so the engine reaches the same columns.
+ */
+function layoutWrappedColumn(domNode, style, contentBox, inherited, ctx, flow) {
+  if (!Number.isFinite(contentBox.h)) {
+    recordUnsupported(ctx, domNode, 'flexWrap', style.flexWrap,
+      'A wrapping column needs a definite height to break against');
+    return null;
+  }
+  const options = { parentWidth: contentBox.w, fontSizePx: inherited.fontPx };
+  const undeclared = flow.filter((child) => inchesOf(ctx.styles.computed(child).width, 'x', options) === null);
+  if (undeclared.length) {
+    recordUnsupported(ctx, domNode, 'flexWrap', style.flexWrap,
+      'Every item of a wrapping column needs a declared width: a column takes its width from '
+      + 'its items, and an auto width would be the item\u2019s max-content size');
+    return null;
+  }
+
+  const mainGap = flexGap(style, 'column');
+  const crossGap = flexGap(style, 'row');
+  const entries = flow.map((child) => {
+    const childStyle = ctx.styles.computed(child);
+    const margins = childMargins(childStyle, options);
+    const width = inchesOf(childStyle.width, 'x', options);
+    const node = analyzeNode(child, { x: contentBox.x, y: contentBox.y, w: width, h: null }, inherited, ctx);
+    if (!node) return null;
+    const self = alignSelfOf(childStyle);
+    if (self) node.alignSelf = self;
+    node.fixedWidth = true;
+    if (declaresLength(childStyle.height)) node.fixedHeight = true;
+    return { node, margins, width };
+  }).filter(Boolean);
+  if (!entries.length) return [];
+
+  // Columns: how many items fit before the height runs out (shared with the engine).
+  const groups = flexColumns(
+    entries.map((entry) => ({ base: entry.node.h + entry.margins.top + entry.margins.bottom, grow: 0 })),
+    Math.max(0, contentBox.h),
+    mainGap
+  );
+  const columnWidths = groups.map((group) =>
+    group.indices.reduce((max, index) => Math.max(max, entries[index].width), 0));
+  const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0)
+    + crossGap * Math.max(0, groups.length - 1);
+  // Columns are the lines of a column container, so `align-content` distributes them on the
+  // inline axis - the same helper the row case uses for its lines.
+  const distribution = alignLines(columnWidths, totalWidth, contentBox.w, alignContentOf(style));
+  const alignItems = String(style.alignItems || 'stretch').toLowerCase();
+  const justify = String(style.justifyContent || 'flex-start').toLowerCase();
+
+  let columnCursor = contentBox.x;
+  groups.forEach((group, columnIndex) => {
+    const { top: columnShift, extra: columnExtra } = distribution[columnIndex];
+    const columnWidth = columnWidths[columnIndex] + columnExtra;
+    // `columnShift` distributes the columns; the cursor itself never moves by it.
+    const left = columnCursor + columnShift;
+    const entriesHere = group.indices.map((index) => entries[index]);
+    const columnHeight = entriesHere.reduce((sum, entry, index) =>
+      sum + entry.node.h + entry.margins.top + entry.margins.bottom
+      + (index < entriesHere.length - 1 ? mainGap : 0), 0);
+    const free = Math.max(0, contentBox.h - columnHeight);
+    let offset = 0;
+    let extra = 0;
+    if (justify === 'center') offset = free / 2;
+    else if (justify === 'flex-end' || justify === 'end') offset = free;
+    else if (justify === 'space-between' && entriesHere.length > 1) extra = free / (entriesHere.length - 1);
+    else if (justify === 'space-around') {
+      offset = free / (2 * entriesHere.length);
+      extra = free / entriesHere.length;
+    }
+    let cursor = contentBox.y + offset;
+    entriesHere.forEach((entry) => {
+      const align = entry.node.alignSelf || alignItems;
+      let x = left;
+      if (align === 'center') x = left + (columnWidth - entry.width) / 2;
+      else if (align === 'end' || align === 'flex-end') x = left + columnWidth - entry.width;
+      // The subtree travels with the item: its children were measured at the earlier
+      // position and the engine replays them relative to the box it is handed.
+      shiftSubtree(entry.node, cursor + entry.margins.top - entry.node.y,
+        x + entry.margins.left - entry.node.x);
+      cursor += entry.node.h + entry.margins.top + entry.margins.bottom + mainGap + extra;
+    });
+    columnCursor += columnWidth + crossGap;
+  });
+  return entries.map((entry) => entry.node);
+}
+
 function layoutFlex(domNode, contentBox, inherited, ctx) {
   const style = ctx.styles.computed(domNode);
   const direction = String(style.flexDirection || 'row').startsWith('column') ? 'column' : 'row';
@@ -1579,6 +1674,10 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     });
   const flow = kids.filter((child) => !isAbsolute(ctx.styles.computed(child)));
 
+  if (direction === 'column' && String(style.flexWrap || 'nowrap').toLowerCase().startsWith('wrap')) {
+    const wrapped = layoutWrappedColumn(domNode, style, contentBox, inherited, ctx, flow);
+    if (wrapped) return wrapped.concat(absolute);
+  }
   if (direction === 'column') {
     const columnOptions = { parentWidth: contentBox.w, fontSizePx: inherited.fontPx };
     let cursor = contentBox.y;
@@ -1629,12 +1728,16 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     // Cross-axis alignment inside a column; align-self wins for one child.
     nodes.filter((node) => !node.absolute).forEach((node) => {
       const align = node.alignSelf || alignItems;
-      if (align === 'center') node.x = contentBox.x + (contentBox.w - node.w) / 2;
-      else if (align === 'end' || align === 'flex-end') node.x = contentBox.x + contentBox.w - node.w;
+      let targetX = node.x;
+      if (align === 'center') targetX = contentBox.x + (contentBox.w - node.w) / 2;
+      else if (align === 'end' || align === 'flex-end') targetX = contentBox.x + contentBox.w - node.w;
       else if (align === 'stretch' && !node.fixedWidth) {
-        node.x = contentBox.x;
+        targetX = contentBox.x;
         node.w = Math.max(node.w, contentBox.w);
       }
+      // A child that moves takes its own children with it: their boxes are relative to it,
+      // and the engine replays them from the box it is handed.
+      shiftSubtree(node, 0, targetX - node.x);
     });
 
     // Then the block itself: `justify-content` places the stack in the leftover height.
@@ -1657,7 +1760,8 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       {
         let line = contentBox.y + offset;
         measured.forEach(({ node, margins }) => {
-          node.y = line + margins.top;
+          const targetY = line + margins.top;
+          shiftSubtree(node, targetY - node.y, 0);
           line += node.h + margins.top + margins.bottom + gap + extra;
         });
       }

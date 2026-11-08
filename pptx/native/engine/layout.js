@@ -2,7 +2,7 @@
 
 const { estimateTextHeight, estimateRichTextHeight, wrapText } = require('./text_measure');
 const { flexWidths } = require('./flex_size');
-const { flexLines, alignLines } = require('./flex_lines');
+const { flexLines, flexColumns, alignLines } = require('./flex_lines');
 const {
   placeGridItems,
   gridItemWidth,
@@ -204,6 +204,14 @@ function placeColumn(container, box, theme, options, sink) {
   const contentWidth = Math.max(0, box.w - padding.left - padding.right);
   const children = container.children || [];
   if (!children.length) return padding.top + padding.bottom;
+  if (container.wrap) {
+    const contentHeight = Number.isFinite(box.h)
+      ? Math.max(0, box.h - padding.top - padding.bottom)
+      : undefined;
+    return placeWrappedColumn(container, box, theme, options, sink, {
+      padding, gap, contentX, contentY, contentWidth, children, contentHeight
+    });
+  }
 
   const margins = children.map((child) => normalizeMargin(child));
   const widths = children.map((child, index) => {
@@ -315,6 +323,80 @@ function placeRow(container, box, theme, options, sink) {
  * the line heights plus the gaps. Mirrors the analyzer's row branch so both sides
  * agree by construction - the line groups come from the shared `flexLines`.
  */
+/**
+ * `flex-direction: column; flex-wrap: wrap`: the vertical twin of `placeWrappedRow`.
+ * The column break comes from the shared `flexColumns` and the leftover width is
+ * distributed by the shared `alignLines`, so the analyzer and the engine cannot disagree
+ * about where a column starts or how many items it holds.
+ */
+function placeWrappedColumn(container, box, theme, options, sink, frame) {
+  const { padding, gap, contentX, contentY, contentWidth, contentHeight } = frame;
+  const children = frame.children || [];
+  const crossGap = Number.isFinite(container.crossGap) ? container.crossGap : gap;
+  const margins = children.map((child) => normalizeMargin(child));
+  const widths = children.map((child, index) => {
+    if (child.w !== undefined) return child.w;
+    return Math.max(0, contentWidth - margins[index].left - margins[index].right);
+  });
+  const heights = children.map((child, index) => measureElementHeight(child, widths[index], theme, options));
+  const available = Number.isFinite(contentHeight) ? contentHeight : 0;
+  // No growth inside a column here: the items keep the heights the CSS gave them and
+  // `justify` decides where the stack sits.
+  const columns = flexColumns(heights.map((height, index) => ({
+    base: height + margins[index].top + margins[index].bottom,
+    grow: 0
+  })), available, gap);
+  const columnWidths = columns.map((column) =>
+    column.indices.reduce((max, index) => Math.max(max, widths[index]), 0));
+  const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0)
+    + crossGap * Math.max(0, columns.length - 1);
+  const distribution = alignLines(columnWidths, totalWidth, contentWidth, container.alignContent);
+  const align = container.align || 'stretch';
+  const justify = container.justify || 'start';
+
+  let columnCursor = contentX;
+  let tallest = 0;
+  columns.forEach((column, columnIndex) => {
+    const { top: columnShift, extra: columnExtra } = distribution[columnIndex];
+    const columnWidth = columnWidths[columnIndex] + columnExtra;
+    const left = columnCursor + columnShift;
+    const used = column.indices.reduce((sum, index) =>
+      sum + heights[index] + margins[index].top + margins[index].bottom, 0)
+      + gap * Math.max(0, column.indices.length - 1);
+    const free = Math.max(0, available - used);
+    let offset = 0;
+    let extra = 0;
+    if (justify === 'center') offset = free / 2;
+    else if (justify === 'end') offset = free;
+    else if (justify === 'space-between' && column.indices.length > 1) {
+      extra = free / (column.indices.length - 1);
+    } else if (justify === 'space-around') {
+      offset = free / (2 * column.indices.length);
+      extra = free / column.indices.length;
+    }
+    let cursorY = contentY + offset;
+    column.indices.forEach((index) => {
+      const child = children[index];
+      const childAlign = child.alignSelf || align;
+      let x = left + margins[index].left;
+      if (childAlign === 'center') x = left + (columnWidth - widths[index]) / 2;
+      else if (childAlign === 'end') x = left + columnWidth - widths[index];
+      emitElement(child, {
+        x,
+        y: cursorY + margins[index].top,
+        w: widths[index],
+        h: heights[index]
+      }, theme, options, sink);
+      cursorY += heights[index] + margins[index].top + margins[index].bottom + gap + extra;
+    });
+    tallest = Math.max(tallest, used);
+    columnCursor += columnWidth + crossGap;
+  });
+
+  const inner = Math.max(tallest, available);
+  return padding.top + inner + padding.bottom;
+}
+
 function placeWrappedRow(container, box, theme, options, sink, frame) {
   const { padding, gap, contentX, contentY, contentWidth, children } = frame;
   const items = children.map((child) => {

@@ -79,6 +79,23 @@
   .cloud { display: flex; flex-wrap: wrap; gap: 12px; width: 500px; height: 292px; }
   .cloud.centre { align-content: center; }
   .cloud.spread { align-content: space-between; }
+  /* 第四页：列方向换行——竖着排满一列，再开下一列 */
+  .board {
+    display: flex; flex-direction: column; flex-wrap: wrap;
+    gap: 14px; width: 1104px; height: 380px;
+    align-content: space-between; justify-content: space-between;
+  }
+  .note {
+    width: 520px; padding: 18px 18px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    display: flex; flex-direction: row; align-items: center; gap: 12px;
+  }
+  .note .no {
+    flex: 0 0 32px; height: 32px; border-radius: 16px; background: #d98a4b;
+    display: flex; align-items: center; justify-content: center;
+    color: #ffffff; font-size: 13px; line-height: 1.2; font-weight: 600;
+  }
+  .note .label { font-size: 13px; line-height: 1.6; color: var(--ink); }
   .chip {
     flex: 0 0 150px; padding: 9px 12px;
     background: var(--page); border: 1px solid var(--line); border-radius: 9px;
@@ -153,6 +170,24 @@
     </section>
   </div>
   <p class="foot">同一个标签云放进不同高度的容器，浏览器只改变行的起点；转成原生对象后仍是可编辑的文本框与圆角矩形，没有整页位图。</p>
+</main>
+
+<main class="slide">
+  <div class="kicker">native flex wrap / column direction</div>
+  <h1>竖着排满一列，再开下一列</h1>
+  <p class="lede" style="width: 1040px">行方向换行是按宽度断行，列方向换行是按高度断列：条目先从上往下排，碰到容器高度就另起一列，列宽由条目自己声明的宽度决定，<code>align-content</code> 再把这些列分布在行内轴上。断列规则和分布规则都由同一份共享代码算，两种方向只是把主轴转了一下。</p>
+
+  <div class="board">
+    <div class="note"><div class="no">01</div><div class="label">竖排到列底就换列，换列后从上往下继续</div></div>
+    <div class="note"><div class="no">02</div><div class="label">列宽来自每个条目的声明宽度</div></div>
+    <div class="note"><div class="no">03</div><div class="label">列与列之间的空隙是 column-gap</div></div>
+    <div class="note"><div class="no">04</div><div class="label">align-content 决定这些列在行内轴上怎么分布</div></div>
+    <div class="note"><div class="no">05</div><div class="label">每列内部再用 justify-content 分配剩余高度</div></div>
+    <div class="note"><div class="no">06</div><div class="label">整块仍是可编辑的文本框与圆角矩形</div></div>
+    <div class="note"><div class="no">07</div><div class="label">没有整页位图，也没有手工分组的坐标</div></div>
+    <div class="note"><div class="no">08</div><div class="label">浏览器怎么排，导出的 deck 就怎么排</div></div>
+  </div>
+  <p class="foot">八条说明按 380px 的高度分成两列：每列四条，列间用 space-between 顶到两侧，列内再用 justify-content 把四条摊开。</p>
 </main>
 
 </body>

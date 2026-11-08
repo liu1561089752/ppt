@@ -511,11 +511,7 @@ function containerPlan(node, state) {
   } else if (display === 'flex') {
     direction = String(style.flexDirection || 'row').toLowerCase().startsWith('column') ? 'column' : 'row';
     const wrapValue = String(style.flexWrap || 'nowrap').toLowerCase();
-    if (wrapValue.startsWith('wrap')) {
-      // A wrapping column would need column lines, which the engine does not model.
-      if (direction !== 'row') return { ok: false, reason: 'flex-wrap on a column needs column lines' };
-      wrap = true;
-    }
+    if (wrapValue.startsWith('wrap')) wrap = true;
   }
 
   for (const child of children) {
@@ -524,6 +520,13 @@ function containerPlan(node, state) {
     if (!nested.ok) return { ok: false, reason: 'nested group: ' + nested.reason };
   }
 
+  if (display === 'flex' && wrap && direction === 'column') {
+    // The analyzer reports a wrapping column it cannot translate exactly (no definite
+    // height, or an item without a declared width) and leaves the children in block flow.
+    if (!Number.isFinite(node.h)) return { ok: false, reason: 'wrapping column has no definite height' };
+    const undeclared = children.find((child) => !(child.style && child.style.width !== undefined));
+    if (undeclared) return { ok: false, reason: 'wrapping column item has no declared width' };
+  }
   if (display === 'flex' || display === 'grid') {
     const spaced = children.find((child) => hasMargin(child));
     if (spaced) return { ok: false, reason: display + ' child declares margins' };
@@ -582,6 +585,11 @@ function containerElement(node, plan, resolvedTheme, report) {
   } else if (plan.display === 'flex') {
     spec.direction = 'column';
     spec.gap = containerGap(style, 'column');
+    if (plan.wrap) {
+      spec.wrap = true;
+      // The gap *between* columns is the inline-axis one; `gap` above is the main axis.
+      spec.crossGap = containerGap(style, 'row');
+    }
   } else {
     // Block flow: spacing lives on the children's margins, not on a gap.
     spec.direction = 'column';
