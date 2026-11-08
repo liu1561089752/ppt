@@ -258,7 +258,10 @@ function surfaceElementFromNode(node, resolvedTheme) {
     element.gradient = nativeGradient(gradient);
     element.fill = gradient.stops[0].color;
   }
-  if (radius) element.radius = radius;
+  // `border-radius: 50%` is the inscribed ellipse: a real geometry, not a rounded rectangle
+  // with a large corner radius, which would draw a stadium on a non-square box.
+  if (node.ellipse) element.shape = 'ellipse';
+  else if (radius) element.radius = radius;
   if (node.clip) element.clip = node.clip;
   if (border) {
     element.lineColor = border.color;

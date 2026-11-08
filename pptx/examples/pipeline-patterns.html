@@ -17,6 +17,8 @@
   .quote { width: 900px; margin: 0; font-size: 26px; line-height: 1.7; color: #1D2A28; }
   .quote-by { margin-top: 26px; font-size: 13px; color: #6E7F7A; }
   .quote-by b { color: #1D2A28; }
+  /* 50% 不是圆角矩形：非正方形盒子上它是内切椭圆，原生几何就是 ellipse */
+  .blob { position: absolute; right: 64px; top: 96px; width: 220px; height: 92px; border-radius: 50%; background: #E8E1D0; }
 
   /* ---- 数字页 ---- */
   .stats { display: flex; gap: 28px; }
@@ -28,7 +30,7 @@
 
   /* ---- 时间线 ---- */
   .track { position: relative; margin-top: 26px; height: 2px; width: 1132px; background: #DCD6C8; }
-  .node { position: absolute; top: -6px; width: 14px; height: 14px; border-radius: 7px; background: #17332F; }
+  .node { position: absolute; top: -7px; width: 14px; height: 14px; border-radius: 50%; background: #17332F; }
   .step { position: absolute; width: 200px; }
   .step .when { font-size: 12px; color: #8A9793; letter-spacing: 1px; }
   .step .what { margin-top: 8px; font-size: 15px; font-weight: 600; }
@@ -58,6 +60,7 @@
 
 <main class="slide">
   <div class="kicker">Quote</div>
+  <div class="blob"></div>
   <div class="quote-mark">“</div>
   <div class="quote">如果一页幻灯片需要旁白才能读懂，那它先失败了一次；文字排版要替读者把顺序摆好，而不是把句子堆起来。</div>
   <div class="quote-by"><b>排版笔记</b> · 第三版 · 2026</div>

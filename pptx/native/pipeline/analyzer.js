@@ -289,6 +289,48 @@ function radiusCorners(style) {
   return [pick(0), pick(1), pick(2), pick(3)];
 }
 
+/**
+ * `border-radius: 50%` is the inscribed ellipse - the shape every dot, badge and avatar is
+ * drawn with. A percentage radius used to fall out of `radiusOf` (it is not a length), so the
+ * box was drawn square without a word. Only a full ellipse is expressible natively: a smaller
+ * percentage is an elliptical corner, which is reported instead of approximated.
+ */
+function ellipseOf(style) {
+  const raw = style.borderTopLeftRadius || style.borderRadius;
+  if (!raw) return null;
+  const parts = String(raw).split('/');
+  const horizontal = String(parts[0] || '').trim().split(/\s+/u).filter(Boolean);
+  const vertical = parts.length > 1
+    ? String(parts[1]).trim().split(/\s+/u).filter(Boolean)
+    : horizontal;
+  if (!horizontal.length || !vertical.length) return null;
+  const axisPercent = (value) => {
+    const length = parseLength(value);
+    return length && length.unit === '%' ? length.value : null;
+  };
+  const percents = [axisPercent(horizontal[0]), axisPercent(vertical[0])];
+  if (percents.some((value) => value === null)) return null;
+  return { percent: Math.min(percents[0], percents[1]) };
+}
+
+/** Radius or ellipse, plus the report a shape that can hold neither deserves. */
+function applyRadius(node, domNode, style, ctx) {
+  const radius = radiusOf(style);
+  if (radius) {
+    node.radius = radius;
+    return;
+  }
+  const ellipse = ellipseOf(style);
+  if (!ellipse) return;
+  if (ellipse.percent >= 50) {
+    node.ellipse = true;
+    return;
+  }
+  recordUnsupported(ctx, domNode, 'borderRadius', style.borderTopLeftRadius || style.borderRadius,
+    'A percentage radius below 50% is an elliptical corner, which no native geometry spells:'
+      + ' the box is drawn square');
+}
+
 function radiusOf(style) {
   const raw = style.borderTopLeftRadius || style.borderRadius;
   if (!raw) return null;
@@ -1044,6 +1086,16 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   if (!node) return null;
   applyHeightConstraints(node, slot, ctx);
   attachDecorations(domNode, node, ctx);
+  // A percentage radius that is not a full ellipse is an elliptical corner, and the shape is
+  // drawn square: saying so beats letting a rounded card arrive with sharp corners.
+  const percentRadius = ellipseOf(ctx.styles.computed(domNode));
+  if (percentRadius && percentRadius.percent < 50 && !node.ellipse
+    && (node.radius === undefined || node.radius === null) && !node.src && !node.backgroundImage) {
+    const style = ctx.styles.computed(domNode);
+    recordUnsupported(ctx, domNode, 'borderRadius', style.borderTopLeftRadius || style.borderRadius,
+      'A percentage radius below 50% is an elliptical corner, which no native geometry spells:'
+        + ' the box is drawn square');
+  }
   absoluteChildOverlays(node);
   insertOverlayNodes(node, ctx);
   // One declared border side, on any kind of box, becomes a thin native shape along
@@ -1418,6 +1470,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     style,
     margins: boxShorthand(style, 'margin'),
     radius: radiusOf(style),
+    ellipse: (ellipseOf(style) || {}).percent >= 50 || undefined,
     x,
     y,
     w: width,
@@ -1632,6 +1685,7 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       node.objectFit = layer.fit;
       node.focus = layer.focus;
       node.radius = radiusOf(style);
+      if ((ellipseOf(style) || {}).percent >= 50) node.ellipse = true;
       // A gradient layer above the picture is a scrim: a second native object paints it.
       const overlay = backgroundOverlayGradientOf(style);
       if (overlay) node.overlayCss = overlay;
@@ -1667,6 +1721,12 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
   }
     node.focus = descriptionFocus(style.objectPosition);
     node.radius = radiusOf(style);
+    if ((ellipseOf(style) || {}).percent >= 50) node.ellipse = true;
+    else if (ellipseOf(style)) {
+      recordUnsupported(ctx, domNode, 'borderRadius', style.borderTopLeftRadius || style.borderRadius,
+        'A percentage radius below 50% is an elliptical corner, which no native geometry spells:'
+          + ' the picture keeps square corners');
+    }
     applyRelativeShift(node, style, parentWidth);
     return node;
   }

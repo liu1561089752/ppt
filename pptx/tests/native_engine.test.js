@@ -5224,3 +5224,39 @@ test('a table that fits is left alone', () => {
   assert.equal(result.deck.slides[0].elements.find((element) => element.type === 'table').rows.length, 2);
 });
 
+
+test('border-radius: 50% is the inscribed ellipse, smaller percentages are named', () => {
+  const shape = (css) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  ' + css,
+      '</style></head><body><main class="slide"><div class="box"></div></main></body></html>'
+    ].join('\n'));
+    return {
+      element: result.deck.slides[0].elements[0] || {},
+      reported: result.report.unsupportedDetails.map((item) => item.property)
+    };
+  };
+
+  // A dot and a badge are the same declaration on boxes of different proportions.
+  const dot = shape('.box { width: 120px; height: 120px; background: #17332F; border-radius: 50%; }');
+  assert.equal(dot.element.shape, 'ellipse', 'a square with 50% is a circle');
+  assert.equal(dot.element.radius, undefined, 'and not a rounded rectangle');
+  assert.deepEqual(dot.reported, []);
+
+  const wide = shape('.box { width: 300px; height: 120px; background: #C05B3E; border-radius: 50%; }');
+  assert.equal(wide.element.shape, 'ellipse', 'a wide box with 50% is the inscribed ellipse');
+
+  // A radius in points stays a rounded rectangle.
+  const card = shape('.box { width: 300px; height: 120px; background: #fff; border-radius: 16px; }');
+  assert.equal(card.element.radius, 0.167);
+  assert.equal(card.element.shape, undefined);
+
+  // A smaller percentage is an elliptical corner no native geometry spells.
+  const soft = shape('.box { width: 120px; height: 120px; background: #ccc; border-radius: 25%; }');
+  assert.equal(soft.element.shape, undefined);
+  assert.equal(soft.element.radius, undefined);
+  assert.deepEqual(soft.reported, ['borderRadius'], 'the box arrives square, so it is named');
+});
+
