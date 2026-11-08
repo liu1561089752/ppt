@@ -5133,3 +5133,42 @@ test('alignment and fit values that would move a pixel are named', () => {
   assert.ok(fit('scale-down').includes('objectFit'), 'scale-down is approximated too');
 });
 
+
+test('an inline ::before joins the line as a run, and attr() resolves', () => {
+  const build = (css, markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { font-size: 18px; color: #212B29; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">' + markup + '</main></body></html>'
+  ].join('\n'));
+
+  const arrow = build('.row::before { content: "\\2192  "; color: #C05B3E; }',
+    '<div class="row">read the DOM</div>');
+  const boxes = arrow.deck.slides[0].elements.filter((element) => element.type === 'text');
+  assert.equal(boxes.length, 1, 'the decoration does not become a box of its own');
+  assert.ok(Array.isArray(boxes[0].text), 'the line is made of runs');
+  // CSS collapses the run of spaces in normal white-space, so two spaces are one.
+  assert.equal(boxes[0].text[0].text, '\u2192 ');
+  assert.equal(boxes[0].text[0].options.color, 'C05B3E', 'the arrow keeps its own colour');
+  assert.equal(boxes[0].text[1].text, 'read the DOM');
+  assert.equal(arrow.report.unsupported, 0, 'a translatable decoration says nothing');
+
+  // `content` is a sequence: a string and an attribute are concatenated in order.
+  const tag = build('.row::after { content: "  \\00B7  " attr(data-k); font-size: 11px; }',
+    '<div class="row" data-k="P0">body</div>');
+  const tagged = tag.deck.slides[0].elements.find((element) => element.type === 'text');
+  const tail = tagged.text[tagged.text.length - 1];
+  assert.equal(tail.text, ' \u00B7 P0');
+  assert.equal(tail.options.fontSize, 8.25);
+
+  // Generated content that needs state the DOM does not carry is named, not guessed.
+  const counter = build('.row::before { content: counter(step) ". "; }', '<div class="row">alpha</div>');
+  assert.ok(counter.report.unsupportedDetails.some((item) => item.property === '::before'));
+
+  // A container has no single line for the words to join.
+  const container = build('.card::before { content: "NEW"; }',
+    '<div class="card"><p>one</p><p>two</p></div>');
+  assert.ok(container.report.unsupportedDetails.some((item) => item.property === '::before'));
+});
+

@@ -44,6 +44,13 @@
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   tfoot td { border-top: 2px solid #17332F; border-bottom: none; font-weight: 600; }
 
+  /* ---- 清单页 ---- */
+  /* 行首箭头和行尾标签都是伪元素：它们并进这一行的 run，不另建盒子 */
+  .check { margin-top: 4px; }
+  .check .row { font-size: 15px; line-height: 2.05; color: #2C3634; }
+  .check .row::before { content: "\2192  "; color: #C05B3E; font-weight: 700; }
+  .check .row::after { content: "  \00B7  " attr(data-k); color: #93A09B; font-size: 11px; }
+
   .foot { position: absolute; left: 64px; bottom: 36px; font-size: 11px; color: #9AA5A1; }
 </style>
 </head>
@@ -104,6 +111,18 @@
     </tfoot>
   </table>
   <div class="foot">原生表格 · 表头、斑马行、右对齐数字都是单元格属性</div>
+</main>
+
+<main class="slide">
+  <div class="kicker">Checklist</div>
+  <h1>行首的箭头和行尾的标签，是伪元素写出来的</h1>
+  <div class="check">
+    <div class="row" data-k="P0"><b>图片版式</b>：裁切与聚焦点都写进原生图片框</div>
+    <div class="row" data-k="P0"><b>版式识别</b>：从 DOM 直接算出盒子、行、字三层</div>
+    <div class="row" data-k="P1"><b>字体嵌入</b>：要等真 PowerPoint 才能验证，先如实上报</div>
+    <div class="row" data-k="P2"><b>视觉回归</b>：金标已上锁，参考画面仍需人工判断</div>
+  </div>
+  <div class="foot">::before / ::after 的字是这一行的 run · 标签取自 data-k</div>
 </main>
 
 </body>

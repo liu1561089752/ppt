@@ -581,6 +581,68 @@ function baseRunFlags(baseStyle) {
   };
 }
 
+/**
+ * The words a `::before`/`::after` box contributes to its host's own line.
+ *
+ * A literal string and `attr()` are text the DOM already holds. `counter()` and the quote
+ * keywords depend on state the DOM does not carry, so they are named instead of guessed.
+ */
+/**
+ * The words a `::before`/`::after` box contributes to its host's own line.
+ *
+ * A CSS `content` value is a sequence: quoted strings and `attr()` are text the DOM already
+ * holds, so they are concatenated. `counter()` and the quote keywords depend on state the DOM
+ * does not carry, so the whole declaration is named instead of half-guessed.
+ */
+function inlinePseudoText(declaration, domNode) {
+  const content = declaration ? declaration.content : undefined;
+  if (content === undefined) return { text: '' };
+  const value = String(content).trim();
+  if (!value || value === 'none' || value === 'normal') return { text: '' };
+  const parts = [];
+  let index = 0;
+  while (index < value.length) {
+    const rest = value.slice(index);
+    if (/^\s/u.test(rest)) { index += 1; continue; }
+    const quote = rest[0];
+    if (quote === '"' || quote === "'") {
+      let cursor = 1;
+      let body = '';
+      while (cursor < rest.length && rest[cursor] !== quote) {
+        if (rest[cursor] === '\\' && cursor + 1 < rest.length) {
+          body += rest[cursor] + rest[cursor + 1];
+          cursor += 2;
+          continue;
+        }
+        body += rest[cursor];
+        cursor += 1;
+      }
+      if (cursor >= rest.length) return { text: '', unsupported: value };
+      parts.push(decodeCssContent(quote + body + quote));
+      index += cursor + 1;
+      continue;
+    }
+    const call = /^([A-Za-z-]+)\(([^)]*)\)/u.exec(rest);
+    if (call) {
+      const name = call[1].toLowerCase();
+      if (name !== 'attr') return { text: '', unsupported: value };
+      const attribute = call[2].trim().replace(/^['"]|['"]$/gu, '');
+      const raw = domNode && domNode.attrs ? domNode.attrs[attribute] : undefined;
+      parts.push(raw === undefined || raw === null ? '' : String(raw));
+      index += call[0].length;
+      continue;
+    }
+    const word = /^[A-Za-z-]+/u.exec(rest);
+    if (word && (word[0] === 'none' || word[0] === 'normal')) { index += word[0].length; continue; }
+    return { text: '', unsupported: value };
+  }
+  // A browser collapses runs of spaces in a normal white-space context, so the words a
+  // pseudo box contributes are collapsed the way the DOM text around them already was.
+  const joined = parts.join('');
+  const preserve = /^pre/u.test(String((declaration && declaration.whiteSpace) || '').trim().toLowerCase());
+  return { text: preserve ? joined : joined.replace(/[ \t\u00A0]+/gu, ' ') };
+}
+
 function buildRuns(domNode, baseStyle, ctx) {
   const base = baseRunFlags(baseStyle);
   const runs = [];
@@ -678,7 +740,20 @@ function buildRuns(domNode, baseStyle, ctx) {
     node.children.forEach((child) => visit(child, merged, inline));
   };
 
+  // A `::before`/`::after` box that is not absolutely positioned is an inline box in the
+  // host's own line, so its words join the line as runs. They used to be dropped, which lost
+  // the arrow, the tag or the number a design puts before every row.
+  const pseudoRun = (pseudo) => {
+    const declaration = ctx.styles.decoration(domNode, pseudo);
+    if (!declaration) return;
+    if (String(declaration.position || '').toLowerCase() === 'absolute') return; // a placed overlay
+    const resolved = inlinePseudoText(declaration, domNode);
+    if (!resolved.text) return;
+    pushText(resolved.text, declaration, null);
+  };
+  pseudoRun('before');
   (domNode.children || []).forEach((child) => visit(child, baseStyle, null));
+  pseudoRun('after');
   const text = runs.map((run) => run.text).join('');
   const hasFormatting = runs.some((run) => run.options);
   return { runs, text, hasFormatting };
@@ -1064,7 +1139,18 @@ function attachDecorations(domNode, node, ctx) {
     if (content === undefined) return; // CSS requires content on a pseudo box
     const position = String(declaration.position || '').toLowerCase();
     if (position !== 'absolute') {
-      skip(pseudo, 'Only absolutely positioned decorations have a placeable box', content);
+      // An inline decoration is already part of the host's text (buildRuns pushed it as a
+      // run). Only the shapes that cannot join a line are worth naming.
+      const resolved = inlinePseudoText(declaration, domNode);
+      const hostCarriesWords = node.kind === 'text' || node.kind === 'list';
+      if (resolved.unsupported) {
+        skip(pseudo, 'Only a literal string or attr() can join the line: '
+          + resolved.unsupported + ' needs generated content the DOM does not carry', content);
+      } else if (!resolved.text) {
+        skip(pseudo, 'An inline decoration with no words paints nothing this shape can place', content);
+      } else if (!hostCarriesWords) {
+        skip(pseudo, 'The decoration belongs to a container, whose children have no single line to join', content);
+      }
       return;
     }
 
