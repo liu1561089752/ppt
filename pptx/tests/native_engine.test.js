@@ -1825,3 +1825,36 @@ test('html pipeline resolves fractional and fixed grid tracks', () => {
   mixed.columnTracks.forEach((track) => assert.ok(track.fr === undefined || track.fr > 0));
 });
 
+
+test('html pipeline gives pie and doughnut charts a legend and percentages', () => {
+  const html = [
+    '<html><head><style>.slide { width: 1280px; height: 720px; }</style></head>',
+    '<body><main class="slide">',
+    '<div style="width: 500px; height: 300px;" data-chart="doughnut">',
+    '  <table><thead><tr><th>来源</th><th>占比</th></tr></thead>',
+    '  <tbody><tr><td>订阅</td><td>52</td></tr><tr><td>服务</td><td>28</td></tr></tbody></table>',
+    '</div>',
+    '<div style="width: 500px; height: 300px;" data-chart="line" data-values="1,2,3"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const charts = [];
+  const walk = (elements) => elements.forEach((element) => {
+    if (element.type === 'chart') charts.push(element);
+    if (element.children) walk(element.children);
+  });
+  walk(result.deck.slides[0].elements);
+
+  // A share chart with one series still needs named slices.
+  const doughnut = charts.find((chart) => chart.chartType === 'doughnut');
+  assert.ok(doughnut);
+  assert.equal(doughnut.options.showLegend, true);
+  assert.equal(doughnut.options.showPercent, true);
+
+  // A single-series line chart stays clean.
+  const line = charts.find((chart) => chart.chartType === 'line');
+  assert.ok(line);
+  assert.equal(line.options.showLegend, false);
+  assert.equal(line.options.showPercent, undefined);
+});
+

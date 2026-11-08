@@ -1132,7 +1132,9 @@ function readChart(domNode, ctx) {
     }];
   }
 
-  if (options.showLegend === undefined) options.showLegend = data.length > 1;
+  const shareChart = requested === 'pie' || requested === 'doughnut';
+  if (options.showLegend === undefined) options.showLegend = data.length > 1 || shareChart;
+  if (shareChart && options.showPercent === undefined) options.showPercent = true;
   if (title) {
     options.showTitle = true;
     options.title = title;

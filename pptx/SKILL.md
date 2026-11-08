@@ -786,9 +786,22 @@ python scripts/preview_deck.py native-stress-deck.pptx --output-dir preview/stre
 python scripts/preview_deck.py deck.pptx --scale 0.5
 ```
 
-It reads the real package through `python-pptx`, so slide size, shape frames, z-order, solid fills, linear gradients, line transparency, native tables, picture crops, and text wrapping/anchoring all come from the actual OOXML. It warns when text exceeds its box and when a table is taller than its frame.
+It reads the real package through `python-pptx`, so slide size, shape frames, z-order, solid fills, linear gradients, line transparency, native tables, picture crops, rotated shapes, and text wrapping/anchoring all come from the actual OOXML. It warns when text exceeds its box and when a table is taller than its frame.
 
-What it is not: a faithful Office renderer. There is no OpenType shaping or kerning, no shadow/glow/bevel rendering, no pattern fills, and shape rotation is ignored. Use it to catch layout mistakes — final typography still has to be approved in the target Office environment.
+What it is not: a faithful Office renderer. There is no OpenType shaping or kerning, no shadow/glow/bevel rendering, no pattern fills, native charts are drawn as labelled placeholder panels, and gradient stop transparency is ignored. Use it to catch layout mistakes — final typography still has to be approved in the target Office environment.
+
+### Real rendering with LibreOffice
+
+`scripts/render_check.py` converts a deck with `soffice` and verifies the slide count, then rasterises the PDF. It uses `pdfinfo`/`pdftoppm` when poppler is installed and falls back to `pypdfium2`, so it runs on a plain Windows box:
+
+```bash
+cd pptx/native
+export LIBREOFFICE_SOFFICE=/path/to/soffice        # or pass --soffice
+npm run render:pipeline && npm run render:chart    # render-check/<deck>/*.png
+python scripts/render_with_libreoffice.py deck.pptx --output-dir render/deck --soffice "$LIBREOFFICE_SOFFICE"
+```
+
+This is the only check that exercises real text shaping, native charts, rotation and merged table cells. Two findings it produced that the Pillow preview cannot show: a native chart has a *transparent* plot area (so it needs a light panel behind it on a dark slide), and pie/doughnut charts are unreadable without a legend.
 
 ### HTML → Native conversion pipeline
 

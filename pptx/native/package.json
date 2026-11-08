@@ -40,7 +40,9 @@
     "preview:theme": "python scripts/preview_deck.py native-design-migration-demo.pptx --output-dir preview/theme --sheet preview/theme-sheet.png",
     "preview:all": "npm run preview:demo && npm run preview:components && npm run preview:theme && npm run preview:parity && npm run preview:layouts && npm run preview:images && npm run preview:stress && npm run preview:pipeline && npm run preview:chart",
     "pipeline:chart": "node pipeline/cli.js ../examples/pipeline-chart.html --out pipeline-converted/chart.json --report pipeline-converted/chart-report.json --pptx pipeline-converted/pipeline-chart.pptx",
-    "preview:chart": "python scripts/preview_deck.py pipeline-converted/pipeline-chart.pptx --output-dir preview/chart --sheet preview/chart-sheet.png"
+    "preview:chart": "python scripts/preview_deck.py pipeline-converted/pipeline-chart.pptx --output-dir preview/chart --sheet preview/chart-sheet.png",
+    "render:chart": "python scripts/render_check.py pipeline-converted/pipeline-chart.pptx --output-dir render-check/pipeline-chart",
+    "render:all": "npm run render:demo && npm run render:components && npm run render:theme && npm run render:parity && npm run render:layouts && npm run render:images && npm run render:stress && npm run render:pipeline && npm run render:chart"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",
