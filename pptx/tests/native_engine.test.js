@@ -4611,3 +4611,65 @@ test('line-height maps to exact points, not a percentage of the font line box', 
   assert.equal(Number(element.h.toFixed(2)), Number((3 * 2 * element.fontSize / 72).toFixed(2)));
 });
 
+
+test('speaker notes become native notes instead of hidden slide content', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  .notes { display: none; }',
+    '</style></head><body>',
+    '<main class="slide"><h1>Title</h1>',
+    '  <aside class="notes">Mention the Q3 number.</aside></main>',
+    '<main class="slide" data-notes="Terse note"><h1>Second</h1></main>',
+    '<main class="slide"><h1>Third</h1><div class="notes" style="display: block">visible anyway</div></main>',
+    '</body></html>'
+  ].join('\n'));
+  assert.equal(result.deck.slides[0].notes, 'Mention the Q3 number.');
+  assert.equal(result.deck.slides[0].elements.length, 1, 'the hidden note is not slide content');
+  assert.equal(result.deck.slides[1].notes, 'Terse note');
+  assert.equal(result.deck.slides[2].notes, undefined,
+    'a notes box that the design shows is content, not a note');
+  const visible = result.deck.slides[2].elements.map((element) => element.text).join(' ');
+  assert.ok(visible.includes('visible anyway'));
+});
+
+test('every unsupported declaration is reported exactly once, by name', () => {
+  // The honesty contract: what this shape cannot do has to leave a trace, and the trace has
+  // to name the declaration. One case per report, so a regression shows up as a missing name.
+  const cases = {
+    textShadow: '.box { width: 400px; font-size: 20px; text-shadow: 0 2px 8px #000; }',
+    outline: '.box { width: 400px; height: 80px; background: #EEE; outline: 3px solid #F00; }',
+    filter: '.box { width: 400px; height: 80px; background: #EEE; filter: blur(2px); }',
+    columns: '.box { width: 600px; columns: 2; font-size: 14px; }',
+    wordSpacing: '.box { width: 400px; font-size: 20px; word-spacing: 6px; }',
+    direction: '.box { width: 400px; font-size: 16px; direction: rtl; }',
+    backgroundBlendMode: '.box { width: 400px; height: 80px; background-color: #345; background-image: linear-gradient(45deg, #000, #FFF); background-blend-mode: multiply; }',
+    // `break-all`/`break-word` are how the wrap already behaves, so they stay silent;
+    // only the value that forbids a break this solver makes is reported.
+    wordBreak: '.box { width: 300px; font-size: 14px; word-break: keep-all; }',
+    textWrap: '.box { width: 300px; font-size: 14px; text-wrap: balance; }',
+    hyphens: '.box { width: 300px; font-size: 14px; hyphens: auto; }',
+    clipPath: '.box { width: 400px; height: 80px; background: #EEE; clip-path: circle(40%); }'
+  };
+  Object.entries(cases).forEach(([expected, css]) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  ' + css,
+      '</style></head><body><main class="slide"><div class="box">text</div></main></body></html>'
+    ].join('\n'));
+    const properties = result.report.unsupportedDetails.map((entry) => entry.property);
+    assert.ok(properties.includes(expected),
+      expected + ' is not in the report: ' + JSON.stringify(properties));
+  });
+
+  // And the other half of the contract: a declaration that changes no pixel stays silent.
+  const quiet = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: 400px; height: 80px; background: #EEE; overflow: visible; }',
+    '</style></head><body><main class="slide"><div class="box">text</div></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(quiet.report.unsupportedDetails, []);
+});
+

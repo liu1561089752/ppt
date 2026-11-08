@@ -770,6 +770,8 @@ Behaviour worth knowing:
 - Lengths resolve through one evaluator: `px/pt/pc/in/cm/mm/q/em/rem/ex/ch/%` plus `vw/vh/vmin/vmax` against the 1280x720 slide, and `calc()`/`min()`/`max()`/`clamp()` over any mix of them. `ch` and `ex` count as half an em. A value it cannot resolve is reported as `length`.
 - `!important` is stripped from the value (and noted); equal-specificity priority still follows source order.
 - Shorthand splitting respects parentheses, so `gap: clamp(12px, 1.6vw, 28px)` stays one value in both the analyzer and the engine.
+- Speaker notes are native `ppt/notesSlides` parts: a hidden `<aside class="notes">` or `data-notes` on the slide container is harvested instead of dropped with the rest of the hidden DOM.
+- The unsupported report counts elements, not measurement calls: a re-measured box does not repeat its declarations.
 - Inline semantics are runs: `<sup>`/`<sub>` → `baseline`, `<u>`/`<s>` → underline/strike, a plain inline background (`<mark>`) → `highlight`, `<a href>` → `hyperlink`, `<code>` → monospace. The browser's element defaults (`b`, `strong`, `em`, `i`, `mark`, `small`, `code`, `h1`-`h6`) are modelled.
 - A list item is its own paragraph with its own bullet; nesting is `indentLevel`, and the bullet goes on every run of the item because the writer reads paragraph properties from the run that ends the paragraph.
 - `line-height` is written as `spcPts` (multiple x font size), never `spcPct`, which would render ~20% taller than the reserved box.
@@ -860,7 +862,7 @@ Scope discipline: the pipeline covers absolute positioning (and `position: fixed
 
 ### Current Native quality gates
 
-- The CI suite runs Node engine tests (170 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
+- The CI suite runs Node engine tests (172 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
 - The visual comparator is active, but it only performs real deck comparisons when reviewed PNGs exist under `pptx/native/golden/<deck>/`. Its self-test is not a substitute for a real baseline.
 - Never add generated PNGs to Golden directories merely to make CI green. A human must review each paired HTML/Native slide and approve the baseline first.
 - LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.

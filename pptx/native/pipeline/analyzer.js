@@ -354,6 +354,19 @@ function createContext(html, options = {}) {
 }
 
 function recordUnsupported(ctx, node, property, value, reason) {
+  // A box can be measured more than once (shrink-to-fit, a container probe), and the same
+  // declaration must not be reported twice: the report counts elements, not calls.
+  if (node) {
+    if (!ctx.unsupportedSeen) ctx.unsupportedSeen = new WeakMap();
+    let seen = ctx.unsupportedSeen.get(node);
+    if (!seen) {
+      seen = new Set();
+      ctx.unsupportedSeen.set(node, seen);
+    }
+    const key = property + '|' + String(value);
+    if (seen.has(key)) return;
+    seen.add(key);
+  }
   ctx.unsupported.push({
     tag: node && node.tag,
     classes: node ? classList(node) : [],
@@ -751,6 +764,15 @@ function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx)
   if (transform && transform !== 'none') {
     built.text = transformText(built.text, transform);
     built.runs.forEach((run) => { run.text = transformText(run.text, transform); });
+  }
+  // Line breaking is modelled at spaces, CJK boundaries and inside a long unbreakable
+  // token, which is what `word-break: break-all`/`break-word` ask for - so those stay
+  // silent while `keep-all` is reported where the value is checked. Balanced wrapping is
+  // the one request this shape cannot honour: it needs the paragraph measured twice.
+  const textWrapMode = String(style.textWrap || '').trim().toLowerCase();
+  if (textWrapMode === 'balance' || textWrapMode === 'pretty' || textWrapMode === 'stable') {
+    recordUnsupported(ctx, domNode, 'textWrap', style.textWrap,
+      'Balanced line breaking needs the whole paragraph measured twice, which this shape does not do');
   }
   const whiteSpace = String(style.whiteSpace || 'normal').toLowerCase();
   const noWrap = whiteSpace === 'nowrap';
@@ -3321,6 +3343,38 @@ function letterSpacingPtOf(style) {
 }
 
 /** Assign semantic roles to text nodes from class hints and the size ranking. */
+/** A class, id or attribute that names speaker notes rather than slide content. */
+const NOTES_HINT = /(^|[-_\s])(note|notes|speaker|presenter|script)([-_\s]|$)/iu;
+
+/**
+ * Speaker notes are content a browser hides and PowerPoint keeps. A hidden element whose
+ * class says "notes" is exactly the reveal.js convention, so its text becomes the speaker
+ * notes of that slide instead of vanishing with the rest of the hidden DOM.
+ */
+function readSlideNotes(slideNode, ctx) {
+  const collected = [];
+  const visit = (node, hidden) => {
+    (node.children || []).forEach((child) => {
+      if (child.type !== 'element') return;
+      const style = ctx.styles.computed(child);
+      const hiddenHere = hidden || String(style.display || '').toLowerCase() === 'none'
+        || String(style.visibility || '').toLowerCase() === 'hidden';
+      const label = [child.tag, ...classList(child), (child.attrs && child.attrs.id) || ''].join(' ');
+      if (hiddenHere && NOTES_HINT.test(label)) {
+        const text = normalizedText(child).trim();
+        if (text) collected.push(text);
+        return;
+      }
+      visit(child, hiddenHere);
+    });
+  };
+  visit(slideNode, false);
+  const declared = slideNode.attrs && (slideNode.attrs['data-notes'] || slideNode.attrs.notes);
+  if (declared) collected.unshift(String(declared).trim());
+  const text = collected.filter(Boolean).join('\n\n');
+  return text || null;
+}
+
 function assignRoles(slideNodes) {
   const texts = [];
   const visit = (node) => {
@@ -3428,10 +3482,12 @@ function analyzeHtml(html, options = {}) {
         'A decoration on the slide root has no container to anchor to; put it on a card or panel');
     });
 
+    const notes = readSlideNotes(slideNode, ctx);
     slides.push({
       index: index + 1,
       background: background.hex || 'FFFFFF',
       gradient,
+      notes,
       nodes: children
     });
     // A container's height can come from its own parent (`flex: 1`, a declared height),

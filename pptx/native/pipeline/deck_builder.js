@@ -1155,10 +1155,13 @@ function buildDeckSpec(analysis, options = {}) {
     report.layoutAttempts = Math.max(report.layoutAttempts, attemptReport.layoutAttempts);
     report.maxBoxDelta = Math.max(report.maxBoxDelta, attemptReport.maxBoxDelta);
 
-    return {
+    const built = {
       background: slide.background,
       elements: stripProbes(elements)
     };
+    // Speaker notes are native `ppt/notesSlides` parts, not slide content.
+    if (slide.notes) built.notes = slide.notes;
+    return built;
   });
 
   const deck = {
