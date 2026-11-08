@@ -3254,8 +3254,17 @@ test('floats pack into a wrapping row and say where that stops being CSS', () =>
   assert.ok(Math.abs((right[0].x + right[0].w) - (40 / 96 + 1200 / 96)) < 0.005,
     'right float hugs the right edge: ' + (right[0].x + right[0].w));
 
-  // A block that follows a float is placed below it, which CSS would not do.
-  const wrapped = build('<div class="cell"></div><p>text next to the float</p>');
+  // A text block that fits inside the float band is translated: the pair is exactly
+  // a two-column row, which is what the browser draws.
+  const beside = build('<div class="cell"></div><p>text next to the float</p>');
+  assert.deepEqual(beside.report.unsupportedDetails, [], 'a fitted pair needs no report');
+  const besideText = boxes(beside).find((node) => node.kind === 'text');
+  assert.ok(besideText.x >= 40 / 96 + 400 / 96 - 0.005, 'the text sits beside the float: ' + besideText.x);
+  assert.ok(Math.abs(besideText.y - 40 / 96) < 0.005, 'and at the top of the band: ' + besideText.y);
+
+  // Text taller than the band cannot be one box: that is still reported, and the
+  // block goes below the float rather than on top of it.
+  const wrapped = build('<div class="cell" style="height: 8px"></div><p>text next to the float</p>');
   const reported = wrapped.report.unsupportedDetails.filter((entry) => entry.property === 'float');
   assert.equal(reported.length, 1, JSON.stringify(wrapped.report.unsupportedDetails));
   assert.ok(/wrap its lines beside/u.test(reported[0].reason), reported[0].reason);
@@ -3624,5 +3633,62 @@ test('table cells keep their padding, alignment and row heights', async () => {
     assert.equal(heights.length, 3, 'three rows are drawn');
     assert.ok(heights[2] > heights[1], 'the drawn rows follow the measured heights');
   });
+});
+
+
+test('text that fits a float band becomes a two-column pair, and the rest stays reported', () => {
+  const build = (body) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  body { margin: 0; }',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .card { width: 900px; }',
+    '  .thumb { float: left; width: 320px; height: 240px; background: #17332F; margin-right: 24px; }',
+    '  p { font-size: 15px; line-height: 1.7; margin: 0 0 8px; }',
+    '</style></head><body><main class="slide">',
+    body,
+    '</main></body></html>'
+  ].join('\n'));
+
+  const childrenOf = (result) => {
+    const card = result.analysis.slides[0].nodes.find((node) => (node.classes || []).includes('card'));
+    return card ? card.children : [];
+  };
+
+  // Two short paragraphs fit inside the 240px band, so both sit beside the float.
+  const paired = build('<div class="card"><div class="thumb"></div><p>短句一。</p><p>短句二。</p></div>');
+  assert.deepEqual(paired.report.unsupportedDetails, [], 'a fitted pair needs no report');
+  const pairedKids = childrenOf(paired);
+  const floatBox = pairedKids.find((node) => node.floated);
+  const texts = pairedKids.filter((node) => node.kind === 'text');
+  assert.equal(texts.length, 2);
+  assert.ok(Math.abs(texts[0].x - (floatBox.x + floatBox.w + 24 / 96)) < 0.002,
+    'the text starts after the float margin: ' + texts[0].x);
+  assert.ok(Math.abs(texts[0].y - floatBox.y) < 0.002, 'and at the top of the band');
+  assert.ok(Math.abs(texts[1].y - (texts[0].y + texts[0].h + 8 / 96)) < 0.01,
+    'the second paragraph keeps its own margin: ' + (texts[1].y - (texts[0].y + texts[0].h)));
+  assert.ok(texts[1].y + texts[1].h <= floatBox.y + floatBox.h + 0.01, 'the pair stays in the band');
+
+  // A paragraph taller than the band cannot be one box: it is reported and stacked.
+  const tall = build('<div class="card"><div class="thumb" style="height: 60px"></div>'
+    + '<p>' + '这段文字明显比色块高得多，浏览器会让它绕到色块下方。'.repeat(6) + '</p></div>');
+  const reasons = tall.report.unsupportedDetails.map((entry) => entry.property);
+  assert.ok(reasons.includes('float'), 'the wrap-beside case is reported: ' + reasons.join(','));
+  const tallKids = childrenOf(tall);
+  const tallFloat = tallKids.find((node) => node.floated);
+  const tallText = tallKids.find((node) => node.kind === 'text');
+  assert.ok(tallText.y >= tallFloat.y + tallFloat.h - 0.01, 'it starts below the float instead');
+
+  // A painted block spans the full width even beside a float, so it is not narrowed.
+  const painted = build('<div class="card"><div class="thumb"></div>'
+    + '<p style="background: #EEE">有底色的段落不会被收窄。</p></div>');
+  assert.ok(painted.report.unsupportedDetails.map((entry) => entry.property).includes('float'));
+  const paintedText = childrenOf(painted).find((node) => node.kind === 'text');
+  assert.ok(Math.abs(paintedText.x - 0.0) < 1.1, 'it keeps the container width');
+
+  // An absolutely positioned block is out of flow: a float cannot shorten it, and
+  // reporting it as "placed below the float" would be wrong.
+  const absolute = build('<div class="card"><div class="thumb"></div>'
+    + '<div style="position: absolute; top: 10px; left: 10px">角标</div></div>');
+  assert.deepEqual(absolute.report.unsupportedDetails, [], 'an absolute block is not shortened by a float');
 });
 

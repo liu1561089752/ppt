@@ -56,6 +56,19 @@
   .stat .label { margin-top: 4px; font-size: 11px; letter-spacing: 1px; color: #96A29E; }
 
   .foot { position: absolute; left: 64px; bottom: 40px; font-size: 11px; color: #9AA5A1; }
+
+  /* 文字贴着浮动：两张卡片，左边那张的文字完整地待在浮动块右边 */
+  .pairs { display: flex; flex-direction: row; gap: 24px; width: 1152px; }
+  .pair { flex: 1; height: 312px; padding: 20px; background: #FFFFFF; border-radius: 14px; }
+  .pair h3 { margin: 0 0 12px; font-size: 15px; }
+  .pair-img {
+    float: left; width: 176px; height: 148px; margin-right: 18px;
+    background: #17332F; border-radius: 10px;
+  }
+  .pair p { margin: 0 0 10px; font-size: 13px; line-height: 1.8; color: #4A5A56; }
+  /* The float in the second card is shorter than its paragraph on purpose: that is
+     the case a single text box cannot express, so it has to be reported. */
+  .pair.short .pair-img { height: 72px; }
 </style>
 </head>
 <body>
@@ -73,7 +86,7 @@
     <h2>浮动不是网格，也不是弹性行</h2>
     <p>浮动元素的宽度是声明出来的，它们按顺序挤在同一行里，直到放不下为止；换行之后，下一行从上一行最高元素的下方开始。</p>
     <p>这里把连续的浮动兄弟打包成一行，所以左色块与右正文并列；<code>clear: both</code> 之后的标签云从新的一行开始。</p>
-    <p>浏览器还会让后续段落的行框绕过浮动元素，这一条没有实现——那种情况下会上报，而不是悄悄压到浮动物件上。</p>
+    <p>浏览器还会让后续段落的行框绕过浮动元素：文字完整落在浮动高度内时，第二页把它译成并排的两栏；超出高度时会绕排，那一种仍然上报。</p>
   </div>
 
   <div class="clear"></div>
@@ -101,7 +114,29 @@
     <div class="label">整页栅格化</div>
   </div>
 
-  <div class="foot">浮动行 · float: left → 打包成行 · 文本绕排未实现</div>
+  <div class="foot">浮动行 · float: left → 打包成行 · 文字适配浮动高度时并排，超出则上报</div>
 </main>
+<main class="slide">
+  <div class="kicker">float / text beside</div>
+  <h1>浮动的另一面：文字贴着它排</h1>
+  <p class="lede">左卡片里，浮动块后面的两段文字完整地落在它的高度之内，所以被译成并排两栏，和浏览器一致；右卡片的段落比浮动块高，浏览器会让它绕到下方，这一种保持上报。</p>
+
+  <div class="pairs">
+    <div class="pair">
+      <h3>文字完整落在浮动高度内</h3>
+      <div class="pair-img"></div>
+      <p>这段文字短到可以完整地待在色块右边。</p>
+      <p>第二段也还留在它旁边，两段都没有越过色块的底边。</p>
+    </div>
+    <div class="pair short">
+      <h3>文字比浮动块高</h3>
+      <div class="pair-img"></div>
+      <p>这段文字明显比左边的色块高得多，浏览器会让前几行贴着色块、后面的行绕到它的下方：一个文本框表达不了这种绕排，所以这一页保持上报，而不是把文字压到色块上。</p>
+    </div>
+  </div>
+
+  <div class="foot">并排 = 浮动 + 适配高度的文字 · 绕排 = 未实现，上报</div>
+</main>
+
 </body>
 </html>

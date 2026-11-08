@@ -1155,15 +1155,59 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
       index -= 1;
       const placed = layoutFloatRun(run, contentBox, cursor, inherited, ctx);
       placed.nodes.forEach((node) => nodes.push(node));
+      // A float shortens the line boxes of the blocks beside it. When the text that
+      // follows fits entirely inside the band the float occupies, the pair is exactly a
+      // two-column row and is translated; anything else stays reported.
+      const bandTop = cursor;
+      const band = placed.band;
+      let paired = 0;
+      if (band) {
+        const group = [];
+        let remaining = placed.bottom - bandTop;
+        let probe = index + 1;
+        while (probe < visible.length && remaining > FLOAT_BAND_SLACK) {
+          const candidateStyle = ctx.styles.computed(visible[probe]);
+          const metrics = floatCompanionMetrics(visible[probe], candidateStyle, band, inherited);
+          if (!metrics) break;
+          const height = metrics.marginTop + metrics.height + metrics.marginBottom;
+          if (height > remaining + 0.001) break;
+          group.push({ child: visible[probe], metrics, height });
+          remaining -= height;
+          probe += 1;
+        }
+        // Nothing may be left over that the browser would still have wrapped beside the
+        // float, so the band has to end exactly at the content or run out of children.
+        const exact = probe >= visible.length || remaining <= FLOAT_BAND_SLACK;
+        if (group.length && exact) {
+          let offset = 0;
+          group.forEach((entry) => {
+            const slot = {
+              x: band.x,
+              y: bandTop + offset + entry.metrics.marginTop,
+              w: band.w,
+              h: null
+            };
+            const node = applyAnchorHints(analyzeNode(entry.child, slot, inherited, ctx), slot);
+            if (node) {
+              node.absolute = false;
+              nodes.push(node);
+            }
+            offset += entry.height;
+          });
+          index = probe - 1;
+          paired = group.length;
+        }
+      }
       cursor = placed.bottom;
-      floatedBefore = true;
+      floatedBefore = paired === 0;
       continue;
     }
     if (floatedBefore) {
       // Only the block that directly follows the run would have been shortened by it;
-      // everything after that one is already below the float anyway.
+      // everything after that one is already below the float anyway. An absolutely
+      // positioned block is not in the flow at all, so a float cannot shorten it.
       const clears = hasClear(childStyle);
-      if (!clears && String(normalizedText(child) || '').trim().length > 0) {
+      if (!clears && !isAbsolute(childStyle) && String(normalizedText(child) || '').trim().length > 0) {
         recordUnsupported(ctx, child, 'float', 'left/right',
           'A block that follows a float is placed below it; the browser would wrap its lines beside the float');
       }
@@ -1199,6 +1243,35 @@ function hasClear(style) {
   return String(style.clear || 'none').toLowerCase() !== 'none';
 }
 
+/** How close to a full band counts as full: a leftover thinner than one text line. */
+const FLOAT_BAND_SLACK = 0.05;
+
+/**
+ * Height of a text block once it is narrowed to the band, or `null` when the block is
+ * not a plain text box. A block that paints something (a background, a border, padding)
+ * spans the full width in CSS even while its lines are shortened, so narrowing it would
+ * move the paint and the translation would stop being exact.
+ */
+function floatCompanionMetrics(child, style, band, inherited) {
+  if (isAbsolute(style)) return null;
+  if (elementChildren(child).length > 0) return null;
+  const text = String(normalizedText(child) || '').trim();
+  if (!text) return null;
+  if (backgroundOf(style)) return null;
+  if (parseBorder(style)) return null;
+  const padding = boxShorthand(style, 'padding');
+  if (padding.top || padding.right || padding.bottom || padding.left) return null;
+  if (declaresLength(style.width)) return null;
+  if (style.writingMode) return null;
+  const margins = childMargins(style, { parentWidth: band.w, fontSizePx: inherited.fontPx });
+  if (margins.left || margins.right) return null;
+  const fontPx = fontPxOf(style, inherited.fontPx);
+  const fontSizePt = Number((fontPx * 0.75).toFixed(2));
+  const lineHeight = lineSpacingOf(style, fontPx).multiple;
+  const height = estimateTextHeight(text, band.w, fontSizePt, { marginIn: 0, lineHeight });
+  return { height, marginTop: margins.top, marginBottom: margins.bottom };
+}
+
 /** A CSS length that pins an axis; `auto`, `none` and the keywords do not. */
 function declaresLength(value) {
   if (value === undefined || value === null) return false;
@@ -1231,14 +1304,17 @@ function layoutFloatRun(run, contentBox, top, inherited, ctx) {
   }
   const direction = floatOf(run[0].style) || 'left';
   const tolerance = 0.01;
+  let runWidth = 0;
   const nodes = [];
   let lineTop = top;
   let lineHeight = 0;
   let cursorX = direction === 'right' ? contentBox.x + contentBox.w : contentBox.x;
+  let lines = 1;
   const startLine = () => {
     lineTop += lineHeight;
     lineHeight = 0;
     cursorX = direction === 'right' ? contentBox.x + contentBox.w : contentBox.x;
+    lines += 1;
   };
 
   run.forEach((entry) => {
@@ -1251,6 +1327,7 @@ function layoutFloatRun(run, contentBox, top, inherited, ctx) {
     }
     const width = Math.max(0.02, declared === null ? contentBox.w : declared);
     const outer = width + margins.left + margins.right;
+    runWidth += outer;
     const fits = direction === 'right'
       ? cursorX - outer >= contentBox.x - tolerance
       : cursorX + outer <= contentBox.x + contentBox.w + tolerance;
@@ -1275,7 +1352,14 @@ function layoutFloatRun(run, contentBox, top, inherited, ctx) {
     cursorX = direction === 'right' ? cursorX - outer : cursorX + outer;
   });
 
-  return { nodes, bottom: nodes.length ? lineTop + lineHeight : top };
+  // The strip this run leaves free, but only while it stays on one line: a run that
+  // wrapped leaves a band that differs per line, and a single text box cannot express
+  // that, so the caller keeps reporting instead.
+  const bandWidth = contentBox.w - runWidth;
+  const band = lines === 1 && bandWidth > 0.5
+    ? { x: direction === 'right' ? contentBox.x : contentBox.x + runWidth, w: bandWidth }
+    : null;
+  return { nodes, bottom: nodes.length ? lineTop + lineHeight : top, band };
 }
 
 /**
