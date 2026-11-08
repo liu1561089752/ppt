@@ -417,6 +417,16 @@ function applyDeclarations(style, declarations, variables) {
       style.columnGap = parts.length > 1 ? parts[1] : parts[0];
       return;
     }
+    if (property === 'border') {
+      // Keep the shorthand, but expand it into the four sides so a later or more
+      // specific `border-bottom` (and a `border` that clears it) cascades the way
+      // CSS says instead of always losing to the longhand.
+      style.border = resolvedValue;
+      ['Top', 'Right', 'Bottom', 'Left'].forEach((side) => {
+        style['border' + side] = resolvedValue;
+      });
+      return;
+    }
     if (property === 'padding' || property === 'margin') {
       const [top, right, bottom, left] = expandBoxShorthand(resolvedValue);
       const suffix = property === 'padding' ? 'padding' : 'margin';

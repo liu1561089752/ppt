@@ -55,7 +55,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Transforms | `transform: rotate(<deg|rad|grad|turn>)` on a text box, shape or picture → native shape rotation (clockwise, about the centre). A rotation combined with `scale`/`skew`/`translate` is reported rather than half-applied; a rotated *group* is reported because a native container cannot carry a rotation |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
 | Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
-| Data | `<table>` → native table with real column widths (`<colgroup>/<col>`, then declared first-row cell widths, then equal columns), merged cells (`colspan`/`rowspan`), per-cell fill/colour/weight/size/`text-align`, and a background painted on a `tr`, `thead`/`tbody`/`tfoot` or the `table` itself carried into the cells (cell paint wins, so `tbody tr:nth-child(even) { background: … }` produces real zebra rows), `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
+| Data | `<table>` → native table with real column widths (`<colgroup>/<col>`, then declared first-row cell widths, then equal columns), merged cells (`colspan`/`rowspan`), per-cell fill/colour/weight/size/`text-align`, per-side borders (`border` and `border-top/right/bottom/left`, so a design with only row rules gets only row rules and nothing is invented), and a background painted on a `tr`, `thead`/`tbody`/`tfoot` or the `table` itself carried into the cells (cell paint wins, so `tbody tr:nth-child(even) { background: … }` produces real zebra rows), `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
 | Charts | Declared, never guessed: `<table data-chart="bar">` turns a data table into a native chart (first column = categories, each further column = a series named by the header row), and `data-chart` + `data-values="1,2,3"` + optional `data-labels` makes a single series. `bar`/`line`/`pie`/`doughnut`/`area`; `data-chart-title` and `data-chart-legend` are honoured; an unknown type or missing data is reported |
 | Decorations | `::before`/`::after` with `content`, `position: absolute`, a definite `width`/`height` (or `left`+`right` / `top`+`bottom`) and a background fill, a border radius, or text → an overlay of the element's container, emitted as a real shape or text box above the flow children. CSS escapes in `content` are decoded (`"\2192"` → `→`). Anything without a definite box, a non-absolute decoration, or one on the slide root is reported instead of guessed |
 | Stacking | `z-index` decides paint order among siblings; equal or missing values keep document order |
@@ -102,6 +102,12 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   that declares its own `height` keeps it instead of stretching.
 - **Text measurement is an estimate**, not OpenType shaping. Wrapping can differ
   from the browser, especially with mixed scripts and unusual tracking.
+- **A shape border is uniform.** The `border` shorthand is expanded into
+  `border-top/right/bottom/left` so the cascade behaves (a later `border` really
+  clears an earlier `border-bottom`), but a native outline has one width and one
+  colour: a design that borders only some sides of a *non-table* element is
+  reported with the sides it declared. Table cells are the exception - they carry
+  four independent lines and are translated per side.
 - **Unsupported visuals are reported, not approximated**: `filter`,
   `backdrop-filter`, `clip-path`, `mask`, `mix-blend-mode`, `text-shadow`,
   transforms, animations and transitions.

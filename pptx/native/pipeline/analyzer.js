@@ -54,6 +54,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
+  'borderTop', 'borderRight', 'borderBottom', 'borderLeft',
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
@@ -318,6 +319,9 @@ function checkUnsupported(ctx, domNode, style) {
   Object.keys(style).forEach((property) => {
     if (property.startsWith('--')) return;
     if (isNoopValue(property, style[property])) return;
+    // A table cell translates its four sides independently, so a single-side
+    // border is not a limitation there (it is for every other element).
+    if ((domNode.tag === 'td' || domNode.tag === 'th') && TABLE_CELL_BORDER_PROPERTIES.has(property)) return;
     if (UNSUPPORTED_ALWAYS.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'CSS feature has no native translation');
     } else if (!SUPPORTED_PROPERTIES.has(property)) {
@@ -339,6 +343,14 @@ function checkUnsupported(ctx, domNode, style) {
   }
   if (style.flexWrap === 'wrap' && style.display === 'flex') {
     recordUnsupported(ctx, domNode, 'flexWrap', 'wrap', 'Wrapping flex rows are laid out as a single line');
+  }
+  // A native outline is uniform, so an asymmetric border (only `border-bottom`,
+  // say) cannot be reproduced on a shape - but a table cell has four lines.
+  const isTableCell = domNode.tag === 'td' || domNode.tag === 'th';
+  if (!isTableCell && !uniformBorderSides(style)) {
+    recordUnsupported(ctx, domNode, 'border',
+      BORDER_SIDES.map((side) => side + ': ' + String(borderSideValue(style, side) ?? '')).join('; '),
+      'A native shape outline is uniform; declare every side the same, or use a separate rule/shape');
   }
 }
 
@@ -1615,6 +1627,48 @@ function readChart(domNode, ctx) {
   return { chartType: requested, data, options };
 }
 
+const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
+const TABLE_CELL_BORDER_PROPERTIES = new Set(['borderTop', 'borderRight', 'borderBottom', 'borderLeft']);
+
+/** One declared border side, read literally so the supported-property guard sees it. */
+function borderSideValue(style, side) {
+  if (side === 'top') return style.borderTop;
+  if (side === 'right') return style.borderRight;
+  if (side === 'bottom') return style.borderBottom;
+  if (side === 'left') return style.borderLeft;
+  return undefined;
+}
+
+/** A border declaration is uniform when every side names the same thing. */
+function uniformBorderSides(style) {
+  const values = BORDER_SIDES.map((side) => String(borderSideValue(style, side) ?? ''));
+  return values.every((value) => value === values[0]);
+}
+
+/**
+ * The borders of one table cell, per side. A native table cell can carry four
+ * independent lines, so `td { border-bottom: ... }` is translated instead of
+ * approximated, and a side that declares `none` stays empty.
+ */
+function cellBorderOptions(style) {
+  const sides = BORDER_SIDES.map((side) => {
+    const declaration = borderSideValue(style, side);
+    return declaration === undefined ? null : parseBorder({ border: declaration });
+  });
+  const option = (border) => (border
+    ? { type: border.dash ? 'dash' : 'solid', color: border.color, pt: borderWidthPt(border.width) }
+    : { type: 'none' });
+  const options = sides.map(option);
+  const first = JSON.stringify(options[0]);
+  return options.every((entry) => JSON.stringify(entry) === first) ? options[0] : options;
+}
+
+/** A table cell line width in points, floored so PowerPoint still draws it. */
+function borderWidthPt(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0.25, number) : 0.75;
+}
+
 function readTable(domNode, ctx, contentWidth) {
   const rows = [];
   const rowNodes = [];
@@ -1651,7 +1705,8 @@ function readTable(domNode, ctx, contentWidth) {
         color: color && color.hex ? color.hex : undefined,
         fill: background && background.hex ? { color: background.hex } : undefined,
         fontSize: sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(1)) : undefined,
-        align: style.textAlign || (cell.tag === 'th' ? 'left' : undefined)
+        align: style.textAlign || (cell.tag === 'th' ? 'left' : undefined),
+        border: cellBorderOptions(style)
       };
       if (colspan > 1) options.colspan = colspan;
       if (rowspan > 1) options.rowspan = rowspan;

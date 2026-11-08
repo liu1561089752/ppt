@@ -301,7 +301,9 @@ function tableElementFromNode(node, resolvedTheme) {
       colW: tableColumnWidths(node, columns, width),
       fontFace: resolvedTheme.fonts.body,
       fontSize: Math.max(6, Number((node.fontSizePt || 11).toFixed(1))),
-      border: { type: 'solid', color: resolvedTheme.colors.border, pt: 0.5 },
+      // Each cell carries the four sides its CSS asked for, so the table must not
+      // invent a grid: an undeclared side stays empty.
+      border: { type: 'none' },
       valign: 'mid'
     }
   };

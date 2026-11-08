@@ -2436,3 +2436,57 @@ test('a table row background becomes the cell fill, so zebra rows survive', () =
   assert.equal(table.rows[2][0].options.align, undefined);
 });
 
+
+test('a table cell keeps its per-side borders instead of a full grid', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 900px; border-collapse: collapse; }',
+    '  th { background: #0F2A2E; color: #FFFFFF; }',
+    '  td { border-bottom: 1px solid #E4EAEA; }',
+    '  td.plain { border: none; }',
+    '</style></head><body><main class="slide">',
+    '<table><thead><tr><th>区域</th><th>数量</th></tr></thead><tbody>',
+    '<tr><td>华东</td><td>1,284</td></tr>',
+    '<tr><td class="plain">华南</td><td>1,096</td></tr>',
+    '</tbody></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  // `border-bottom` on a cell is translated, not reported.
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const table = result.deck.slides[0].elements.find((element) => element.type === 'table');
+  assert.ok(table);
+  // The table itself must not invent lines.
+  assert.deepEqual(table.options.border, { type: 'none' });
+  const sides = table.rows[1][0].options.border;
+  assert.ok(Array.isArray(sides), 'a single side becomes a four-side array');
+  assert.equal(sides[0].type, 'none', 'top');
+  assert.equal(sides[1].type, 'none', 'right');
+  assert.equal(sides[2].type, 'solid', 'bottom');
+  assert.equal(sides[2].color, 'E4EAEA');
+  assert.ok(Math.abs(sides[2].pt - 0.75) < 0.01, '1px is 0.75pt, got ' + sides[2].pt);
+  assert.equal(sides[3].type, 'none', 'left');
+  // `border: none` removes every side.
+  const cleared = table.rows[2][0].options.border;
+  assert.equal(Array.isArray(cleared) ? cleared.every((entry) => entry.type === 'none') : cleared.type === 'none', true);
+  // The header cell declares no border of its own and gets none.
+  const header = table.rows[0][0].options.border;
+  assert.equal(Array.isArray(header) ? header.every((entry) => entry.type === 'none') : header.type === 'none', true);
+});
+
+test('a single-side border outside a table is still reported', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .card { border-bottom: 2px solid #123456; width: 300px; height: 120px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="card"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const reported = result.report.unsupportedDetails.filter((entry) => entry.property === 'border');
+  assert.equal(reported.length, 1, JSON.stringify(result.report.unsupportedDetails));
+  assert.ok(reported[0].value.includes('bottom: 2px solid #123456'), reported[0].value);
+  // The card still keeps its (uniform-less) look, but the report says why.
+  assert.ok(/uniform/.test(reported[0].reason), reported[0].reason);
+});
+

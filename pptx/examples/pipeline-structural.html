@@ -27,13 +27,13 @@
   .card:last-child h3 { color: #EAF1F0; }
   .card:last-child p { color: #9FC0BE; }
 
-  /* A striped list: even rows carry a tint. */
-  .list { margin-top: 34px; width: 1152px; }
+  /* A striped flex list: even rows carry a tint. */
+  .list { margin-top: 26px; width: 1152px; }
   .item {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 9px 16px;
     background: #121E22;
     border-radius: 8px;
   }
@@ -42,7 +42,14 @@
   .item .value { font-size: 13px; font-weight: 700; color: #7FD6D0; }
   .item:nth-child(3) .value { color: #F2A24C; }
 
-  .foot { margin-top: 22px; width: 1000px; font-size: 12px; line-height: 1.7; color: #8FA9AD; }
+  /* A native table whose zebra rows come from :nth-child(even) on the row. */
+  table { margin-top: 22px; width: 1152px; border-collapse: collapse; }
+  th { background: #17262A; color: #9FC0BE; font-size: 11px; font-weight: 700; text-align: left; padding: 8px 14px; }
+  td { background: #0F1B1E; color: #D5E3E4; font-size: 12px; padding: 8px 14px; }
+  tbody tr:nth-child(even) td { background: #16262A; }
+  td.num { text-align: right; font-weight: 700; color: #7FD6D0; }
+
+  .foot { margin-top: 20px; width: 1040px; font-size: 12px; line-height: 1.7; color: #8FA9AD; }
 </style>
 </head>
 <body>
@@ -61,11 +68,20 @@
     <div class="item"><div class="name">华东</div><div class="value">1,284</div></div>
     <div class="item"><div class="name">华南</div><div class="value">1,096</div></div>
     <div class="item"><div class="name">华北</div><div class="value">938</div></div>
-    <div class="item"><div class="name">西南</div><div class="value">712</div></div>
-    <div class="item"><div class="name">华中</div><div class="value">604</div></div>
   </div>
 
-  <div class="foot">高亮、条纹、以及第三行数值的橙色，全部来自 <code>:first-child</code> / <code>:nth-child()</code> / <code>:last-child</code>；导出的形状与文本仍然可编辑。</div>
+  <table>
+    <thead>
+      <tr><th>区域</th><th>门店</th><th>本月</th><th>环比</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>华东</td><td>128</td><td class="num">1,284</td><td>+4.2%</td></tr>
+      <tr><td>华南</td><td>104</td><td class="num">1,096</td><td>+2.8%</td></tr>
+      <tr><td>华北</td><td>92</td><td class="num">938</td><td>-1.1%</td></tr>
+    </tbody>
+  </table>
+
+  <div class="foot">首项高亮、偶数行条纹、末项反色都来自结构选择器；下面这张原生表格的条纹来自 <code>tbody tr:nth-child(even) td</code>，单元格文本仍可编辑。</div>
 </main>
 </body>
 </html>
