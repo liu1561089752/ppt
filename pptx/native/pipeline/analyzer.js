@@ -70,7 +70,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
   'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
   'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
-  'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius', 'columns', 'columnCount', 'columnGap',
+  'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius', 'columns', 'columnCount', 'columnGap', 'clipPath',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
@@ -87,7 +87,8 @@ const SUPPORTED_PROPERTIES = new Set([
 const POST_LAYOUT_PROPERTIES = new Set(['overflow']);
 
 const UNSUPPORTED_ALWAYS = new Set([
-  'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
+  // clip-path is translated when it is a polygon on a box with a declared height.
+  'borderCollapse', 'filter', 'backdropFilter', 'mask', 'mixBlendMode',
   // writing-mode is translated (see applyWritingMode) or reported there.
   'animation', 'transition',
   'backgroundClip', 'textShadow',
@@ -1306,6 +1307,22 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   }
   // Stretch alignment may size a box on its cross axis, but never one whose own
   // CSS pinned that axis: an 80px chip in a 415px row stays 80px, top aligned.
+  // `clip-path: polygon()` becomes the shape's own geometry. It clips the box, not the
+  // subtree, so a box that has children is reported: their paint would escape the polygon.
+  const maybeClip = clipPolygonOf(style, width, explicitHeight === null ? 0 : explicitHeight);
+  if (maybeClip && maybeClip.unsupported === undefined && explicitHeight !== null) {
+    if (elementKids.length && kind !== 'image') {
+      recordUnsupported(ctx, domNode, 'clipPath', style.clipPath,
+        'clip-path clips the subtree; only this box\'s own paint is clipped, its children keep their shape');
+    }
+    node.clip = maybeClip;
+  } else if (maybeClip) {
+    recordUnsupported(ctx, domNode, 'clipPath', style.clipPath,
+      explicitHeight === null
+        ? 'A clipped box needs a declared height: a custom geometry cannot follow auto height'
+        : 'Only polygon() is a custom geometry here; this clip shape has no native spelling');
+  }
+
   if (declaresLength(style.height)) node.fixedHeight = true;
   if (declaresLength(style.width)) node.fixedWidth = true;
 
@@ -3443,6 +3460,48 @@ const COLUMN_INLINE_TAGS = new Set(['span', 'a', 'b', 'strong', 'i', 'em', 'u', 
 function onlyInlineDescendants(node) {
   return elementChildren(node).every((child) =>
     COLUMN_INLINE_TAGS.has(child.tag) && onlyInlineDescendants(child));
+}
+
+/** One `polygon()` coordinate as inches, or null when the unit is not resolvable here. */
+function polygonLength(token, extentIn) {
+  const value = String(token === undefined || token === null ? '' : token).trim();
+  if (!value) return null;
+  const percent = /^(-?[0-9.]+)%$/u.exec(value);
+  if (percent) return extentIn * Number(percent[1]) / 100;
+  if (/^calc\(/iu.test(value)) return null;
+  const inches = inchesOf(value, 'x', { parentWidth: extentIn, fontSizePx: 16 });
+  return inches;
+}
+
+/**
+ * `clip-path: polygon(...)` as a DrawingML custom geometry.
+ *
+ * PowerPoint has no CSS clip: the shape itself is the clip, so a polygon becomes a
+ * `custGeom` path whose points are the corners. Coordinates are kept in CSS pixels
+ * relative to the border box, which is the unit `a:path` expects to be scaled from.
+ */
+function clipPolygonOf(style, widthIn, heightIn) {
+  const raw = style.clipPath;
+  if (!raw) return null;
+  const value = String(raw).trim();
+  if (!value || value === 'none') return null;
+  const match = /^polygon\s*\(([\s\S]*)\)$/iu.exec(value);
+  if (!match) return { unsupported: value };
+  const parts = match[1].split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 3) return { unsupported: value };
+  const widthPx = Math.max(1, widthIn * 96);
+  const heightPx = Math.max(1, heightIn * 96);
+  const points = [];
+  for (const part of parts) {
+    const tokens = part.split(/\s+/u).filter(Boolean);
+    // A `polygon()` vertex can carry a rounding keyword after its two lengths.
+    if (tokens.length < 2) return { unsupported: value };
+    const x = polygonLength(tokens[0], widthIn);
+    const y = polygonLength(tokens[1], heightIn);
+    if (x === null || y === null) return { unsupported: value };
+    points.push([Number((x * 96).toFixed(2)), Number((y * 96).toFixed(2))]);
+  }
+  return { points, width: Number(widthPx.toFixed(2)), height: Number(heightPx.toFixed(2)) };
 }
 
 function columnPlanOf(domNode, style, contentWidth, fontSizePx, ctx) {

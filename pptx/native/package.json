@@ -86,7 +86,10 @@
     "render:clamp": "python scripts/render_check.py pipeline-converted/pipeline-clamp.pptx --output-dir render-check/pipeline-clamp",
     "pipeline:columns": "node pipeline/cli.js ../examples/pipeline-columns.html --out pipeline-converted/columns.json --pptx pipeline-converted/pipeline-columns.pptx",
     "preview:columns": "python scripts/preview_deck.py pipeline-converted/pipeline-columns.pptx --output-dir preview/columns --sheet preview/columns-sheet.png",
-    "render:columns": "python scripts/render_check.py pipeline-converted/pipeline-columns.pptx --output-dir render-check/pipeline-columns"
+    "render:columns": "python scripts/render_check.py pipeline-converted/pipeline-columns.pptx --output-dir render-check/pipeline-columns",
+    "pipeline:clip": "node pipeline/cli.js ../examples/pipeline-clip.html --out pipeline-converted/clip.json --pptx pipeline-converted/pipeline-clip.pptx",
+    "preview:clip": "python scripts/preview_deck.py pipeline-converted/pipeline-clip.pptx --output-dir preview/clip --sheet preview/clip-sheet.png",
+    "render:clip": "python scripts/render_check.py pipeline-converted/pipeline-clip.pptx --output-dir render-check/pipeline-clip"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

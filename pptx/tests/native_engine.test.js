@@ -4932,3 +4932,55 @@ test('font-variant: small-caps becomes the native run property cap="small"', () 
   assert.ok(!other.deck.slides[0].elements[0].smallCaps);
 });
 
+
+test('clip-path: polygon becomes a native custom geometry', () => {
+  const build = (css, markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    markup,
+    '</main></body></html>'
+  ].join('\n'));
+
+  const slanted = build('.band { width: 600px; height: 200px; background: #17332F;'
+    + ' clip-path: polygon(0 0, 100% 0, 100% 60%, 0 100%); }', '<div class="band"></div>');
+  const shape = slanted.deck.slides[0].elements.find((element) => element.type === 'shape');
+  assert.ok(shape && shape.clip, 'the surface carries the polygon');
+  // Points are CSS pixels relative to the border box, which is what `a:path` scales from.
+  assert.deepEqual(shape.clip.points, [[0, 0], [600, 0], [600, 120], [0, 200]]);
+  assert.equal(shape.clip.width, 600);
+  assert.equal(shape.clip.height, 200);
+  assert.equal(slanted.report.unsupported, 0, JSON.stringify(slanted.report.unsupportedDetails));
+
+  // Lengths work as well as percentages.
+  const lengths = build('.chip { width: 200px; height: 100px; background: #E8E1D0;'
+    + ' clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%); }', '<div class="chip"></div>');
+  const chip = lengths.deck.slides[0].elements.find((element) => element.type === 'shape');
+  assert.deepEqual(chip.clip.points[0], [10, 0]);
+
+  // A custom geometry clips the box, not the subtree: children would paint outside the polygon.
+  const withKids = build('.panel { width: 400px; height: 200px; background: #eee;'
+    + ' clip-path: polygon(0 0, 100% 0, 100% 100%, 0 80%); }',
+    '<div class="panel"><p>里面有文字。</p></div>');
+  assert.ok((withKids.report.unsupportedDetails || []).some((entry) => entry.property === 'clipPath'),
+    'a clipped box with children is reported');
+
+  // Only a polygon is a path here, and only a declared height can carry one.
+  const circle = build('.dot { width: 120px; height: 120px; background: #123; clip-path: circle(50%); }',
+    '<div class="dot"></div>');
+  assert.ok((circle.report.unsupportedDetails || []).some((entry) => entry.property === 'clipPath'));
+  const autoHeight = build('.p { width: 300px; background: #123; clip-path: polygon(0 0, 100% 0, 0 100%); }',
+    '<div class="p">auto height text</div>');
+  assert.ok((autoHeight.report.unsupportedDetails || []).some((entry) => entry.property === 'clipPath'));
+
+  // The emitted XML is a closed path with a point per vertex.
+  const { clipGeometryXml } = require('../native/engine/native_pptx');
+  const xml = clipGeometryXml({ points: [[0, 0], [10, 0], [10, 10]], width: 10, height: 10 });
+  assert.ok(xml.startsWith('<a:custGeom>'));
+  assert.equal((xml.match(/<a:pt /gu) || []).length, 3);
+  assert.ok(xml.includes('<a:close/>'));
+  assert.ok(xml.includes('w="10" h="10"'));
+  assert.equal(clipGeometryXml({ points: [[0, 0]] }), null, 'two points are not a shape');
+});
+

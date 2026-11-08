@@ -54,7 +54,8 @@ def inspect(path: Path) -> dict[str, int]:
               "image_crops": 0, "rounded_pictures": 0, "outlined_pictures": 0,
               "shadowed_pictures": 0, "tables": 0,
               "merged_cells": 0, "uneven_tables": 0, "rotated": 0,
-              "text_columns": 0, "small_caps": 0, "invalid_enums": 0}
+              "text_columns": 0, "small_caps": 0, "custom_geometry": 0,
+              "invalid_enums": 0}
     problems: list[str] = []
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
@@ -95,6 +96,20 @@ def inspect(path: Path) -> dict[str, int]:
                             problems.append(f'<a:bodyPr spcCol="{spacing}"> is negative')
                     except ValueError:
                         problems.append(f'<a:bodyPr spcCol="{spacing}"> is not an integer')
+            # A `clip-path: polygon()` becomes a custom geometry; a path with fewer than
+            # three points or no close is a shape a reader will draw wrong.
+            for geometry in root.findall(".//a:custGeom", NS):
+                counts["custom_geometry"] += 1
+                paths = geometry.findall(".//a:path", NS)
+                if not paths:
+                    problems.append("<a:custGeom> has no <a:path>")
+                    continue
+                for path in paths:
+                    points = path.findall(".//a:pt", NS)
+                    if len(points) < 3:
+                        problems.append(f"<a:custGeom> path has {len(points)} point(s)")
+                    if path.find("a:close", NS) is None:
+                        problems.append("<a:custGeom> path is not closed")
             for run in root.findall(".//a:rPr", NS):
                 cap = run.get("cap")
                 if cap is None:

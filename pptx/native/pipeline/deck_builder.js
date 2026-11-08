@@ -258,6 +258,7 @@ function surfaceElementFromNode(node, resolvedTheme) {
     element.fill = gradient.stops[0].color;
   }
   if (radius) element.radius = radius;
+  if (node.clip) element.clip = node.clip;
   if (border) {
     element.lineColor = border.color;
     element.lineWidth = border.width;

@@ -72,7 +72,11 @@ function flattenElements(elements) {
   (elements || []).forEach((element) => {
     if (isContainer(element)) {
       const background = containerBackgroundSpec(element);
-      if (background) flattened.push(background);
+      if (background) {
+        // The surface of a clipped container is the polygon, not a rectangle.
+        if (element.clip) background.clip = element.clip;
+        flattened.push(background);
+      }
       flattened.push(...flattenElements(element.children));
       const frame = { x: element.x, y: element.y, w: element.w, h: element.h };
       if (Number.isFinite(frame.x) && Number.isFinite(frame.y)) {

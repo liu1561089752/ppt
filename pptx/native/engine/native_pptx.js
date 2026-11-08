@@ -550,6 +550,71 @@ function applyTextColumns(xml, count, gapIn) {
   });
 }
 
+/**
+ * A CSS `polygon()` clip is a `custGeom` path: the shape cannot paint outside its own
+ * geometry, which is the same constraint CSS gives the clip. Points arrive in CSS pixels
+ * relative to the border box, and `a:path` scales that space onto the shape's extents.
+ */
+function clipGeometryXml(clip) {
+  const points = (clip && Array.isArray(clip.points) ? clip.points : [])
+    .filter((point) => Array.isArray(point) && point.length === 2)
+    .map((point) => '<a:pt x="' + Math.round(point[0]) + '" y="' + Math.round(point[1]) + '"/>');
+  if (points.length < 3) return null;
+  const width = Math.max(1, Math.round(clip.width || 1));
+  const height = Math.max(1, Math.round(clip.height || 1));
+  return '<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/>'
+    + '<a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="' + width + '" h="' + height + '">'
+    + '<a:moveTo>' + points[0] + '</a:moveTo>'
+    + points.slice(1).map((point) => '<a:lnTo>' + point + '</a:lnTo>').join('')
+    + '<a:close/></a:path></a:pathLst></a:custGeom>';
+}
+
+function applyClipGeometry(xml, clip) {
+  const geometry = clipGeometryXml(clip);
+  if (!geometry) return xml;
+  const pattern = /<a:prstGeom[\s\S]*?<\/a:prstGeom>/u;
+  if (!pattern.test(xml)) return xml;
+  return xml.replace(pattern, geometry);
+}
+
+async function patchClipGeometry(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const clipped = (element) => element && element.clip && Array.isArray(element.clip.points)
+    && element.clip.points.length >= 3;
+  if (!supplied(laidOut, slides).some((elements) => elements.some(clipped))) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
+    if (!shapeElements.some(clipped)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    let shapeIndex = 0;
+    let patched = 0;
+    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapeElements[shapeIndex++];
+      if (!clipped(element)) return whole;
+      const updated = applyClipGeometry(inner, element.clip);
+      if (updated !== inner) patched += 1;
+      return '<p:sp>' + updated + '</p:sp>';
+    });
+    if (shapeIndex !== shapeElements.length) {
+      throw new Error('Clip geometry patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has ' + shapeIndex + ' p:sp elements');
+    }
+    const expected = shapeElements.filter(clipped).length;
+    if (patched !== expected) {
+      throw new Error('Clip geometry patch count mismatch on slide ' + (slideIndex + 1)
+        + ': expected ' + expected + ', patched ' + patched);
+    }
+    zip.file(name, next);
+  }
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 /** `cap="small"` is DrawingML's small caps, and the writer has no option for it. */
 function applySmallCaps(xml) {
   return xml.replace(/<a:rPr([^>]*?)(\/?)>/gu, (whole, attrs, selfClose) => {
@@ -683,6 +748,7 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchTextIndents(outputPath, deck, result.laidOut);
   await patchTextColumns(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);
+  await patchClipGeometry(outputPath, deck, result.laidOut);
   await patchImageEffects(outputPath, result.imagePlans);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
@@ -700,6 +766,6 @@ async function generatePptx(deck, outputPath, options = {}) {
 module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
-  applySmallCaps, patchSmallCaps,
+  applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
   applyTextIndent, patchTextIndents
 };
