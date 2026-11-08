@@ -140,9 +140,11 @@ sitting on top of the stat cards.
   starts below the card instead of on top of it.
 - **One border side is a shape, several are a report.** A single side becomes a thin
   strip; `border-top` + `border-bottom` at different widths cannot be one native
-  outline, so it is reported instead of half-applied. There is no clipping either:
-  `overflow: hidden` is reported, so a decoration that bleeds past the slide edge is
-  drawn past the edge rather than cut off.
+  outline, so it is reported instead of half-applied. There is no clipping: a native
+  shape cannot cut off its children, so `overflow: hidden` is translated into
+  "the content is clipped here" **only when the content really is larger than the
+  box** - with content that fits, the declaration changes no pixel and is silent.
+  A bleeding decoration is therefore drawn past the slide edge instead of cut off.
 - **`text-indent` is a paragraph property, not a layout shift.** The box keeps its
   position and the indent is written to `<a:pPr indent="…">`, which is what
   PowerPoint's own "first line" paragraph setting edits. The measured height

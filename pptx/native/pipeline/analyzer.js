@@ -63,8 +63,12 @@ const SUPPORTED_PROPERTIES = new Set([
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
+// `overflow` is deliberately absent from this set: it is reported after layout, and
+// only when the box really clips content larger than itself (see `clipsContent`).
+const POST_LAYOUT_PROPERTIES = new Set(['overflow']);
+
 const UNSUPPORTED_ALWAYS = new Set([
-  'overflow', 'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
+  'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
@@ -323,6 +327,8 @@ function checkUnsupported(ctx, domNode, style) {
     // A table cell translates its four sides independently, so a single-side
     // border is not a limitation there (it is for every other element).
     if ((domNode.tag === 'td' || domNode.tag === 'th') && TABLE_CELL_BORDER_PROPERTIES.has(property)) return;
+    // `overflow` is judged after layout, against the content it would clip.
+    if (POST_LAYOUT_PROPERTIES.has(property)) return;
     if (UNSUPPORTED_ALWAYS.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'CSS feature has no native translation');
     } else if (!SUPPORTED_PROPERTIES.has(property)) {
@@ -529,6 +535,26 @@ function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx
  * Lay out one DOM node inside `slot`.
  * slot = { x, y, w, h } where x/y is the top-left corner and h may be null (auto).
  */
+/**
+ * True when a node clips and its own content is actually larger than its box, i.e.
+ * when translating nothing would visibly differ. A box whose content fits is not
+ * reported: `overflow: hidden` then changes no pixel.
+ */
+function clipsContent(node) {
+  const value = String((node.style && node.style.overflow) || '').toLowerCase();
+  if (!value || value === 'visible') return false;
+  const tolerance = 0.01;
+  if (![node.w, node.h].every((number) => Number.isFinite(number) && number > 0)) return false;
+  const children = (node.children || []).filter((child) => !child.absolute);
+  if (children.length) {
+    const right = children.reduce((max, child) => Math.max(max, (child.x || 0) + (child.w || 0)), node.x || 0);
+    const bottom = children.reduce((max, child) => Math.max(max, (child.y || 0) + (child.h || 0)), node.y || 0);
+    return bottom - (node.y + node.h) > tolerance || right - (node.x + node.w) > tolerance;
+  }
+  // A leaf: its text can be taller than the fixed height that clips it.
+  return Number.isFinite(node.textHeight) && node.textHeight > node.h + tolerance;
+}
+
 function analyzeNode(domNode, slot, inherited, ctx) {
   const node = analyzeNodeTree(domNode, slot, inherited, ctx);
   if (!node) return null;
@@ -1930,6 +1956,24 @@ function analyzeHtml(html, options = {}) {
   });
 
   if (!slides.length) ctx.notes.push('No slide containers were found; the whole document was treated as one slide.');
+  // `overflow: hidden` only matters when something actually overflows: with content
+  // that fits, the declaration changes no pixel, so reporting it would be noise. The
+  // check runs after layout because that is when the content extent is known.
+  slides.forEach((slide) => {
+    const visit = (node) => {
+      if (clipsContent(node)) {
+        ctx.unsupported.push({
+          tag: node.tag,
+          classes: node.classes || [],
+          property: 'overflow',
+          value: String(node.style.overflow),
+          reason: 'The box clips content that is larger than the box, and a native shape cannot clip its children'
+        });
+      }
+      (node.children || []).forEach(visit);
+    };
+    slide.nodes.forEach(visit);
+  });
   const textCount = slides.reduce((sum, slide) => {
     let count = 0;
     const visit = (node) => {

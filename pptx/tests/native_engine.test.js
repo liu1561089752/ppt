@@ -1052,9 +1052,9 @@ test('html pipeline reproduces the reviewed parity fixture geometry', () => {
   const caption = elements.find((element) => element.type === 'text' && element.role === 'caption');
   assert.equal(caption.text, 'VISUAL SYSTEM / 01');
   assert.equal(caption.fontSize, 9);
-  // The fixture clips its slide with `overflow: hidden`, which no native shape can
-  // express, so it must be reported instead of silently claimed as supported.
-  assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), ['overflow']);
+  // The fixture declares `overflow: hidden` on the slide, but nothing overflows it,
+  // so the declaration changes no pixel and is not a limitation to report.
+  assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), []);
 });
 
 test('html pipeline maps flex rows, grid tracks, lists, tables, and images to native objects', () => {
@@ -3083,5 +3083,35 @@ test('a multi-slide HTML keeps every page inside the canvas', () => {
     assert.ok(Array.isArray(slide.elements) && slide.elements.length, 'slide ' + (index + 1) + ' is empty');
   });
   assert.equal(result.deck.slides[0].elements.length >= 4, true);
+});
+
+
+test('overflow: hidden is reported only when the box really clips something', () => {
+  const audit = (html) => pipeline.convertHtml(html).report.unsupportedDetails
+    .filter((entry) => entry.property === 'overflow');
+
+  // Content that fits: the declaration changes no pixel, so it is not a limitation.
+  const fits = audit([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; overflow: hidden; }',
+    '  .box { width: 300px; height: 120px; overflow: hidden; padding: 10px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="box"><div style="height: 40px"></div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(fits, []);
+
+  // Content that is clipped: a native shape cannot clip its children, so say so.
+  const clips = audit([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: 300px; height: 60px; overflow: hidden; }',
+    '  .inner { height: 300px; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="box"><div class="inner"></div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(clips.length, 1, JSON.stringify(clips));
+  assert.ok(/cannot clip/u.test(clips[0].reason), clips[0].reason);
 });
 
