@@ -1618,23 +1618,29 @@ function readChart(domNode, ctx) {
 function readTable(domNode, ctx, contentWidth) {
   const rows = [];
   const rowNodes = [];
-  const collect = (node) => {
+  // A row or section may carry the background a browser paints behind its cells -
+  // the usual way a striped table is written. A cell inherits it visually, so the
+  // first declared background wins: cell, then row, then section, then table.
+  const collect = (node, sectionBackground) => {
     (node.children || []).forEach((child) => {
       if (child.type !== 'element') return;
-      if (child.tag === 'tr') rowNodes.push(child);
-      else if (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot') collect(child);
+      if (child.tag === 'tr') rowNodes.push({ rowNode: child, sectionBackground });
+      else if (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot') {
+        collect(child, backgroundOf(ctx.styles.computed(child)) || sectionBackground);
+      }
     });
   };
-  collect(domNode);
+  collect(domNode, backgroundOf(ctx.styles.computed(domNode)));
 
   let columns = 0;
-  rowNodes.forEach((rowNode) => {
+  rowNodes.forEach(({ rowNode, sectionBackground }) => {
+    const rowBackground = backgroundOf(ctx.styles.computed(rowNode)) || sectionBackground;
     const cells = elementChildren(rowNode).filter((child) => child.tag === 'td' || child.tag === 'th');
     let spanTotal = 0;
     const mapped = cells.map((cell) => {
       const style = ctx.styles.computed(cell);
       const color = parseColor(style.color);
-      const background = backgroundOf(style);
+      const background = backgroundOf(style) || rowBackground;
       const weight = String(style.fontWeight || '').toLowerCase();
       const sizePt = parseLength(style.fontSize);
       const colspan = spanOf(cell, 'colspan', 12);

@@ -2405,3 +2405,34 @@ test('pseudo-classes that cannot be translated are still reported', () => {
   assert.equal(card.background.fill, '123456');
 });
 
+
+test('a table row background becomes the cell fill, so zebra rows survive', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 900px; background: #FFFFFF; }',
+    '  th { background: #0F2A2E; color: #FFFFFF; text-align: left; }',
+    '  td { padding: 10px; }',
+    '  tbody tr:nth-child(even) { background: #F1F4F4; }',
+    '  td.num { text-align: right; }',
+    '</style></head><body><main class="slide">',
+    '<table><thead><tr><th>区域</th><th>数量</th></tr></thead><tbody>',
+    '<tr><td>华东</td><td class="num">1,284</td></tr>',
+    '<tr><td>华南</td><td class="num">1,096</td></tr>',
+    '<tr><td>华北</td><td class="num">938</td></tr>',
+    '</tbody></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const table = result.deck.slides[0].elements.find((element) => element.type === 'table');
+  assert.ok(table, 'the table must stay a native table');
+  const fill = (row, column) => table.rows[row][column].options.fill.color;
+  assert.equal(fill(0, 0), '0F2A2E', 'the header keeps its own background');
+  assert.equal(fill(1, 0), 'FFFFFF', 'an odd body row falls back to the table background');
+  assert.equal(fill(2, 0), 'F1F4F4', 'an even body row takes the row background');
+  assert.equal(fill(3, 0), 'FFFFFF');
+  // Per-cell alignment still wins over the table default.
+  assert.equal(table.rows[2][1].options.align, 'right');
+  assert.equal(table.rows[2][0].options.align, undefined);
+});
+
