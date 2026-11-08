@@ -32,6 +32,19 @@
 
   .foot { margin-top: 16px; font-size: 12px; line-height: 1.8; color: #7A8C90; width: 1060px; text-indent: 2em; }
 
+  /* 标签条：每个标签都不许换行，窄屏也不会折行 */
+  .chips { display: flex; flex-direction: row; gap: 10px; width: 1060px; margin-top: 14px; }
+  .chip {
+    width: 168px;
+    padding: 5px 10px;
+    background: #F0EEE8;
+    border-radius: 6px;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    color: #3F5559;
+    white-space: nowrap;
+  }
+
   /* 固定页脚：position: fixed 以幻灯片为参照，而不是最近的定位祖先 */
   .pager {
     position: fixed;
@@ -43,6 +56,8 @@
     font-size: 11px;
     letter-spacing: 1px;
     color: #FBFAF7;
+    /* 徽标里不许换行：导出为 bodyPr wrap="none"，否则窄盒子里会折成两行 */
+    white-space: nowrap;
   }
 </style>
 </head>
@@ -86,6 +101,12 @@
   <div class="foot">缩进值支持 em、px 与百分比；负数（悬挂缩进）需要内边距配合，当前会上报而不是半途应用。</div>
 
   <div class="pager">2026 / 05</div>
+
+  <div class="chips">
+    <div class="chip">white-space: nowrap</div>
+    <div class="chip">首行缩进 2em</div>
+    <div class="chip">position: fixed</div>
+  </div>
 </main>
 </body>
 </html>

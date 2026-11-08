@@ -207,6 +207,8 @@ function textElementFromNode(node, theme, resolvedTheme) {
   if (Number.isFinite(node.textIndent) && node.textIndent > 0) {
     element.textIndent = Number(node.textIndent.toFixed(4));
   }
+  // `white-space: nowrap` becomes `bodyPr wrap="none"` in the writer.
+  if (node.noWrap) element.nowrap = true;
   return element;
 }
 

@@ -36,7 +36,7 @@ function textOptions(el, theme) {
   const weight = isTitle
     ? (el.role === 'title' ? theme.typography.titleWeight : theme.typography.headingWeight)
     : theme.typography.bodyWeight;
-  return {
+  const options = {
     x: el.x, y: el.y, w: el.w, h: el.h,
     fontFace: el.fontFace || (isTitle ? theme.fonts.heading : theme.fonts.body),
     fontSize: el.fontSize || (isTitle ? theme.sizes[el.role] || theme.sizes.title : theme.sizes.body),
@@ -58,6 +58,14 @@ function textOptions(el, theme) {
     rotate: el.rotate || 0,
     isTextBox: true
   };
+  // `white-space: nowrap` is `bodyPr wrap="none"`: the line is never broken, so it
+  // overflows the box instead of reflowing inside it. Autofit has to be off as well,
+  // because `normAutofit` shrinks the text box back and the renderer re-wraps it.
+  if (el.nowrap) {
+    options.wrap = false;
+    options.fit = 'none';
+  }
+  return options;
 }
 
 function shapeStyle(el, theme) {

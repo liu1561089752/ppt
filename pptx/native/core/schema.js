@@ -328,6 +328,9 @@ function validateElement(p, element, errors) {
         if (element.textIndent !== undefined && !Number.isFinite(element.textIndent)) {
           errors.push(p + '.textIndent must be a number of inches');
         }
+        if (element.nowrap !== undefined && typeof element.nowrap !== 'boolean') {
+          errors.push(p + '.nowrap must be a boolean');
+        }
         if (element.bullet !== undefined && typeof element.bullet !== 'boolean' &&
             (typeof element.bullet !== 'object' || element.bullet === null || Array.isArray(element.bullet))) {
           errors.push(p + '.bullet must be a boolean or options object');

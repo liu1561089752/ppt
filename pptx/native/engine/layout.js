@@ -153,8 +153,17 @@ function prepareElement(source, availableWidth, theme = {}, options = {}) {
       lineHeight: element.lineSpacingMultiple || theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22,
       safetyFactor: options.safetyFactor || 0.9
     };
+    // `white-space: nowrap` never wraps, so the box keeps one line and the text
+    // overflows instead - which is what `bodyPr wrap="none"` does natively.
+    if (element.nowrap) measureOptions.noWrap = true;
+    // The first-line indent narrows the first line, so the wrap sees it; the height
+    // measures the already wrapped text and must not apply it a second time.
+    const wrapOptions = Object.assign({}, measureOptions);
+    if (Number.isFinite(element.textIndent) && element.textIndent > 0) {
+      wrapOptions.firstLineIndentPt = element.textIndent * 72;
+    }
     if (typeof element.text === 'string') {
-      element._renderText = wrapText(element.text, width, fontSize, measureOptions);
+      element._renderText = wrapText(element.text, width, fontSize, wrapOptions);
       element._requiredTextHeight = estimateTextHeight(element._renderText, width, fontSize, measureOptions);
     } else {
       // Runs keep their own sizes editable; only the height estimate is derived here.

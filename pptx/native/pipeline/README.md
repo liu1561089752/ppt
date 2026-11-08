@@ -51,7 +51,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
 | Layout | `position: absolute` with `left/top/right/bottom` (resolved against the containing block's padding box), `position: fixed` (resolved against the slide, so a pinned footer is measured from the slide edge rather than from whatever container holds it), block flow, `display: flex` (row/column, `gap` including the two-value form, `flex`/`flex-grow`/`flex-basis`/`flex-shrink` including the shorthand's basis and shrink, `align-items`, `align-self`, `justify-content`, `order`; an overflowing row shrinks its items in proportion to `shrink × base`), `display: grid` with fractional/fixed/percentage tracks (`repeat()`, `minmax()` max, `order` too) plus `grid-column`/`grid-row` spans (`span N`, `A / span N`, `A / B`), `grid-template-rows` (fixed, percentage, `auto`, `fr`) and `grid-auto-rows` |
-| Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring), `text-indent` (first-line indent in `em`/`px`/`%`, written as `<a:pPr indent>`; a negative value is reported) |
+| Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring), `text-indent` (first-line indent in `em`/`px`/`%`, written as `<a:pPr indent>`; a negative value is reported), `white-space: nowrap` (written as `bodyPr wrap="none"` with autofit off, so a label never breaks and overflows instead of reflowing; the `pre*` values are reported because the DOM text walk has already collapsed whitespace) |
 | Transforms | `transform: rotate(<deg|rad|grad|turn>)` on a text box, shape or picture → native shape rotation (clockwise, about the centre). A rotation combined with `scale`/`skew`/`translate` is reported rather than half-applied; a rotated *group* is reported because a native container cannot carry a rotation |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
 | Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
@@ -115,6 +115,11 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   already accounts for the narrower first line, so a deck does not clip. A
   negative indent (hanging indent, which needs matching box insets) is reported
   rather than half-applied.
+- **`white-space: nowrap` overflows, it does not shrink.** That is what the CSS
+  keyword means, but it also means a nowrap label wider than its box spills out -
+  by design, since `overflow` is not translated either. Autofit is switched off for
+  those boxes: leaving `normAutofit` on makes PowerPoint and LibreOffice shrink the
+  text box and then re-wrap the text, which defeats the keyword entirely.
 - **A shape border is uniform.** The `border` shorthand is expanded into
   `border-top/right/bottom/left` so the cascade behaves (a later `border` really
   clears an earlier `border-bottom`), but a native outline has one width and one

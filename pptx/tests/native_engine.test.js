@@ -2793,3 +2793,64 @@ test('a descendant chain backtracks instead of failing on the first candidate', 
   assert.ok(json.includes('FF0000'), 'the deep background must be emitted');
 });
 
+
+test('white-space: nowrap stays on one line and is written as wrap="none"', async () => {
+  // Analyzer: nowrap keeps a single line, so the box does not grow.
+  const build = (extra) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .label { width: 90px; font-size: 13px; line-height: 1.4; ' + extra + ' }',
+    '</style></head><body><main class="slide">',
+    '  <div class="label">门店销售同比环比增长数据说明</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const textNodeOf = (result) => {
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        if (node.type === 'text') return node;
+        if (node.children) {
+          const found = walk(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return walk(result.deck.slides[0].elements);
+  };
+
+  const wrapped = textNodeOf(build(''));
+  const nowrap = textNodeOf(build('white-space: nowrap;'));
+  assert.deepEqual(build('white-space: nowrap;').report.unsupportedDetails, []);
+  assert.equal(nowrap.nowrap, true);
+  assert.equal(wrapped.nowrap, undefined);
+  assert.ok(nowrap.h < wrapped.h - 0.2, 'nowrap must be one line: ' + nowrap.h + ' vs ' + wrapped.h);
+
+  // `pre` keeps whitespace, which the DOM text walk already collapsed: reported.
+  const pre = build('white-space: pre;');
+  assert.equal(pre.report.unsupportedDetails.filter((entry) => entry.property === 'whiteSpace').length, 1);
+
+  // Writer: wrap="none" and no autofit, which is what makes a renderer stop re-flowing.
+  await withTempDir('native-nowrap-', async (directory) => {
+    const output = pathSync.join(directory, 'nowrap.pptx');
+    const { generatePptx } = require('../native/engine/native_pptx');
+    await generatePptx({ slides: [{ elements: [
+      { type: 'text', text: 'wrapped label text', x: 0.5, y: 0.5, w: 1.4, h: 0.4, fontSize: 12 },
+      { type: 'text', text: 'nowrap label text', x: 0.5, y: 1.2, w: 1.4, h: 0.4, fontSize: 12, nowrap: true }
+    ] }] }, output);
+    const xml = await readSlideXml(output);
+    assert.equal((xml.match(/wrap="none"/gu) || []).length, 1);
+    // Only the wrapping box autofits; the nowrap box has no autofit child at all,
+    // which is PowerPoint's "do not autofit" (normAutofit would re-wrap the text).
+    assert.equal((xml.match(/<a:normAutofit/gu) || []).length, 1);
+    assert.equal((xml.match(/<a:spAutoFit/gu) || []).length, 0);
+  });
+
+  // The spec validator accepts the flag and rejects a non-boolean.
+  assert.deepEqual(validateDeck({ slides: [{ elements: [
+    { type: 'text', text: 'x', x: 0, y: 0, w: 1, h: 0.3, nowrap: true }
+  ] }] }), []);
+  assert.ok(validateDeck({ slides: [{ elements: [
+    { type: 'text', text: 'x', x: 0, y: 0, w: 1, h: 0.3, nowrap: 'yes' }
+  ] }] }).some((error) => error.includes('nowrap')));
+});
+

@@ -56,6 +56,9 @@ const TOKEN_PATTERN = new RegExp('\\s+|[' + CJK_RANGES + ']|[^\\s' + CJK_RANGES 
 
 function wrapParagraph(paragraph, maxWidthPt, fontSizePt, options) {
   if (!paragraph) return [''];
+  // `white-space: nowrap` keeps the paragraph on one line; the text overflows the
+  // box instead of wrapping, which is also what `bodyPr wrap="none"` does natively.
+  if (options.noWrap) return normalizeCjkLineBreaks([String(paragraph)]);
 
   const indentPt = Number(options.firstLineIndentPt) > 0 ? Number(options.firstLineIndentPt) : 0;
   // A first-line indent eats into the first line's width, so the wrap can produce

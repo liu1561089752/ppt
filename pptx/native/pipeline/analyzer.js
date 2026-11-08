@@ -58,7 +58,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
-  'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent',
+  'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
@@ -66,7 +66,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   'overflow', 'borderCollapse', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
-  'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
+  'textOverflow', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
   'justifySelf'
 ]);
 
@@ -490,6 +490,13 @@ function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx
     built.text = transformText(built.text, transform);
     built.runs.forEach((run) => { run.text = transformText(run.text, transform); });
   }
+  const whiteSpace = String(style.whiteSpace || 'normal').toLowerCase();
+  const noWrap = whiteSpace === 'nowrap';
+  if (whiteSpace !== 'normal' && !noWrap) {
+    recordUnsupported(ctx, domNode, 'whiteSpace', style.whiteSpace,
+      'Only white-space: nowrap is translated; the pre* values also preserve whitespace, which the DOM text walk already collapsed');
+  }
+  if (noWrap) measureOptions.noWrap = true;
   return {
     fontPx,
     fontSizePt,
@@ -497,6 +504,7 @@ function measureTextElement(domNode, style, availableWidth, inheritedFontPx, ctx
     runs: built.hasFormatting ? built.runs : null,
     text: built.text.replace(/\s*\n\s*/gu, '\n').trim(),
     textIndent: textIndent && textIndent > 0 ? textIndent : undefined,
+    noWrap: noWrap || undefined,
     textHeight: estimateTextHeight(built.text, Math.max(0.2, availableWidth), fontSizePt, measureOptions)
   };
 }
@@ -822,7 +830,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       node.bullet = true;
       node.runs = null;
       node.textHeight = estimateTextHeight(node.text, Math.max(0.2, contentWidth), measured.fontSizePt,
-        { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92 });
+        { lineHeight: measured.lineSpacingMultiple, safetyFactor: 0.92, noWrap: measured.noWrap });
     }
     node.h = explicitHeight === null ? node.textHeight : explicitHeight;
     return node;
