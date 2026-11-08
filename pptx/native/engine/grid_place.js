@@ -18,8 +18,14 @@ function normalizeSpan(value, limit) {
 
 /**
  * Place items into a row-major grid.
- * `items` carries `{ columnSpan, rowSpan }`; the result keeps the same order and
- * adds `{ row, column }` (0-based) plus the clamped spans.
+ *
+ * An item may pin its lines with `columnStart`/`columnEnd`/`rowStart`/`rowEnd`
+ * (0-based cells, `columnEnd` exclusive, the way `grid-column: 2 / 4` resolves). The
+ * four phases are CSS 8.5 for `grid-auto-flow: row`: items with a definite row and
+ * column go first, then items with only a column hunt a row, then items with only a row
+ * take the earliest free column in it, and everything else flows from the cursor.
+ * `items` carries `{ columnSpan, rowSpan }` plus those optional starts; the result keeps
+ * the same order and adds `{ row, column }` (0-based) with the clamped spans.
  */
 function placeGridItems(items, columns) {
   const count = Math.max(1, Math.floor(Number(columns)) || 1);
@@ -44,10 +50,72 @@ function placeGridItems(items, columns) {
     }
   };
 
-  const placements = [];
+  const list = items || [];
+  const placements = new Array(list.length);
+  const hasStart = (value) => Number.isFinite(value);
+  const clampColumn = (value) => Math.max(0, Math.min(count - 1, Math.floor(value)));
+  const spanFor = (item, column) => {
+    const declared = normalizeSpan(item && item.columnSpan, count);
+    const end = item && hasStart(item.columnEnd) ? Math.floor(item.columnEnd) - column : null;
+    const wanted = end !== null && end > 0 ? end : declared;
+    return Math.max(1, Math.min(wanted, count - column));
+  };
+  const rowSpanFor = (item) => {
+    const declared = normalizeSpan(item && item.rowSpan);
+    const end = item && hasStart(item.rowEnd) ? Math.floor(item.rowEnd) - Math.floor(item.rowStart) : null;
+    return end !== null && end > 0 ? end : declared;
+  };
+
+  // Phase 1: a definite row and column needs no search.
+  list.forEach((item, index) => {
+    if (!item || !hasStart(item.rowStart) || !hasStart(item.columnStart)) return;
+    const row = Math.max(0, Math.floor(item.rowStart));
+    const column = clampColumn(item.columnStart);
+    const columnSpan = spanFor(item, column);
+    const rowSpan = rowSpanFor(item);
+    fill(row, column, rowSpan, columnSpan);
+    placements[index] = { row, column, rowSpan, columnSpan };
+  });
+
+  // Phase 2: a definite column hunts the first row where it fits.
+  list.forEach((item, index) => {
+    if (placements[index] || !item || !hasStart(item.columnStart)) return;
+    const column = clampColumn(item.columnStart);
+    const columnSpan = spanFor(item, column);
+    const rowSpan = rowSpanFor(item);
+    let row = 0;
+    for (let guard = 0; guard < 10000 && !isFree(row, column, rowSpan, columnSpan); guard += 1) {
+      row += 1;
+    }
+    fill(row, column, rowSpan, columnSpan);
+    placements[index] = { row, column, rowSpan, columnSpan };
+  });
+
+  // Phase 3: a definite row takes the earliest free column in it.
+  list.forEach((item, index) => {
+    if (placements[index] || !item || !hasStart(item.rowStart)) return;
+    let row = Math.max(0, Math.floor(item.rowStart));
+    const rowSpan = rowSpanFor(item);
+    const columnSpan = Math.max(1, Math.min(normalizeSpan(item.columnSpan, count), count));
+    let column = 0;
+    for (let guard = 0; guard < 10000; guard += 1) {
+      if (column + columnSpan > count) {
+        row += 1;
+        column = 0;
+        continue;
+      }
+      if (isFree(row, column, rowSpan, columnSpan)) break;
+      column += 1;
+    }
+    fill(row, column, rowSpan, columnSpan);
+    placements[index] = { row, column, rowSpan, columnSpan };
+  });
+
+  // Phase 4: everything left flows from the cursor, in document order.
   let row = 0;
   let column = 0;
-  (items || []).forEach((item) => {
+  list.forEach((item, index) => {
+    if (placements[index]) return;
     const rowSpan = normalizeSpan(item && item.rowSpan);
     const columnSpan = normalizeSpan(item && item.columnSpan, count);
     // Advance until the spans fit without overlapping anything already placed.
@@ -65,7 +133,7 @@ function placeGridItems(items, columns) {
       }
     }
     fill(row, column, rowSpan, columnSpan);
-    placements.push({ row, column, rowSpan, columnSpan });
+    placements[index] = { row, column, rowSpan, columnSpan };
     column += columnSpan;
     if (column >= count) {
       row += 1;

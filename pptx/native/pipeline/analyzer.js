@@ -51,7 +51,8 @@ const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
   'flexWrap', 'flexGrow', 'flexBasis', 'flexShrink', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
-  'gridColumn', 'gridRow', 'gridTemplateRows', 'gridAutoRows', 'alignItems',
+  'gridColumn', 'gridRow', 'gridColumnStart', 'gridColumnEnd', 'gridRowStart', 'gridRowEnd',
+  'gridArea', 'gridTemplateRows', 'gridAutoRows', 'alignItems',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
@@ -1745,39 +1746,97 @@ function autoRowHeightOf(style, fontSizePx) {
   return Number.isFinite(inches) && inches > 0 ? inches : null;
 }
 
-/** Parse `grid-column`/`grid-row` into a span, flagging explicit line placement. */
-function gridSpanOf(value) {
+/**
+ * Resolve one side of `grid-column`/`grid-row` to 0-based cell indices.
+ *
+ * `lineCount` is how many tracks exist on that axis; negative line numbers count back
+ * from the last line (`-1` is the line after the last track), which CSS only allows when
+ * the explicit grid is known. A named line cannot be resolved here, so it is flagged.
+ */
+function gridPlacementOf(value, lineCount) {
   const text = String(value === undefined || value === null ? '' : value).trim().toLowerCase();
-  if (!text || text === 'auto') return { span: 1, explicit: false };
-  const spanToken = (token) => {
+  if (!text || text === 'auto') return { start: null, end: null, span: 1, named: false };
+  const cellOf = (token) => {
+    if (token === 'auto') return null;
+    const number = Number(token);
+    if (!Number.isFinite(number) || number === 0) return undefined; // not a plain line
+    if (number > 0) return number - 1;
+    // `-1` is the line after the last track, so counting back needs one extra line.
+    return lineCount === null ? undefined : lineCount + 1 + number;
+  };
+  const spanOf = (token) => {
     const match = /^span\s+(\d+)$/u.exec(token);
     return match ? Number(match[1]) : null;
   };
   const parts = text.split('/').map((part) => part.trim());
   if (parts.length === 1) {
-    const span = spanToken(parts[0]);
-    if (span !== null) return { span, explicit: false };
-    return { span: 1, explicit: Number.isFinite(Number(parts[0])) };
+    const span = spanOf(parts[0]);
+    if (span !== null) return { start: null, end: null, span, named: false };
+    const cell = cellOf(parts[0]);
+    if (cell === null) return { start: null, end: null, span: 1, named: false };
+    if (cell === undefined) return { start: null, end: null, span: 1, named: true };
+    return { start: cell, end: cell + 1, span: 1, named: false };
   }
-  const endSpan = spanToken(parts[1]);
-  if (endSpan !== null) return { span: endSpan, explicit: parts[0] !== 'auto' };
-  const start = Number(parts[0]);
-  const end = Number(parts[1]);
-  if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
-    return { span: end - start, explicit: true };
+  const endSpan = spanOf(parts[1]);
+  const startCell = cellOf(parts[0]);
+  if (startCell === undefined) return { start: null, end: null, span: endSpan || 1, named: true };
+  if (endSpan !== null) {
+    return { start: startCell, end: startCell === null ? null : startCell + endSpan, span: endSpan, named: false };
   }
-  return { span: 1, explicit: true };
+  const endCell = cellOf(parts[1]);
+  if (endCell === undefined) return { start: startCell, end: null, span: 1, named: true };
+  if (startCell === null && endCell === null) return { start: null, end: null, span: 1, named: false };
+  if (startCell === null) return { start: Math.max(0, endCell - 1), end: endCell, span: 1, named: false };
+  if (endCell === null) return { start: startCell, end: null, span: 1, named: false };
+  const start = Math.min(startCell, endCell);
+  const end = Math.max(startCell + 1, endCell);
+  return { start, end, span: Math.max(1, end - start), named: false };
 }
 
-/** The spans a grid item declares, plus whether it pinned an explicit line. */
-function gridPlacementOf(style) {
-  const column = gridSpanOf(style.gridColumn);
-  const row = gridSpanOf(style.gridRow);
+/** Join a `grid-column`/`grid-row` shorthand with its longhands, shorthand first. */
+function gridAxisValue(style, axis) {
+  const shorthand = axis === 'column' ? style.gridColumn : style.gridRow;
+  if (shorthand !== undefined && String(shorthand).trim() !== '') return shorthand;
+  const start = axis === 'column' ? style.gridColumnStart : style.gridRowStart;
+  const end = axis === 'column' ? style.gridColumnEnd : style.gridRowEnd;
+  if (start === undefined && end === undefined) return '';
+  return String(start === undefined ? 'auto' : start).trim() + ' / '
+    + String(end === undefined ? 'auto' : end).trim();
+}
+
+/** The spans and starts a grid item declares, plus anything that cannot be resolved. */
+function gridPlacementSpec(style, columnCount, rowCount) {
+  // `grid-area: row-start / column-start / row-end / column-end` is a shorthand for all
+  // four longhands, so it wins when it is present.
+  const area = String(style.gridArea === undefined ? '' : style.gridArea).trim();
+  if (area && area.toLowerCase() !== 'auto') {
+    const parts = area.split('/').map((part) => part.trim());
+    if (parts.length === 4) {
+      const row = gridPlacementOf(parts[0] + ' / ' + parts[2], rowCount);
+      const column = gridPlacementOf(parts[1] + ' / ' + parts[3], columnCount);
+      return {
+        columnStart: column.start,
+        columnEnd: column.end,
+        columnSpan: column.span,
+        rowStart: row.start,
+        rowEnd: row.end,
+        rowSpan: row.span,
+        named: column.named || row.named
+      };
+    }
+    // A bare name is a named area, which needs `grid-template-areas`.
+    return { columnStart: null, columnEnd: null, columnSpan: 1, rowStart: null, rowEnd: null, rowSpan: 1, named: true };
+  }
+  const column = gridPlacementOf(gridAxisValue(style, 'column'), columnCount);
+  const row = gridPlacementOf(gridAxisValue(style, 'row'), rowCount);
   return {
+    columnStart: column.start,
+    columnEnd: column.end,
     columnSpan: column.span,
+    rowStart: row.start,
+    rowEnd: row.end,
     rowSpan: row.span,
-    explicitColumn: column.explicit,
-    explicitRow: row.explicit
+    named: column.named || row.named
   };
 }
 
@@ -1817,18 +1876,17 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   };
 
   const kids = sortByOrder(visibleChildren(domNode, ctx), ctx);
+  // A negative row line counts back from the last line, which only exists once the
+  // explicit row tracks are known.
+  const rowCount = gridRowTracksOf(style, contentBox.h, inherited.fontPx).length || null;
   const plans = kids.map((child) => {
     const childStyle = ctx.styles.computed(child);
-    const placement = gridPlacementOf(childStyle);
-    if (placement.explicitColumn) {
-      recordUnsupported(ctx, child, 'gridColumn', childStyle.gridColumn,
-        'Explicit grid line placement is not modelled; the item is auto-placed with its span width');
+    const placement = gridPlacementSpec(childStyle, columns, rowCount);
+    if (placement.named) {
+      recordUnsupported(ctx, child, 'gridColumn', gridAxisValue(childStyle, 'column'),
+        'Named grid lines and areas are not modelled; the item is auto-placed with its span width');
     }
-    if (placement.explicitRow) {
-      recordUnsupported(ctx, child, 'gridRow', childStyle.gridRow,
-        'Explicit grid line placement is not modelled; the item is auto-placed with its span height');
-    }
-    return { columnSpan: placement.columnSpan, rowSpan: placement.rowSpan };
+    return placement;
   });
 
   const placements = placeGridItems(plans, columns);
@@ -1878,6 +1936,10 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
     if (childAlign && childAlign !== 'stretch') node.alignSelf = childAlign;
     if (place.columnSpan > 1) node.columnSpan = place.columnSpan;
     if (place.rowSpan > 1) node.rowSpan = place.rowSpan;
+    // The resolved cell travels in the spec, so the engine reproduces the analyzer's
+    // placement instead of re-running auto-flow and hoping it decides the same way.
+    node.gridColumnStart = place.column;
+    node.gridRowStart = place.row;
     aligned.push(node);
   });
   aligned.gridTracks = tracks;

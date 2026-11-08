@@ -2076,20 +2076,51 @@ test('html pipeline spans grid tracks with grid-column and grid-row', () => {
   assert.deepEqual(result.report.containerFallbacks, []);
 });
 
-test('html pipeline reports explicit grid line placement', () => {
-  const html = [
+test('html pipeline places an item on the grid line it names', () => {
+  const build = (decl) => pipeline.convertHtml([
     '<html><head><style>',
-    '  .slide { width: 1280px; height: 720px; }',
-    '  .grid { display: grid; grid-template-columns: 1fr 1fr; width: 1000px; }',
-    '  .a { grid-column: 2 / 4; }',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; width: 1000px; }',
+    '  .a { ' + decl + ' }',
     '</style></head><body><main class="slide">',
-    '<div class="grid"><div class="a"><div>x</div></div><div><div>y</div></div></div>',
+    '<div class="grid"><div class="a">x</div><div class="b">y</div></div>',
     '</main></body></html>'
-  ].join('\n');
-  const result = pipeline.convertHtml(html);
-  const reported = result.report.unsupportedDetails.filter((entry) => entry.property === 'gridColumn');
-  assert.equal(reported.length, 1, JSON.stringify(result.report.unsupportedDetails));
-  assert.match(reported[0].reason, /Explicit grid line placement/u);
+  ].join('\n'));
+  const boxes = (result) => {
+    const grid = result.analysis.slides[0].nodes.find((node) => (node.classes || []).includes('grid'));
+    return { grid, a: grid.children[0], b: grid.children[1] };
+  };
+
+  // `2 / 4` starts on the second column; the span is clamped to the two tracks there.
+  const named = build('grid-column: 2 / 4');
+  assert.deepEqual(named.report.unsupportedDetails, [], 'an explicit line is translated, not reported');
+  const first = boxes(named);
+  assert.ok(Math.abs(first.a.x - (first.grid.x + 500 / 96)) < 0.01, 'starts on column 2: ' + first.a.x);
+  assert.ok(Math.abs(first.b.x - first.grid.x) < 0.01, 'the auto item takes the free column: ' + first.b.x);
+
+  // The same placement written as the longhands.
+  const longhands = build('grid-column-start: 2; grid-column-end: 3');
+  assert.deepEqual(longhands.report.unsupportedDetails, []);
+  assert.ok(Math.abs(boxes(longhands).a.x - (boxes(longhands).grid.x + 500 / 96)) < 0.01);
+
+  // `span` on the end line, and a negative line counted back from the last one.
+  const spanned = build('grid-column: 1 / span 2');
+  assert.ok(Math.abs(boxes(spanned).a.w - 1000 / 96) < 0.01, 'span two columns: ' + boxes(spanned).a.w);
+  const negative = build('grid-column: -2 / -1');
+  assert.deepEqual(negative.report.unsupportedDetails, []);
+  assert.ok(Math.abs(boxes(negative).a.x - (boxes(negative).grid.x + 500 / 96)) < 0.01,
+    '-2 / -1 is the last column: ' + boxes(negative).a.x);
+
+  // `grid-area` is the four-value shorthand, row-start / column-start / row-end / column-end.
+  const area = build('grid-area: 1 / 2 / 2 / 3');
+  assert.deepEqual(area.report.unsupportedDetails, []);
+  assert.ok(Math.abs(boxes(area).a.x - (boxes(area).grid.x + 500 / 96)) < 0.01, 'area column: ' + boxes(area).a.x);
+
+  // A bare name is a named area, which needs grid-template-areas: that is reported.
+  const namedArea = build('grid-area: hero');
+  const reported = namedArea.report.unsupportedDetails.filter((entry) => entry.property === 'gridColumn');
+  assert.equal(reported.length, 1, JSON.stringify(namedArea.report.unsupportedDetails));
+  assert.match(reported[0].reason, /Named grid lines/u);
 });
 
 

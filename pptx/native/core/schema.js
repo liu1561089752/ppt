@@ -172,6 +172,12 @@ function validateContainer(prefix, element, errors) {
       errors.push(prefix + '.rowSpan must be a positive integer');
     }
   }
+  ['gridColumnStart', 'gridRowStart'].forEach((key) => {
+    if (element[key] !== undefined
+      && (!Number.isInteger(element[key]) || element[key] < 0)) {
+      errors.push(prefix + '.' + key + ' must be a non-negative integer cell index');
+    }
+  });
   if (element.overlays !== undefined) {
     if (!Array.isArray(element.overlays)) {
       errors.push(prefix + '.overlays must be an array');

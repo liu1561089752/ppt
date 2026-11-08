@@ -79,6 +79,23 @@
   .delta { font-size: 12px; font-weight: 700; color: #7FD6D0; }
   .total { font-size: 12.5px; font-weight: 700; color: #CFE6E9; padding-top: 14px; }
   .source { font-size: 11px; color: #6E8F95; padding-top: 6px; }
+
+  /* The second slide names its grid lines: the placement is read from the CSS
+     instead of being inferred from document order. */
+  .poster {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    grid-template-rows: 200px 168px;
+    gap: 18px;
+    width: 1152px;
+  }
+  .poster-hero { grid-column: 1 / 3; }
+  .poster-note { grid-column: 3; grid-row: 1 / span 2; background: #10313A; }
+  .poster-meta { grid-area: 2 / 1 / 3 / 2; background: #14302F; }
+  .poster-note h3 { color: #CFE6E9; }
+  .poster-note p { color: #8FB2B8; }
+  .poster-meta h3 { color: #EAF1F0; }
+  .poster-meta p { color: #9FC0BE; }
 </style>
 </head>
 <body>
@@ -129,6 +146,36 @@
       <h3>客户留存</h3>
       <div class="figure">91%</div>
       <p>连续四个季度高于 90%，续约率同步走高。</p>
+    </div>
+  </div>
+</main>
+
+<main class="slide">
+  <div class="kicker">native grid / explicit lines</div>
+  <h1>把元素钉在指定的行列线上</h1>
+  <p class="lead">同一块画布，这次每个分区自己说明占哪几条线：标题横跨前两条列线，注释占满第三列的两行，脚注用 <code>grid-area</code> 落在第二行第一列，剩下的单元自动补位。</p>
+
+  <div class="poster">
+    <div class="panel poster-hero">
+      <h3>横跨两条列线</h3>
+      <div class="figure">1 / 3</div>
+      <p><code>grid-column: 1 / 3</code> 从第 1 条线到第 3 条线，宽度等于两条轨道加一个间隙。</p>
+    </div>
+
+    <div class="panel poster-note">
+      <h3>钉在第三列，跨两行</h3>
+      <p><code>grid-column: 3</code> 与 <code>grid-row: 1 / span 2</code> 一起用：列固定，行跨两条轨道。</p>
+      <p>负线号也可以写：<code>-2 / -1</code> 就是最后一列。</p>
+    </div>
+
+    <div class="panel poster-meta">
+      <h3>grid-area 四值简写</h3>
+      <p>行首 / 列首 / 行尾 / 列尾，等价于四条长写属性。</p>
+    </div>
+
+    <div class="panel">
+      <h3>自动补位</h3>
+      <p>没有声明位置的单元填进还空着的格子，文档顺序不变。</p>
     </div>
   </div>
 </main>

@@ -408,7 +408,14 @@ function placeGrid(container, box, theme, options, sink) {
     for (let index = column; index < column + span; index += 1) width += columnWidth(index);
     return width + columnGap * Math.max(0, span - 1);
   };
-  const plans = children.map((child) => ({ columnSpan: child.columnSpan, rowSpan: child.rowSpan }));
+  // The analyzer resolves the cell each child occupies; carrying it here means the two
+  // cannot disagree about a grid whose placement came from explicit lines.
+  const plans = children.map((child) => ({
+    columnSpan: child.columnSpan,
+    rowSpan: child.rowSpan,
+    columnStart: child.gridColumnStart,
+    rowStart: child.gridRowStart
+  }));
   const placements = placeGridItems(plans, columns);
   // A child that declares its own height keeps it and does not size the rows.
   const declared = children.map((child) => child.h !== undefined);
