@@ -2738,3 +2738,58 @@ test('position: fixed anchors to the slide, not to a positioned parent', () => {
   assert.ok(Math.abs(badge.y - 660 / 96) < 0.02, 'y was ' + badge.y);
 });
 
+
+test('child and sibling combinators match the DOM, not a descendant approximation', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; gap: 10px; width: 1200px; }',
+    '  .card { flex: 1; height: 60px; background: #EEEEEE; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    '  <div class="row">',
+    '    <div class="card"><div>1</div></div>',
+    '    <div class="card"><div>2</div></div>',
+    '    <div class="card"><div>3</div></div>',
+    '  </div></main></body></html>'
+  ].join('\n'));
+
+  const marks = (css) => {
+    const result = build(css);
+    assert.deepEqual(result.report.unsupportedDetails, [], css + ' must be translated');
+    const row = result.deck.slides[0].elements.find((element) => element.type === 'container'
+      && element.children && element.children.length === 3);
+    assert.ok(row, 'the row must stay declarative for ' + css);
+    return row.children.map((child) => ((child.background && child.background.fill) === 'FF0000' ? 'X' : '.')).join('');
+  };
+
+  // Descendant (unchanged behaviour).
+  assert.equal(marks('.row .card { background: #FF0000; }'), 'XXX');
+  // Child: direct children only, so a grandchild relationship does not match.
+  assert.equal(marks('.row > .card { background: #FF0000; }'), 'XXX');
+  assert.equal(marks('.slide > .card { background: #FF0000; }'), '...');
+  // Adjacent and general siblings.
+  assert.equal(marks('.card + .card { background: #FF0000; }'), '.XX');
+  assert.equal(marks('.card ~ .card { background: #FF0000; }'), '.XX');
+  assert.equal(marks('.row + .card { background: #FF0000; }'), '...');
+  // Combined with a structural pseudo-class: "every item but the first".
+  assert.equal(marks('.card:nth-child(1) + .card { background: #FF0000; }'), '.X.');
+});
+
+test('a descendant chain backtracks instead of failing on the first candidate', () => {
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .outer { display: flex; flex-direction: row; width: 1200px; }',
+    '  .inner { flex: 1; height: 40px; background: #EEEEEE; }',
+    '  .mid .deep { background: #FF0000; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="outer">',
+    '    <div class="inner"><div class="mid"><div class="deep"><div>x</div></div></div></div>',
+    '  </div></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const json = JSON.stringify(result.deck);
+  assert.ok(json.includes('FF0000'), 'the deep background must be emitted');
+});
+

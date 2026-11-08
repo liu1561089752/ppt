@@ -46,7 +46,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 | Area | Supported |
 |---|---|
-| Selectors | type, `.class`, `#id`, compound (`tag.class`), descendant and child combinators (both treated as descendant), `*`, attribute selectors (`[attr]`, `[attr=value]`, `[attr~=]`, `[attr\|=]`, `[attr^=]`, `[attr$=]`, `[attr*=]`, quoted or bare values, optional `i` flag), the structural pseudo-classes `:first-child`, `:last-child`, `:only-child`, `:nth-child()`, `:nth-last-child()`, `:first-of-type`, `:last-of-type`, `:only-of-type`, `:nth-of-type()`, `:nth-last-of-type()` (with `an+b`, `odd`, `even`), and `:not()`, `:is()`, `:where()` over simple selectors — arguments may contain attribute and structural selectors (`:not([data-kind="chart"])`), `:where()` adds no specificity, and a comma inside `:is()`/`:not()` does not end the rule |
+| Selectors | type, `.class`, `#id`, compound (`tag.class`), `*`, every combinator with its real meaning — descendant, child (`>`), adjacent (`+`) and general sibling (`~`), matched right to left with backtracking — attribute selectors (`[attr]`, `[attr=value]`, `[attr~=]`, `[attr\|=]`, `[attr^=]`, `[attr$=]`, `[attr*=]`, quoted or bare values, optional `i` flag), the structural pseudo-classes `:first-child`, `:last-child`, `:only-child`, `:nth-child()`, `:nth-last-child()`, `:first-of-type`, `:last-of-type`, `:only-of-type`, `:nth-of-type()`, `:nth-last-of-type()` (with `an+b`, `odd`, `even`), and `:not()`, `:is()`, `:where()` over simple selectors — arguments may contain attribute and structural selectors (`:not([data-kind="chart"])`), `:where()` adds no specificity, and a comma inside `:is()`/`:not()` does not end the rule |
 | Cascade | stylesheet order + specificity (ids, classes, tags), then inline `style=""`, plus `var(--token, fallback)` |
 | Lengths | `px`, `pt`, `in`, `cm`, `mm`, `em`, `rem`, `%` (against the direct parent content box) |
 | Box | `width`, `height`, `padding`, `margin`, `border`, `border-radius`, `box-sizing` (border-box by default, `content-box` honoured), `min`/`max-width`, `min-height` |
@@ -83,8 +83,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   whole rule reported instead of silently matching too much. Attribute selectors
   support `[attr]`, `=`, `~=`, `|=`, `^=`, `$=`, `*=` and the `i` flag; an operator
   we cannot evaluate (`[data-x!=y]`) leaves the rule reported rather than matching
-  every element with the class. Other pseudo-classes and pseudo-elements, sibling
-  combinators and `!important`
+  every element with the class. Other pseudo-classes and pseudo-elements and
+  `!important`
   are ignored, and a rule whose selector is ignored is listed in the report. A
   selector that names no element at all (`:root { --x: ... }`) is not listed,
   because its declarations are only custom properties. Custom properties are

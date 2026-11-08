@@ -174,6 +174,7 @@ function collectRules(css, viewport, state) {
           state.decorationRules.push({
             selectorText: rawSelector.trim(),
             parts: parsed.parts,
+            links: parsed.links,
             pseudo: parsed.pseudoName,
             declarations,
             order: state.order++,
@@ -185,6 +186,7 @@ function collectRules(css, viewport, state) {
       rules.push({
         selectorText: rawSelector.trim(),
         parts: parsed.parts,
+        links: parsed.links,
         declarations,
         order: state.order++,
         specificity: parsed.specificity
@@ -270,23 +272,38 @@ function parseSimpleSelector(segment) {
 
 /**
  * Split a selector into compound segments on combinators and whitespace, without
- * splitting inside `nth-child(2n + 1)`.
+ * splitting inside `nth-child(2n + 1)` or inside `[attr="a b"]`. Each segment
+ * keeps the combinator that links it to the segment on its left (`null` for the
+ * first one), so `a > b` and `a b` stay distinguishable.
  */
 function selectorSegments(text) {
-  const segments = [];
+  const tokens = [];
   let current = '';
   let depth = 0;
   for (const char of String(text || '')) {
     if (char === '(' || char === '[') depth += 1;
     else if (char === ')' || char === ']') depth = Math.max(0, depth - 1);
     if (depth === 0 && /[\s>+~]/u.test(char)) {
-      if (current) segments.push(current);
+      if (current) tokens.push({ type: 'segment', value: current });
       current = '';
+      tokens.push({ type: 'combinator', value: char === '>' || char === '+' || char === '~' ? char : ' ' });
       continue;
     }
     current += char;
   }
-  if (current) segments.push(current);
+  if (current) tokens.push({ type: 'segment', value: current });
+
+  const segments = [];
+  let pending = null;
+  for (const token of tokens) {
+    if (token.type === 'segment') {
+      segments.push({ text: token.value, combinator: segments.length === 0 ? null : (pending || ' ') });
+      pending = null;
+    } else if (!pending || token.value !== ' ') {
+      // An explicit combinator wins over the whitespace that surrounds it.
+      pending = token.value;
+    }
+  }
   return segments;
 }
 
@@ -480,15 +497,19 @@ function readSegment(segment, depth = 0) {
 }
 
 /**
- * Parse a selector into right-to-left parts. `>` and `+`/`~` collapse to a
- * descendant relationship, which over-matches slightly but never under-matches.
+ * Parse a selector into right-to-left parts plus the combinator linking each part
+ * to the one on its left. Descendant, child (`>`), adjacent (`+`) and general
+ * (`~`) sibling combinators are all honoured when matching.
  */
 function parseSelector(rawSelector) {
   const raw = String(rawSelector || '');
   const segments = selectorSegments(raw);
   if (!segments.length) return null;
-  const reads = segments.map(readSegment);
+  const reads = segments.map((segment) => ({ ...readSegment(segment.text), combinator: segment.combinator }));
   const parts = reads.map((read) => read.simple).reverse();
+  // links[k] joins parts[k] (right) to parts[k + 1] (left); the combinator is
+  // stored on the segment it introduces, which is parts[k] itself.
+  const links = parts.slice(0, -1).map((unused, index) => reads[reads.length - 1 - index].combinator || ' ');
   const others = reads.flatMap((read) => read.others);
   const pseudoName = others.length
     ? (/:{1,2}([\w-]+)/u.exec(others[others.length - 1]) || [])[1] || null
@@ -517,6 +538,7 @@ function parseSelector(rawSelector) {
   }), { ids: 0, classes: structuralCount + functionalCount + attributeCount, tags: 0 });
   return {
     parts,
+    links,
     specificity,
     pseudo: others.length > 0,
     pseudoName: pseudoName ? pseudoName.toLowerCase() : null
@@ -550,25 +572,59 @@ function matchesSimple(node, simple) {
   return true;
 }
 
-function matchesSelector(node, selector) {
-  const parts = selector.parts;
-  if (!matchesSimple(node, parts[0])) return false;
-  let remaining = 1;
-  let ancestor = node.parent;
-  while (remaining < parts.length) {
-    let found = false;
-    while (ancestor) {
-      if (matchesSimple(ancestor, parts[remaining])) {
-        found = true;
-        ancestor = ancestor.parent;
-        break;
-      }
-      ancestor = ancestor.parent;
-    }
-    if (!found) return false;
-    remaining += 1;
+/** The nearest element ancestor, skipping text and comment nodes. */
+function elementParent(node) {
+  let parent = node && node.parent;
+  while (parent && parent.type !== 'element') parent = parent.parent;
+  return parent || null;
+}
+
+/** The element immediately before `node` among its element siblings. */
+function previousElementSibling(node) {
+  const siblings = elementSiblings(node);
+  const index = siblings.indexOf(node);
+  return index > 0 ? siblings[index - 1] : null;
+}
+
+/**
+ * Match right to left: `parts[0]` is the rightmost compound selector. The
+ * combinator decides where the next compound may be found, and a descendant or
+ * general-sibling step backtracks so `.a .b .c` still matches through a `.b`
+ * that was reached on the first try.
+ */
+function matchSelectorChain(node, parts, links, index) {
+  if (!matchesSimple(node, parts[index])) return false;
+  if (index === parts.length - 1) return true;
+  const link = links[index] || ' ';
+  if (link === '>') {
+    const parent = elementParent(node);
+    return parent ? matchSelectorChain(parent, parts, links, index + 1) : false;
   }
-  return true;
+  if (link === '+') {
+    const previous = previousElementSibling(node);
+    return previous ? matchSelectorChain(previous, parts, links, index + 1) : false;
+  }
+  if (link === '~') {
+    let previous = previousElementSibling(node);
+    while (previous) {
+      if (matchSelectorChain(previous, parts, links, index + 1)) return true;
+      previous = previousElementSibling(previous);
+    }
+    return false;
+  }
+  let ancestor = elementParent(node);
+  while (ancestor) {
+    if (matchSelectorChain(ancestor, parts, links, index + 1)) return true;
+    ancestor = elementParent(ancestor);
+  }
+  return false;
+}
+
+function matchesSelector(node, selector) {
+  if (!selector || !selector.parts || !selector.parts.length) return false;
+  if (!node || node.type !== 'element') return false;
+  const links = selector.links || new Array(Math.max(0, selector.parts.length - 1)).fill(' ');
+  return matchSelectorChain(node, selector.parts, links, 0);
 }
 
 function compareSpecificity(a, b) {
