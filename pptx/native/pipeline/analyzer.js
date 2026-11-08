@@ -539,7 +539,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   }
 
   if (kind === 'table') {
-    node.rows = readTable(domNode, ctx);
+    const table = readTable(domNode, ctx, contentWidth);
+    node.rows = table.rows;
+    node.columnCount = table.columns;
+    node.colWidths = table.colWidths;
     node.h = explicitHeight === null ? Math.max(0.4, node.rows.length * 0.34) : explicitHeight;
     return node;
   }
@@ -719,9 +722,87 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   return nodes;
 }
 
-function readTable(domNode, ctx) {
+function spanOf(cell, attribute, limit) {
+  const value = Number(cell.attrs && cell.attrs[attribute]);
+  if (!Number.isFinite(value) || value < 2) return 1;
+  return Math.min(Math.floor(value), limit);
+}
+
+/** <colgroup><col style="width: 30%"> — the only per-column width CSS offers. */
+function collectColNodes(domNode) {
+  const nodes = [];
+  (domNode.children || []).forEach((child) => {
+    if (child.tag === 'colgroup') {
+      (child.children || []).forEach((column) => {
+        if (column.tag === 'col') nodes.push(column);
+      });
+    } else if (child.tag === 'col') {
+      nodes.push(child);
+    }
+  });
+  return nodes;
+}
+
+function widthInchesOf(value, contentWidth, fontSizePx) {
+  const length = parseLength(value);
+  if (!length) return null;
+  if (length.unit === '%') return (length.value / 100) * contentWidth;
+  const inches = toInches(length, { parentWidth: contentWidth, fontSizePx });
+  return inches === null || !Number.isFinite(inches) || inches <= 0 ? null : inches;
+}
+
+/**
+ * Resolve one width per column. Explicit <col> widths win, then the first row's
+ * declared cell widths, and anything still unknown shares what is left; the
+ * result is scaled so the columns always fill the table box exactly.
+ */
+function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSizePx) {
+  if (!columns) return null;
+  const widths = new Array(columns).fill(null);
+
+  let cursor = 0;
+  collectColNodes(domNode).forEach((column) => {
+    const style = ctx.styles.computed(column);
+    const declared = widthInchesOf(style.width, contentWidth, fontSizePx);
+    const span = Math.max(1, Math.min(Number(column.attrs && column.attrs.span) || 1, 24));
+    for (let index = 0; index < span && cursor < columns; index += 1, cursor += 1) {
+      widths[cursor] = declared;
+    }
+  });
+
+  if (widths.every((width) => width === null)) {
+    // Fall back to declared first-row cell widths, which is how most authors
+    // express table proportions.
+    const firstRowDom = (domNode.children || [])
+      .flatMap((child) => (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot'
+        ? (child.children || []) : [child]))
+      .filter((child) => child.tag === 'tr')[0];
+    if (firstRowDom) {
+      const cells = elementChildren(firstRowDom).filter((child) => child.tag === 'td' || child.tag === 'th');
+      let index = 0;
+      cells.forEach((cell) => {
+        const style = ctx.styles.computed(cell);
+        const declared = widthInchesOf(style.width, contentWidth, fontSizePx);
+        const span = spanOf(cell, 'colspan', columns);
+        for (let step = 0; step < span && index < columns; step += 1, index += 1) widths[index] = declared;
+      });
+    }
+  }
+
+  const known = widths.filter((width) => width !== null);
+  if (!known.length) return null;
+  const knownSum = known.reduce((sum, width) => sum + width, 0);
+  const missing = columns - known.length;
+  if (missing === 0) {
+    if (knownSum <= 0) return null;
+    return widths.map((width) => (width / knownSum) * contentWidth);
+  }
+  const remainder = Math.max(0, contentWidth - knownSum) / missing;
+  return widths.map((width) => (width === null ? remainder : width));
+}
+
+function readTable(domNode, ctx, contentWidth) {
   const rows = [];
-  walk(domNode, () => {});
   const rowNodes = [];
   const collect = (node) => {
     (node.children || []).forEach((child) => {
@@ -731,27 +812,37 @@ function readTable(domNode, ctx) {
     });
   };
   collect(domNode);
+
+  let columns = 0;
   rowNodes.forEach((rowNode) => {
     const cells = elementChildren(rowNode).filter((child) => child.tag === 'td' || child.tag === 'th');
-    rows.push(cells.map((cell) => {
+    let spanTotal = 0;
+    const mapped = cells.map((cell) => {
       const style = ctx.styles.computed(cell);
       const color = parseColor(style.color);
       const background = backgroundOf(style);
       const weight = String(style.fontWeight || '').toLowerCase();
       const sizePt = parseLength(style.fontSize);
-      return {
-        text: normalizedText(cell),
-        options: {
-          bold: cell.tag === 'th' || weight === 'bold' || Number(weight) >= 600,
-          color: color && color.hex ? color.hex : undefined,
-          fill: background && background.hex ? { color: background.hex } : undefined,
-          fontSize: sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(1)) : undefined,
-          align: style.textAlign || (cell.tag === 'th' ? 'left' : undefined)
-        }
+      const colspan = spanOf(cell, 'colspan', 12);
+      const rowspan = spanOf(cell, 'rowspan', 64);
+      spanTotal += colspan;
+      const options = {
+        bold: cell.tag === 'th' || weight === 'bold' || Number(weight) >= 600,
+        color: color && color.hex ? color.hex : undefined,
+        fill: background && background.hex ? { color: background.hex } : undefined,
+        fontSize: sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(1)) : undefined,
+        align: style.textAlign || (cell.tag === 'th' ? 'left' : undefined)
       };
-    }));
+      if (colspan > 1) options.colspan = colspan;
+      if (rowspan > 1) options.rowspan = rowspan;
+      return { text: normalizedText(cell), options };
+    });
+    columns = Math.max(columns, spanTotal);
+    rows.push(mapped);
   });
-  return rows;
+
+  const colWidths = resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, 16);
+  return { rows, columns, colWidths };
 }
 
 /** Assign semantic roles to text nodes from class hints and the size ranking. */

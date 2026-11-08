@@ -54,7 +54,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Type | `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `color`, `text-transform` (`uppercase`/`lowercase`/`capitalize` applied before measuring) |
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
 | Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
-| Data | `<table>` → native table, `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
+| Data | `<table>` → native table with real column widths (`<colgroup>/<col>`, then declared first-row cell widths, then equal columns) and merged cells (`colspan`/`rowspan`), `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
 | Stacking | `z-index` decides paint order among siblings; equal or missing values keep document order |
 | Surfaces on text | An element that paints a fill/border/shadow *and* holds text becomes a container whose background is the surface, so badges and overlay captions keep their fill and their editable text |
 

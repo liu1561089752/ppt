@@ -19,7 +19,8 @@ def inspect(path: Path) -> dict[str, int]:
     counts = {"slides": 0, "shapes": 0, "texts": 0, "gradients": 0,
               "shadows": 0, "alpha_nodes": 0, "charts": 0, "pictures": 0,
               "image_crops": 0, "rounded_pictures": 0, "outlined_pictures": 0,
-              "shadowed_pictures": 0, "tables": 0}
+              "shadowed_pictures": 0, "tables": 0,
+              "merged_cells": 0, "uneven_tables": 0}
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
             (name for name in archive.namelist()
@@ -39,6 +40,14 @@ def inspect(path: Path) -> dict[str, int]:
                 if frame.findall(".//c:chart", NS):
                     counts["charts"] += 1
             counts["tables"] += len(root.findall(".//a:tbl", NS))
+            for table in root.findall(".//a:tbl", NS):
+                # Merged cells are attributes on <a:tc>, not child elements.
+                for cell in table.findall(".//a:tc", NS):
+                    if cell.get("gridSpan") or cell.get("rowSpan"):
+                        counts["merged_cells"] += 1
+                widths = [column.get("w") for column in table.findall(".//a:gridCol", NS)]
+                if widths and len(set(widths)) > 1:
+                    counts["uneven_tables"] += 1
             pictures = root.findall(".//p:pic", NS)
             counts["pictures"] += len(pictures)
             for picture in pictures:
@@ -63,6 +72,8 @@ def main() -> int:
     parser.add_argument("--require-image-crop", action="store_true")
     parser.add_argument("--require-picture-effects", action="store_true")
     parser.add_argument("--require-table", action="store_true")
+    parser.add_argument("--require-merged-cells", action="store_true")
+    parser.add_argument("--require-uneven-columns", action="store_true")
     args = parser.parse_args()
     if not args.pptx.is_file():
         parser.error(f"PPTX not found: {args.pptx}")
@@ -76,6 +87,8 @@ def main() -> int:
         "picture effects": (args.require_picture_effects,
                             counts["rounded_pictures"] + counts["outlined_pictures"] + counts["shadowed_pictures"]),
         "table": (args.require_table, counts["tables"]),
+        "merged table cells": (args.require_merged_cells, counts["merged_cells"]),
+        "uneven table columns": (args.require_uneven_columns, counts["uneven_tables"]),
     }
     missing = [name for name, (required, count) in requirements.items() if required and count < 1]
     if missing:

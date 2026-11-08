@@ -468,8 +468,13 @@ def draw_table(draw: ImageDraw.ImageDraw, shape, box, warnings):
         row_edges.append(row_edges[-1] + emu_to_px(row.height))
     for row_index, row in enumerate(table.rows):
         for column_index, cell in enumerate(row.cells):
-            cell_box = (column_edges[column_index], row_edges[row_index],
-                        column_edges[column_index + 1], row_edges[row_index + 1])
+            span_width = getattr(cell, "span_width", None) or 1
+            span_height = getattr(cell, "span_height", None) or 1
+            if getattr(cell, "is_spanned", False):
+                continue
+            right = column_edges[min(column_index + span_width, len(column_edges) - 1)]
+            bottom = row_edges[min(row_index + span_height, len(row_edges) - 1)]
+            cell_box = (column_edges[column_index], row_edges[row_index], right, bottom)
             cell_fill = fill_color_of(cell)
             if cell_fill:
                 draw.rectangle(cell_box, fill=cell_fill)

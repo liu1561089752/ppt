@@ -267,18 +267,38 @@ function imageElementFromNode(node) {
   return element;
 }
 
+/** Column widths must sum to the table width, or PowerPoint draws a ragged table. */
+function tableColumnWidths(node, columns, total) {
+  const declared = node.colWidths;
+  if (!Array.isArray(declared) || declared.length !== columns) {
+    return Array.from({ length: columns }, () => Number((total / columns).toFixed(3)));
+  }
+  const sum = declared.reduce((accumulator, width) => accumulator + (Number.isFinite(width) ? width : 0), 0);
+  if (sum <= 0) return Array.from({ length: columns }, () => Number((total / columns).toFixed(3)));
+  const scaled = declared.map((width) => (Number.isFinite(width) && width > 0 ? (width / sum) * total : 0));
+  const rounded = scaled.map((width) => Number(width.toFixed(3)));
+  const drift = Number((total - rounded.reduce((accumulator, width) => accumulator + width, 0)).toFixed(3));
+  rounded[rounded.length - 1] = Number((rounded[rounded.length - 1] + drift).toFixed(3));
+  return rounded;
+}
+
 function tableElementFromNode(node, resolvedTheme) {
   if (!node.rows || !node.rows.length) return null;
-  const columns = Math.max(...node.rows.map((row) => row.length));
+  const columns = Math.max(
+    Number(node.columnCount) || 0,
+    ...node.rows.map((row) => row.reduce(
+      (accumulator, cell) => accumulator + ((cell.options && cell.options.colspan) || 1), 0))
+  );
+  const width = Math.max(0.2, node.w);
   return {
     type: 'table',
     x: Number(node.x.toFixed(4)),
     y: Number(node.y.toFixed(4)),
-    w: Number(Math.max(0.2, node.w).toFixed(4)),
+    w: Number(width.toFixed(4)),
     h: Number(Math.max(0.2, node.h).toFixed(4)),
     rows: node.rows,
     options: {
-      colW: Array.from({ length: columns }, () => Number((node.w / columns).toFixed(3))),
+      colW: tableColumnWidths(node, columns, width),
       fontFace: resolvedTheme.fonts.body,
       fontSize: Math.max(6, Number((node.fontSizePt || 11).toFixed(1))),
       border: { type: 'solid', color: resolvedTheme.colors.border, pt: 0.5 },

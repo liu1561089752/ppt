@@ -1468,3 +1468,60 @@ test('html pipeline never lets pseudo rules deform the element they decorate', (
     'pseudo rules must be reported, not silently applied');
 });
 
+
+test('html pipeline keeps table column widths, colspan and rowspan', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.grid { position: absolute; left: 40px; top: 40px; width: 900px; font-size: 12px; }',
+    '.grid th { background: #183B3A; color: #FFFFFF; }',
+    '.grid col.narrow { width: 120px; }',
+    '.grid col.wide { width: 60%; }',
+    '.plain { position: absolute; left: 40px; top: 320px; width: 600px; font-size: 12px; }',
+    '.plain th.a { width: 30%; }',
+    '.plain th.b { width: 70%; }',
+    '.even { position: absolute; left: 40px; top: 520px; width: 400px; font-size: 12px; }',
+    '</style></head><body><main class="slide">',
+    '<table class="grid">',
+    '<colgroup><col class="narrow"><col class="wide"><col></colgroup>',
+    '<thead><tr><th>序号</th><th colspan="2">合并标题</th></tr></thead>',
+    '<tbody>',
+    '<tr><td>1</td><td>说明</td><td>值</td></tr>',
+    '<tr><td rowspan="2">2</td><td>纵向合并</td><td>值</td></tr>',
+    '<tr><td>续行</td><td>值</td></tr>',
+    '</tbody></table>',
+    '<table class="plain"><thead><tr><th class="a">字段</th><th class="b">描述</th></tr></thead>',
+    '<tbody><tr><td>A</td><td>B</td></tr></tbody></table>',
+    '<table class="even"><tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+
+  const tables = result.deck.slides[0].elements.filter((element) => element.type === 'table');
+  assert.equal(tables.length, 3);
+
+  // <colgroup> widths: 120px, 60% of 900px, and a remainder column.
+  const grid = tables[0];
+  assert.ok(Math.abs(grid.options.colW[0] - 120 / 96) < 0.01, 'first column was ' + grid.options.colW[0]);
+  assert.ok(Math.abs(grid.options.colW[1] - 0.6 * 900 / 96) < 0.01, 'second column was ' + grid.options.colW[1]);
+  assert.equal(grid.options.colW.length, 3);
+  const total = grid.options.colW.reduce((sum, width) => sum + width, 0);
+  assert.ok(Math.abs(total - grid.w) < 0.002, 'columns must sum to the table width, got ' + total + ' vs ' + grid.w);
+
+  // Merged cells survive as native colspan/rowspan.
+  assert.equal(grid.rows[0][1].options.colspan, 2, 'colspan must reach the table cell');
+  const spanned = grid.rows.flat().find((cell) => cell.options.rowspan === 2);
+  assert.ok(spanned, 'rowspan must reach the table cell');
+  assert.equal(spanned.text, '2');
+
+  // Without <colgroup>, declared first-row cell widths set the proportions.
+  const plain = tables[1];
+  assert.ok(Math.abs(plain.options.colW[0] / plain.options.colW[1] - 30 / 70) < 0.02,
+    'cell widths must give a 30/70 split, got ' + JSON.stringify(plain.options.colW));
+
+  // No declared widths at all: equal columns.
+  const even = tables[2];
+  assert.deepEqual(even.options.colW.map((width) => Number(width.toFixed(3))),
+    even.options.colW.map(() => Number((even.w / 3).toFixed(3))));
+});

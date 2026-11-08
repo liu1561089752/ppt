@@ -83,6 +83,8 @@ jobs:
           npm run pipeline:pptx
           npm run pipeline:parity
           npm run audit:pipeline
+          # The converted table must keep its declared column proportions.
+          python scripts/verify_native_ooxml.py pipeline-converted/pipeline-converted.pptx --require-table --require-uneven-columns
       - name: Verify editable OOXML visual effects
         working-directory: pptx/native
         run: |
