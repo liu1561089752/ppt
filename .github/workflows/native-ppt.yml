@@ -127,7 +127,7 @@ jobs:
           node --check pipeline/analyzer.js
           node --check pipeline/deck_builder.js
           node --check scripts/audit_deck.js
-          python -m py_compile ../scripts/extract_native_design.py ../scripts/extract_html_design_tokens.py scripts/render_check.py scripts/render_with_libreoffice.py scripts/promote_goldens.py scripts/visual_regression.py scripts/verify_native_ooxml.py scripts/preview_deck.py
+          python -m py_compile ../scripts/extract_native_design.py ../scripts/extract_html_design_tokens.py scripts/render_check.py scripts/render_with_libreoffice.py scripts/promote_goldens.py scripts/visual_regression.py scripts/verify_native_ooxml.py scripts/compare_renderers.py scripts/corrupt_anchor.py scripts/preview_deck.py
           python ../scripts/extract_html_design_tokens.py --self-test
           python scripts/visual_regression.py --self-test
       - name: Render and verify demo decks

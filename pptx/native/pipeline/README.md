@@ -91,6 +91,35 @@ cosmetic slip: PowerPoint treats the file as damaged, and it is invisible in a r
 screenshot. `valign: 'mid'` shipped `anchor="mid"` on every table and every middle-anchored
 text box until this check existed, which is why the gate is unconditional.
 
+`scripts/corrupt_anchor.py` exists to prove that gate is not vacuous: it rewrites a copy of
+a deck with an invalid value, and the audit then refuses it. That experiment also answered a
+question worth recording — **WPS Presentation opens the corrupted deck without complaint**,
+same slide and shape count. A second renderer tolerating the defect is exactly why the audit
+cannot be replaced by "it renders, therefore it is valid".
+
+## Second reader
+
+Microsoft PowerPoint is **not installed on the development machine** (Office is absent; the
+`PowerPoint.Application` registration belongs to WPS). Compatibility evidence therefore comes
+from two independent readers rather than from the one that matters:
+
+- `scripts/verify_with_wps.ps1` opens a deck through the PowerPoint-compatible COM surface
+  WPS exposes and reports slide count, per-slide shape count and text length, exiting
+  non-zero if it cannot open the file or if a slide arrives empty. `-ExportDir` also renders
+  each slide through WPS.
+- `scripts/verify_all_with_wps.ps1` (`npm run verify:wps`) does that for every fixture.
+- `scripts/compare_renderers.py` (`npm run compare:renderers`) compares LibreOffice's render
+  with WPS's after **downscaling by 4**. Two renderers never match pixel for pixel — glyph
+  hinting and anti-aliasing differ everywhere — so the same-renderer golden thresholds are
+  the wrong test here; averaging a glyph down to a few pixels leaves placement, missing
+  shapes and spacing as the dominant signal. On the fixture decks the two agree at mae
+  0.006–0.016 and ssim 0.95–0.98, and the diff heatmaps show differences confined to glyph
+  edges and box borders rather than to position.
+
+What this still does not prove is that Microsoft PowerPoint opens these decks. The counts and
+the cross-renderer agreement catch a whole class of damage, but the last mile needs a machine
+with Office installed.
+
 ## Known limitations (by design, not oversights)
 
 - **Not a browser.** There is no UA default stylesheet, no inline formatting
