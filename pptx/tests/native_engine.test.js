@@ -1525,3 +1525,122 @@ test('html pipeline keeps table column widths, colspan and rowspan', () => {
   assert.deepEqual(even.options.colW.map((width) => Number(width.toFixed(3))),
     even.options.colW.map(() => Number((even.w / 3).toFixed(3))));
 });
+
+test('html pipeline turns declared chart data into native chart objects', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { width: 1280px; height: 720px; }',
+    '.stack { position: absolute; left: 40px; top: 40px; width: 800px; height: 300px; }',
+    '.single { position: absolute; left: 40px; top: 400px; width: 600px; height: 200px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="stack"><table data-chart="bar" data-chart-title="季度收入">',
+    '<thead><tr><th>季度</th><th>收入</th><th>成本</th></tr></thead>',
+    '<tbody>',
+    '<tr><td>Q1</td><td>120</td><td>80</td></tr>',
+    '<tr><td>Q2</td><td>160</td><td>95</td></tr>',
+    '</tbody></table></div>',
+    '<div class="single" data-chart="line" data-labels="一月,二月,三月" data-values="12,18,25"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.report.charts, 2);
+  assert.equal(result.report.tables, 0, 'a chart table must not also become a table');
+
+  const charts = [];
+  const walk = (elements) => elements.forEach((element) => {
+    if (element.type === 'chart') charts.push(element);
+    if (element.children) walk(element.children);
+  });
+  walk(result.deck.slides[0].elements);
+  assert.equal(charts.length, 2);
+
+  const bar = charts.find((element) => element.chartType === 'bar');
+  assert.ok(bar, 'the table must become a bar chart');
+  assert.equal(bar.data.length, 2, 'one series per numeric column');
+  assert.deepEqual(bar.data[0].labels, ['Q1', 'Q2']);
+  assert.deepEqual(bar.data[0].values, [120, 160]);
+  assert.equal(bar.data[1].name, '成本');
+  assert.equal(bar.options.showLegend, true, 'two series need a legend');
+  assert.equal(bar.options.title, '季度收入');
+  // The chart fills the height its parent declared, not width*0.5.
+  assert.ok(Math.abs(bar.h - 300 / 96) < 0.01, 'chart height was ' + bar.h);
+
+  const line = charts.find((element) => element.chartType === 'line');
+  assert.ok(line, 'data-values must become a line chart');
+  assert.equal(line.data.length, 1);
+  assert.deepEqual(line.data[0].values, [12, 18, 25]);
+  assert.deepEqual(line.data[0].labels, ['一月', '二月', '三月']);
+  assert.equal(line.options.showLegend, false, 'a single series needs no legend');
+});
+
+test('html pipeline reports an unusable chart declaration instead of dropping it', () => {
+  const html = [
+    '<html><head><style>.slide { width: 1280px; height: 720px; }</style></head>',
+    '<body><main class="slide">',
+    '<div data-chart="sankey" data-values="1,2,3"></div>',
+    '<div data-chart="bar"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const properties = result.report.unsupportedDetails.map((entry) => entry.property);
+  assert.deepEqual(properties, ['data-chart', 'data-chart']);
+  assert.equal(result.report.charts, 0);
+  assert.equal(result.deck.slides[0].elements.filter((element) => element.type === 'chart').length, 0);
+});
+
+test('html pipeline resolves absolute offsets against the padding box', () => {
+  const html = [
+    '<html><head><style>',
+    '.slide { position: relative; width: 1280px; height: 720px; padding: 40px; background: #FFFFFF; }',
+    '.pin { position: absolute; left: 0; top: 0; width: 100px; height: 40px; background: #EEEEEE; }',
+    '.inner { position: absolute; right: 0; bottom: 0; width: 100px; height: 40px; background: #DDDDDD; }',
+    '</style></head><body><main class="slide">',
+    '<div class="pin"></div><div class="inner"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const elements = result.deck.slides[0].elements;
+
+  // CSS: the containing block is the slide's padding box, so left/top 0 is the
+  // slide edge, not the content box 40px inside it.
+  const pin = elements.find((element) => element.fill === 'EEEEEE');
+  assert.ok(pin, 'the pinned box must exist');
+  assert.ok(Math.abs(pin.x) < 0.001, 'left:0 must be the slide edge, x was ' + pin.x);
+  assert.ok(Math.abs(pin.y) < 0.001, 'top:0 must be the slide edge, y was ' + pin.y);
+
+  const inner = elements.find((element) => element.fill === 'DDDDDD');
+  assert.ok(inner, 'the bottom-right box must exist');
+  assert.ok(Math.abs(inner.x + inner.w - 13.333) < 0.01, 'right:0 must sit at the slide edge, x+w was ' + (inner.x + inner.w));
+  assert.ok(Math.abs(inner.y + inner.h - 7.5) < 0.01, 'bottom:0 must sit at the slide edge, y+h was ' + (inner.y + inner.h));
+});
+
+
+test('html pipeline finds chart data inside a wrapper element', () => {
+  const html = [
+    '<html><head><style>.slide { width: 1280px; height: 720px; }</style></head>',
+    '<body><main class="slide">',
+    '<div class="card" data-chart="doughnut" style="width: 600px; height: 320px;">',
+    '  <table><thead><tr><th>来源</th><th>占比</th></tr></thead>',
+    '  <tbody><tr><td>订阅</td><td>52</td></tr><tr><td>服务</td><td>28</td></tr></tbody></table>',
+    '</div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.report.charts, 1, 'the nested table must feed the chart');
+  assert.equal(result.report.tables, 0, 'it must not also be emitted as a table');
+
+  const charts = [];
+  const walk = (elements) => elements.forEach((element) => {
+    if (element.type === 'chart') charts.push(element);
+    if (element.children) walk(element.children);
+  });
+  walk(result.deck.slides[0].elements);
+  assert.equal(charts.length, 1);
+  assert.equal(charts[0].chartType, 'doughnut');
+  assert.deepEqual(charts[0].data[0].values, [52, 28]);
+  // The wrapper declares the height, so the chart must not fall back to width*0.5.
+  assert.ok(Math.abs(charts[0].h - 320 / 96) < 0.02, 'chart height was ' + charts[0].h);
+});
+

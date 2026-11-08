@@ -74,6 +74,7 @@ async function main(argv) {
     ' | shapes: ' + result.report.shapes +
     ' | images: ' + result.report.images +
     ' | tables: ' + result.report.tables +
+    ' | charts: ' + (result.report.charts || 0) +
     ' | lines: ' + result.report.lines + '\n');
   process.stdout.write('Layout: ' + result.report.declarativeContainers + ' declarative container(s), ' +
     result.report.absoluteGroups + ' absolutely positioned group(s)' +

@@ -373,6 +373,7 @@ function emptyCounters() {
     backgroundImages: 0,
     tables: 0,
     lines: 0,
+    charts: 0,
     declarativeContainers: 0,
     absoluteGroups: 0,
     containerFallbacks: [],
@@ -550,6 +551,19 @@ function leafElement(node, resolvedTheme, report) {
   if (node.kind === 'line') {
     report.lines += 1;
     return lineElementFromNode(node, resolvedTheme);
+  }
+  if (node.kind === 'chart') {
+    report.charts += 1;
+    return {
+      type: 'chart',
+      x: Number(node.x.toFixed(4)),
+      y: Number(node.y.toFixed(4)),
+      w: Number(Math.max(0.5, node.w).toFixed(4)),
+      h: Number(Math.max(0.5, node.h).toFixed(4)),
+      chartType: node.chartType,
+      data: node.chartData,
+      options: node.chartOptions
+    };
   }
   // A childless group contributes only its surface, if it has one.
   const surface = surfaceElementFromNode(node, resolvedTheme);
@@ -809,7 +823,7 @@ function buildDeckSpec(analysis, options = {}) {
 
     [
       'textElements', 'richTextElements', 'shapes', 'images', 'backgroundImages',
-      'tables', 'lines', 'declarativeContainers', 'absoluteGroups'
+      'tables', 'lines', 'charts', 'declarativeContainers', 'absoluteGroups'
     ].forEach((key) => { report[key] += attemptReport[key]; });
     attemptReport.containerFallbacks.forEach((entry) => noteFallback(report, entry.reason));
     report.layoutAttempts = Math.max(report.layoutAttempts, attemptReport.layoutAttempts);

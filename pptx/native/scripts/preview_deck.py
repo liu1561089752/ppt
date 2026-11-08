@@ -486,15 +486,24 @@ def draw_table(draw: ImageDraw.ImageDraw, shape, box, warnings):
             f"table taller than its frame: {row_edges[-1] - box[1]}px inside {box[3] - box[1]}px")
 
 
-def draw_chart_placeholder(draw: ImageDraw.ImageDraw, shape, box):
-    """Charts are live DrawingML parts; draw an honest labelled placeholder."""
+def draw_chart_placeholder(draw: ImageDraw.ImageDraw, shape, box, canvas=None):
+    """Charts are live DrawingML parts; draw an honest labelled placeholder.
+
+    The placeholder is a faint veil plus an outline rather than an opaque fill, so
+    it does not read as a white block on a dark slide.
+    """
     label = "chart (live object, not previewed)"
     try:
         if shape.has_chart:
             label = f"chart: {shape.chart.chart_type} (live object)"
     except (AttributeError, ValueError):
         pass
-    draw.rectangle(box, fill=(246, 247, 244), outline=(190, 198, 194), width=1)
+    width = max(1, box[2] - box[0])
+    height = max(1, box[3] - box[1])
+    if canvas is not None:
+        veil = Image.new("RGBA", (width, height), (255, 255, 255, 16))
+        canvas.alpha_composite(veil, (box[0], box[1]))
+    draw.rectangle(box, outline=(150, 160, 156), width=1)
     font = load_font("", 13, False)
     label_width = font.getlength(label)
     draw.text((box[0] + max(6, ((box[2] - box[0]) - label_width) / 2),
@@ -532,7 +541,7 @@ def render_slide(slide, width: int, height: int, warnings: list[str]) -> Image.I
                 draw_table(draw, shape, box, warnings)
                 continue
             if getattr(shape, "has_chart", False) and shape.has_chart:
-                draw_chart_placeholder(draw, shape, box)
+                draw_chart_placeholder(draw, shape, box, canvas)
                 continue
             shape_box = (box[2] - box[0], box[3] - box[1])
             gradient = gradient_of(shape)

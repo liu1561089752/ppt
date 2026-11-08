@@ -72,6 +72,7 @@ def main() -> int:
     parser.add_argument("--require-image-crop", action="store_true")
     parser.add_argument("--require-picture-effects", action="store_true")
     parser.add_argument("--require-table", action="store_true")
+    parser.add_argument("--require-chart", action="store_true")
     parser.add_argument("--require-merged-cells", action="store_true")
     parser.add_argument("--require-uneven-columns", action="store_true")
     args = parser.parse_args()
@@ -87,6 +88,7 @@ def main() -> int:
         "picture effects": (args.require_picture_effects,
                             counts["rounded_pictures"] + counts["outlined_pictures"] + counts["shadowed_pictures"]),
         "table": (args.require_table, counts["tables"]),
+        "chart": (args.require_chart, counts["charts"]),
         "merged table cells": (args.require_merged_cells, counts["merged_cells"]),
         "uneven table columns": (args.require_uneven_columns, counts["uneven_tables"]),
     }

@@ -438,7 +438,9 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   let x = slot.x;
   let y = slot.y;
   if (absolute) {
-    const parentBox = parentBoxForWidth;
+    // CSS: the containing block of an absolutely positioned element is the
+    // padding box of its positioned ancestor.
+    const parentBox = inherited.parentPaddingBox || parentBoxForWidth;
     const left = inchesOf(style.left, 'x', { parentWidth, fontSizePx });
     const right = inchesOf(style.right, 'x', { parentWidth, fontSizePx });
     const top = inchesOf(style.top, 'y', { parentWidth, parentHeight: parentBox.h, fontSizePx });
@@ -458,9 +460,18 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     h: explicitHeight === null ? null : Math.max(0, explicitHeight - insetTop - insetBottom)
   };
 
+  const borderInset = border ? border.width / 72 : 0;
+  const paddingBox = {
+    x: x + borderInset,
+    y: y + borderInset,
+    w: Math.max(0, width - borderInset * 2),
+    h: explicitHeight === null ? null : Math.max(0, explicitHeight - borderInset * 2)
+  };
+
   const childContext = {
     fontPx: fontSizePx,
-    parentBox: Object.assign({}, contentBox, { h: explicitHeight })
+    parentBox: Object.assign({}, contentBox, { h: explicitHeight }),
+    parentPaddingBox: paddingBox
   };
 
   const elementKids = elementChildren(domNode);
@@ -487,6 +498,19 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   if (kind === 'unsupported') {
     recordUnsupported(ctx, domNode, 'element', domNode.tag, 'Element type has no native translation');
     return null;
+  }
+
+  const chart = readChart(domNode, ctx);
+  if (chart) {
+    node.kind = 'chart';
+    node.chartType = chart.chartType;
+    node.chartData = chart.data;
+    node.chartOptions = chart.options;
+    const boxHeight = slot.parentContentHeight;
+    node.h = explicitHeight !== null
+      ? explicitHeight
+      : (Number.isFinite(boxHeight) && boxHeight > 0.2 ? boxHeight : Math.max(1.6, width * 0.5));
+    return node;
   }
 
   if (kind === 'text' || kind === 'list') {
@@ -588,6 +612,13 @@ function childMargins(childStyle, context) {
 function layoutFlow(domNode, contentBox, inherited, ctx) {
   const nodes = [];
   let cursor = contentBox.y;
+  const visible = elementChildren(domNode).filter((child) => {
+    const childStyle = ctx.styles.computed(child);
+    return childStyle.display !== 'none' && childStyle.visibility !== 'hidden';
+  });
+  // A lone chart child has no content to measure, so a definite parent height is
+  // its height; with siblings that would just overlap them.
+  const soloHeight = visible.length === 1 ? contentBox.h : null;
   elementChildren(domNode).forEach((child) => {
     const childStyle = ctx.styles.computed(child);
     if (childStyle.display === 'none' || childStyle.visibility === 'hidden') return;
@@ -599,7 +630,8 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
       y: isAbsolute(childStyle) ? contentBox.y : cursor + margins.top,
       w: explicitWidth === null ? slotWidth : explicitWidth,
       explicitWidth: explicitWidth !== null,
-      h: null
+      h: null,
+      parentContentHeight: soloHeight
     };
     const node = analyzeNode(child, slot, inherited, ctx);
     if (!node) return;
@@ -801,6 +833,130 @@ function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSize
   return widths.map((width) => (width === null ? remainder : width));
 }
 
+const CHART_TYPES = new Set(['bar', 'line', 'pie', 'doughnut', 'area']);
+
+/** The first table inside a node, so data-chart works on a wrapper too. */
+function findTableNode(domNode) {
+  if (domNode.tag === 'table') return domNode;
+  let found = null;
+  const visit = (node) => {
+    (node.children || []).forEach((child) => {
+      if (found || child.type !== 'element') return;
+      if (child.tag === 'table') {
+        found = child;
+        return;
+      }
+      visit(child);
+    });
+  };
+  visit(domNode);
+  return found;
+}
+
+/** Every row of text cells, so a chart and a table read the same numbers. */
+function tableRowTexts(domNode) {
+  const rowNodes = [];
+  const collect = (node) => {
+    (node.children || []).forEach((child) => {
+      if (child.type !== 'element') return;
+      if (child.tag === 'tr') rowNodes.push(child);
+      else if (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot') collect(child);
+    });
+  };
+  const tableNode = findTableNode(domNode);
+  if (!tableNode) return [];
+  collect(tableNode);
+  return rowNodes.map((rowNode) => elementChildren(rowNode)
+    .filter((cell) => cell.tag === 'td' || cell.tag === 'th')
+    .map((cell) => normalizedText(cell).trim()));
+}
+
+function numericOrZero(value) {
+  const cleaned = String(value === undefined || value === null ? '' : value).replace(/[^0-9.\-]/gu, '');
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseNumberList(value) {
+  const text = value === undefined || value === null ? '' : String(value);
+  if (!text.trim()) return [];
+  return text
+    .split(/[,;\s]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item !== '' && Number.isFinite(Number(item)))
+    .map((item) => Number(item));
+}
+
+function parseLabelList(value) {
+  return String(value || '')
+    .split(/[,;]/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/**
+ * CSS cannot express a data series, so a chart must be declared:
+ *   <table data-chart="bar">  → first column is the label axis, each further
+ *                               column is a series named by the header row
+ *   data-chart + data-values  → a single series
+ * Guessing a chart from divs is deliberately not attempted.
+ */
+function readChart(domNode, ctx) {
+  const attrs = domNode.attrs || {};
+  const requested = String(attrs['data-chart'] || '').trim().toLowerCase();
+  if (!requested) return null;
+  if (!CHART_TYPES.has(requested)) {
+    recordUnsupported(ctx, domNode, 'data-chart', requested,
+      'Unknown chart type; use bar, line, pie, doughnut or area');
+    return null;
+  }
+
+  const options = {};
+  const legend = String(attrs['data-chart-legend'] || '').trim().toLowerCase();
+  if (legend) options.showLegend = legend === 'true' || legend === '1';
+  const title = attrs['data-chart-title'];
+
+  let data = null;
+  const rows = tableRowTexts(domNode);
+  if (rows.length >= 2) {
+    const header = rows[0];
+    const body = rows.slice(1);
+    const seriesCount = Math.max(0, ...body.map((row) => row.length - 1));
+    if (seriesCount >= 1) {
+      data = [];
+      for (let series = 0; series < seriesCount; series += 1) {
+        data.push({
+          name: (header[series + 1] || 'Series ' + (series + 1)).trim(),
+          labels: body.map((row) => row[0] || ''),
+          values: body.map((row) => numericOrZero(row[series + 1]))
+        });
+      }
+    }
+  }
+
+  if (!data) {
+    const values = parseNumberList(attrs['data-values']);
+    if (!values.length) {
+      recordUnsupported(ctx, domNode, 'data-chart', requested,
+        'A chart needs data: add data-values="1,2,3" or put the numbers in a <table>');
+      return null;
+    }
+    const labels = parseLabelList(attrs['data-labels']);
+    data = [{
+      name: attrs['data-series'] || 'Series 1',
+      labels: labels.length === values.length ? labels : values.map((value, index) => String(index + 1)),
+      values
+    }];
+  }
+
+  if (options.showLegend === undefined) options.showLegend = data.length > 1;
+  if (title) {
+    options.showTitle = true;
+    options.title = title;
+  }
+  return { chartType: requested, data, options };
+}
+
 function readTable(domNode, ctx, contentWidth) {
   const rows = [];
   const rowNodes = [];
@@ -921,7 +1077,16 @@ function analyzeHtml(html, options = {}) {
     };
     const background = backgroundOf(style) || { hex: 'FFFFFF', alpha: 1 };
     const gradient = gradientOf(style);
-    const children = layoutFlow(slideNode, contentBox, { fontPx: 16, parentBox: contentBox }, ctx);
+    const slideBorder = parseBorder(style);
+    const slideInset = slideBorder ? slideBorder.width / 72 : 0;
+    const slidePaddingBox = {
+      x: slideInset,
+      y: slideInset,
+      w: Math.max(0, pageSize.width - slideInset * 2),
+      h: Math.max(0, pageSize.height - slideInset * 2)
+    };
+    const children = layoutFlow(slideNode, contentBox,
+      { fontPx: 16, parentBox: contentBox, parentPaddingBox: slidePaddingBox }, ctx);
     assignRoles(children);
 
     slides.push({

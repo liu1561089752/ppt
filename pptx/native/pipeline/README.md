@@ -55,6 +55,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Surfaces | `background`/`background-color`, two-or-more-stop `linear-gradient`, `background-image: url(...)` with `background-size` (`cover`/`contain`) and `background-position` → native picture with crop and focus, single outer `box-shadow`, `opacity` |
 | Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
 | Data | `<table>` → native table with real column widths (`<colgroup>/<col>`, then declared first-row cell widths, then equal columns) and merged cells (`colspan`/`rowspan`), `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
+| Charts | Declared, never guessed: `<table data-chart="bar">` turns a data table into a native chart (first column = categories, each further column = a series named by the header row), and `data-chart` + `data-values="1,2,3"` + optional `data-labels` makes a single series. `bar`/`line`/`pie`/`doughnut`/`area`; `data-chart-title` and `data-chart-legend` are honoured; an unknown type or missing data is reported |
 | Stacking | `z-index` decides paint order among siblings; equal or missing values keep document order |
 | Surfaces on text | An element that paints a fill/border/shadow *and* holds text becomes a container whose background is the surface, so badges and overlay captions keep their fill and their editable text |
 
@@ -81,6 +82,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
   reported, because it changes nothing.
 - **`max-height` on a container is reported** (clamping needs clipping);
   `min-height` is honoured exactly.
+- **Charts are declared, not inferred.** A bar chart drawn with divs stays
+  divs; use `data-chart` on the data table or on a wrapper element. The output is
+  a live chart part (editable data in PowerPoint), never a picture.
 - **CSS background images** become real native pictures, so they keep an
   editable crop rectangle. Explicit pixel or percentage sizes other than
   `cover`/`contain`/`100% 100%` are approximated as `contain`.

@@ -38,7 +38,9 @@
     "preview:layouts": "python scripts/preview_deck.py native-layouts-demo.pptx --output-dir preview/layouts --sheet preview/layouts-sheet.png",
     "preview:parity": "python scripts/preview_deck.py native-design-parity-demo.pptx --output-dir preview/parity --sheet preview/parity-sheet.png",
     "preview:theme": "python scripts/preview_deck.py native-design-migration-demo.pptx --output-dir preview/theme --sheet preview/theme-sheet.png",
-    "preview:all": "npm run preview:demo && npm run preview:components && npm run preview:theme && npm run preview:parity && npm run preview:layouts && npm run preview:images && npm run preview:stress && npm run preview:pipeline"
+    "preview:all": "npm run preview:demo && npm run preview:components && npm run preview:theme && npm run preview:parity && npm run preview:layouts && npm run preview:images && npm run preview:stress && npm run preview:pipeline && npm run preview:chart",
+    "pipeline:chart": "node pipeline/cli.js ../examples/pipeline-chart.html --out pipeline-converted/chart.json --report pipeline-converted/chart-report.json --pptx pipeline-converted/pipeline-chart.pptx",
+    "preview:chart": "python scripts/preview_deck.py pipeline-converted/pipeline-chart.pptx --output-dir preview/chart --sheet preview/chart-sheet.png"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

@@ -82,9 +82,12 @@ jobs:
         run: |
           npm run pipeline:pptx
           npm run pipeline:parity
+          npm run pipeline:chart
           npm run audit:pipeline
           # The converted table must keep its declared column proportions.
           python scripts/verify_native_ooxml.py pipeline-converted/pipeline-converted.pptx --require-table --require-uneven-columns
+          # Declared charts must be live chart parts, not pictures.
+          python scripts/verify_native_ooxml.py pipeline-converted/pipeline-chart.pptx --require-chart
       - name: Verify editable OOXML visual effects
         working-directory: pptx/native
         run: |
@@ -125,6 +128,7 @@ jobs:
           python scripts/preview_deck.py native-stress-deck.pptx --output-dir preview/stress --sheet preview/stress-sheet.png
           python scripts/preview_deck.py native-images-demo.pptx --output-dir preview/images --sheet preview/images-sheet.png
           python scripts/preview_deck.py pipeline-converted/pipeline-converted.pptx --output-dir preview/pipeline --sheet preview/pipeline-sheet.png
+          python scripts/preview_deck.py pipeline-converted/pipeline-chart.pptx --output-dir preview/chart --sheet preview/chart-sheet.png
       - name: Compare against reviewed golden slide images
         working-directory: pptx/native
         run: |
