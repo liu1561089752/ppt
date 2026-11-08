@@ -38,7 +38,7 @@ const {
 } = require('./css');
 const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
 const { flexWidths } = require('../engine/flex_size');
-const { flexLines } = require('../engine/flex_lines');
+const { flexLines, alignLines } = require('../engine/flex_lines');
 const {
   placeGridItems,
   gridRowCount,
@@ -55,6 +55,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'flexWrap', 'flexGrow', 'flexBasis', 'flexShrink', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
   'gridColumn', 'gridRow', 'gridColumnStart', 'gridColumnEnd', 'gridRowStart', 'gridRowEnd',
   'gridArea', 'gridTemplateRows', 'gridAutoRows', 'alignItems', 'justifyItems', 'justifySelf',
+  'alignContent',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
@@ -154,6 +155,18 @@ function alignSelfOf(style) {
   const self = String(style.alignSelf || '').toLowerCase();
   if (!self || self === 'auto') return undefined;
   return ALIGN_SELF_NATIVE[self] || 'start';
+}
+
+/** `align-content`, in the shapes the line distributor understands. */
+function alignContentOf(style) {
+  const value = String(style.alignContent || '').trim().toLowerCase();
+  if (!value || value === 'normal') return 'stretch';
+  if (value === 'center') return 'center';
+  if (value === 'flex-end' || value === 'end') return 'end';
+  if (value === 'space-between') return 'space-between';
+  if (value === 'space-around' || value === 'space-evenly') return 'space-around';
+  if (value === 'stretch') return 'stretch';
+  return 'start';
 }
 
 /** `justify-self` on the item, in the three shapes the resolver understands. */
@@ -1595,6 +1608,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
 
   const justify = String(style.justifyContent || 'flex-start').toLowerCase();
   const nodes = [];
+  const lineGroups = [];
   let lineTop = contentBox.y;
   lines.forEach((line) => {
     const widthsInLine = line.widths;
@@ -1642,8 +1656,35 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       else if (align === 'center') node.y = lineTop + (tallestInLine - node.h) / 2;
       else if (align === 'end' || align === 'flex-end') node.y = lineTop + tallestInLine - node.h;
     });
+    lineGroups.push({ nodes: lineNodes, top: lineTop, height: tallestInLine });
     lineTop += tallestInLine + gap;
   });
+  // `align-content` places the block of lines inside a height the CSS pinned. The shared
+  // helper decides it, so the engine distributes the same leftover the same way.
+  const linesHeight = Math.max(0, lineTop - gap - contentBox.y);
+  const alignContent = alignContentOf(style);
+  const distribution = alignLines(
+    lineGroups.map((group) => group.height), linesHeight, contentBox.h, alignContent
+  );
+  if (distribution.some((entry) => entry.top || entry.extra)) {
+    let cursor = contentBox.y;
+    lineGroups.forEach((group, index) => {
+      const { top, extra } = distribution[index];
+      const lineTop = cursor + top;
+      const lineHeight = group.height + extra;
+      group.nodes.forEach((node) => {
+        const align = node.alignSelf || alignItems;
+        // `stretch` hands the leftover to the line, and a stretched item fills it.
+        if (align === 'stretch' && !node.fixedHeight) node.h = lineHeight;
+        // The cross-axis alignment is resolved against the *grown* line, so it is
+        // recomputed here rather than before the distribution was known.
+        if (align === 'center') node.y = lineTop + (lineHeight - node.h) / 2;
+        else if (align === 'end' || align === 'flex-end') node.y = lineTop + lineHeight - node.h;
+        else node.y = lineTop;
+      });
+      cursor += lineHeight + gap;
+    });
+  }
   return nodes.concat(absolute);
 }
 

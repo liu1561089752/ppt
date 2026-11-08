@@ -592,6 +592,9 @@ function containerElement(node, plan, resolvedTheme, report) {
   if (align) spec.align = align;
   const justify = JUSTIFY_BY_CSS[String(style.justifyContent || '').toLowerCase()];
   if (justify && plan.display !== 'block' && !plan.columns) spec.justify = justify;
+  // `align-content` only means something for a wrapping row whose height is pinned.
+  const alignContent = String(style.alignContent || '').trim().toLowerCase();
+  if (plan.wrap && alignContent && alignContent !== 'normal') spec.alignContent = alignContent;
 
   const surface = surfaceElementFromNode(node, resolvedTheme);
   if (surface) {

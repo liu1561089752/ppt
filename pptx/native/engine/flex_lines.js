@@ -55,4 +55,38 @@ function flexLines(items, available, gap) {
   }));
 }
 
-module.exports = { flexLines };
+/**
+ * `align-content` for a wrapped row: where the block of lines sits inside a container
+ * whose height the CSS pinned, and how the leftover is distributed.
+ *
+ * Returns one entry per line: `top` is added to its cross-axis origin and `extra` grows
+ * its cross size (`stretch` hands the leftover to the lines themselves, which is what a
+ * stretched item then fills). With no definite height, or with no leftover, everything is
+ * zero and the caller behaves exactly as before.
+ */
+function alignLines(lineHeights, totalHeight, contentHeight, alignContent) {
+  const heights = Array.isArray(lineHeights) ? lineHeights : [];
+  const count = heights.length;
+  const result = heights.map(() => ({ top: 0, extra: 0 }));
+  if (!count || !Number.isFinite(contentHeight)) return result;
+  const free = Number(contentHeight) - Number(totalHeight);
+  if (!(free > 0.001)) return result;
+  const value = String(alignContent === undefined || alignContent === null ? '' : alignContent)
+    .trim().toLowerCase();
+  if (value === 'stretch') {
+    const extra = free / count;
+    return result.map(() => ({ top: 0, extra }));
+  }
+  if (value === 'center') return result.map(() => ({ top: free / 2, extra: 0 }));
+  if (value === 'end' || value === 'flex-end') return result.map(() => ({ top: free, extra: 0 }));
+  if (value === 'space-between' && count > 1) {
+    return result.map((entry, index) => ({ top: (free * index) / (count - 1), extra: 0 }));
+  }
+  if (value === 'space-around') {
+    const step = free / count;
+    return result.map((entry, index) => ({ top: step * (index + 0.5), extra: 0 }));
+  }
+  return result;
+}
+
+module.exports = { flexLines, alignLines };

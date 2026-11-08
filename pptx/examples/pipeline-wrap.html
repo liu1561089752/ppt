@@ -67,6 +67,23 @@
   .stat .delta { margin-top: 4px; font-size: 12px; color: #8fc7a8; }
 
   .foot { font-size: 12px; line-height: 1.8; color: #7d6f5f; width: 1000px; }
+
+  /* 第三页：容器高度固定时，多出来的高度归谁 */
+  .pair { display: flex; flex-direction: row; gap: 24px; width: 1104px; margin-bottom: 20px; }
+  .panel {
+    flex: 1 1 0; width: 540px; height: 372px;
+    padding: 18px 20px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  }
+  .panel-head { font-size: 12px; letter-spacing: 1px; color: #d98a4b; margin-bottom: 10px; }
+  .cloud { display: flex; flex-wrap: wrap; gap: 12px; width: 500px; height: 292px; }
+  .cloud.centre { align-content: center; }
+  .cloud.spread { align-content: space-between; }
+  .chip {
+    flex: 0 0 150px; padding: 9px 12px;
+    background: var(--page); border: 1px solid var(--line); border-radius: 9px;
+    font-size: 12px; line-height: 1.5; color: var(--ink); white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -106,5 +123,37 @@
 
   <div class="foot">换行的判据是每项的 flex-basis：没有声明宽度的项不会强行换行（它的 max-content 尺寸没有测量），所以统计条与标签云的布局可预期。</div>
 </main>
+<main class="slide">
+  <div class="kicker">native flex wrap / align-content</div>
+  <h1>换行之后，多出来的高度归谁</h1>
+  <p class="lede" style="width: 1040px">容器高度一旦定死，两行标签就不再一律贴顶：<code>center</code> 把整块行居中，<code>space-between</code> 把首末两行分别顶到上下边缘。每行的跨轴尺寸仍由共享的 flex 行求解器算，原生对象只是照着摆——所以两块面板的分行结果完全一致，差别只在分配。</p>
+
+  <div class="pair">
+    <section class="panel">
+      <div class="panel-head">ALIGN-CONTENT: CENTER</div>
+      <div class="cloud centre">
+        <div class="chip">layout</div>
+        <div class="chip">baseline</div>
+        <div class="chip">track sizing</div>
+        <div class="chip">gap</div>
+        <div class="chip">line boxes</div>
+        <div class="chip">wrap</div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head">ALIGN-CONTENT: SPACE-BETWEEN</div>
+      <div class="cloud spread">
+        <div class="chip">layout</div>
+        <div class="chip">baseline</div>
+        <div class="chip">track sizing</div>
+        <div class="chip">gap</div>
+        <div class="chip">line boxes</div>
+        <div class="chip">wrap</div>
+      </div>
+    </section>
+  </div>
+  <p class="foot">同一个标签云放进不同高度的容器，浏览器只改变行的起点；转成原生对象后仍是可编辑的文本框与圆角矩形，没有整页位图。</p>
+</main>
+
 </body>
 </html>

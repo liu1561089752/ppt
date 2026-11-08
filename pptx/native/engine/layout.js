@@ -2,7 +2,7 @@
 
 const { estimateTextHeight, estimateRichTextHeight, wrapText } = require('./text_measure');
 const { flexWidths } = require('./flex_size');
-const { flexLines } = require('./flex_lines');
+const { flexLines, alignLines } = require('./flex_lines');
 const {
   placeGridItems,
   gridItemWidth,
@@ -250,11 +250,16 @@ function placeRow(container, box, theme, options, sink) {
   const contentX = box.x + padding.left;
   const contentY = box.y + padding.top;
   const contentWidth = Math.max(0, box.w - padding.left - padding.right);
+  // A pinned height is what `align-content` distributes inside; without one there is
+  // no leftover to hand out.
+  const contentHeight = Number.isFinite(box.h)
+    ? Math.max(0, box.h - padding.top - padding.bottom)
+    : undefined;
   const children = container.children || [];
   if (!children.length) return padding.top + padding.bottom;
   if (container.wrap) {
     return placeWrappedRow(container, box, theme, options, sink, {
-      padding, gap, contentX, contentY, contentWidth, children
+      padding, gap, contentX, contentY, contentWidth, children, contentHeight
     });
   }
 
@@ -326,10 +331,28 @@ function placeWrappedRow(container, box, theme, options, sink, frame) {
   const lines = flexLines(items, contentWidth, gap);
   const justify = container.justify || 'start';
   const align = container.align || 'stretch';
+  // Measure every line first: `align-content` needs to know how tall the block of lines
+  // is before it can distribute the leftover the container's height leaves.
+  const measuredLines = lines.map((line) => {
+    const heights = line.indices.map((index, position) =>
+      measureElementHeight(children[index], line.widths[position], theme, options));
+    return { line, heights, tallest: Math.max(...heights) };
+  });
+  const blockHeight = measuredLines.reduce((sum, entry, index) =>
+    sum + entry.tallest + (index < measuredLines.length - 1 ? gap : 0), 0);
+  const distribution = alignLines(
+    measuredLines.map((entry) => entry.tallest), blockHeight, frame.contentHeight,
+    container.alignContent
+  );
+
   let lineTop = contentY;
   let totalHeight = 0;
 
-  lines.forEach((line, lineIndex) => {
+  measuredLines.forEach((entry, lineIndex) => {
+    const { line, heights, tallest: measuredTallest } = entry;
+    const { top: lineShift, extra: lineExtra } = distribution[lineIndex];
+    const tallestInLine = measuredTallest + lineExtra;
+    const lineOrigin = lineTop + lineShift;
     const widthsInLine = line.widths;
     const count = line.indices.length;
     const used = widthsInLine.reduce((sum, width) => sum + width, 0) + gap * (count - 1);
@@ -344,23 +367,20 @@ function placeWrappedRow(container, box, theme, options, sink, frame) {
       extraGap = free / count;
     }
 
-    const heights = line.indices.map((index, position) =>
-      measureElementHeight(children[index], widthsInLine[position], theme, options));
-    const tallestInLine = Math.max(...heights);
     let cursorX = contentX + offset;
     line.indices.forEach((index, position) => {
       const child = children[index];
       const childAlign = child.alignSelf || align;
       let height = heights[position];
-      let y = lineTop;
-    if (childAlign === 'stretch' && !child.fixedHeight) height = Math.max(height, tallestInLine);
-      else if (childAlign === 'center') y = lineTop + (tallestInLine - height) / 2;
-      else if (childAlign === 'end') y = lineTop + tallestInLine - height;
+      let y = lineOrigin;
+      if (childAlign === 'stretch' && !child.fixedHeight) height = Math.max(height, tallestInLine);
+      else if (childAlign === 'center') y = lineOrigin + (tallestInLine - height) / 2;
+      else if (childAlign === 'end') y = lineOrigin + tallestInLine - height;
       emitElement(child, { x: cursorX, y, w: widthsInLine[position], h: height }, theme, options, sink);
       cursorX += widthsInLine[position] + gap + extraGap;
     });
     totalHeight += tallestInLine;
-    if (lineIndex < lines.length - 1) totalHeight += gap;
+    if (lineIndex < measuredLines.length - 1) totalHeight += gap;
     lineTop += tallestInLine + gap;
   });
 

@@ -3796,3 +3796,63 @@ test('a pill centres its one line the way flex does', () => {
   assert.ok(Math.abs(label.h - (56 - 0) / 96) < 0.01, 'the box still fills the pill: ' + label.h);
 });
 
+
+test('a wrapped row distributes its lines with align-content', () => {
+  const build = (alignContent, extraCss = '') => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; flex-wrap: wrap; gap: 10px;',
+    '    width: 600px; height: 400px; align-content: ' + alignContent + '; }',
+    '  .c { width: 280px; height: 80px; background: #CCCCCC; }',
+    '  .c.mid { align-self: center; height: 40px; }',
+    '</style></head><body><main class="slide"><div class="row">',
+    '  <div class="c">1</div><div class="c mid">2</div><div class="c">3</div><div class="c">4</div>',
+    '</div></main></body></html>',
+    extraCss
+  ].join('\n'));
+
+  const lines = (result) => {
+    const row = result.analysis.slides[0].nodes[0];
+    const pooled = {};
+    // The centred item owns its own y (it aligns inside its line), so the lines are the
+    // ys of the plain items.
+    (row.children || []).filter((node) => !(node.classes || []).includes('mid'))
+      .forEach((node) => { pooled[String(node.y.toFixed(3))] = true; });
+    return Object.keys(pooled).map(Number).sort((a, b) => a - b);
+  };
+  // 400px height, two 80px lines and a 10px gap leave 230px of free cross space.
+  const free = 400 / 96 - (2 * 80 / 96 + 10 / 96);
+  assert.ok(Math.abs(free - 2.396) < 0.01, 'free space is ' + free);
+
+  const start = build('flex-start');
+  assert.deepEqual(start.report.unsupportedDetails, [], 'align-content is translated, not reported');
+  const startLines = lines(start);
+  assert.equal(startLines.length, 2);
+  assert.ok(Math.abs(startLines[0] - 40 / 96) < 0.002, 'start: ' + startLines[0]);
+  assert.ok(Math.abs(startLines[1] - (40 / 96 + 80 / 96 + 10 / 96)) < 0.002);
+
+  const centre = build('center');
+  const centreLines = lines(centre);
+  assert.ok(Math.abs(centreLines[0] - (40 / 96 + free / 2)) < 0.003, 'center: ' + centreLines[0]);
+  assert.ok(Math.abs(centreLines[1] - (40 / 96 + free / 2 + 90 / 96)) < 0.003);
+  // The engine has to reach the same lines, or the row would fall back to absolute boxes.
+  assert.deepEqual(centre.report.containerFallbacks, []);
+  assert.ok(centre.report.maxBoxDelta < 0.012, 'delta was ' + centre.report.maxBoxDelta);
+
+  const ending = build('flex-end');
+  assert.ok(Math.abs(lines(ending)[1] - (40 / 96 + 400 / 96 - 80 / 96)) < 0.003, 'end');
+
+  const between = build('space-between');
+  assert.ok(Math.abs(lines(between)[0] - 40 / 96) < 0.002, 'the first line stays put');
+  assert.ok(Math.abs(lines(between)[1] - (40 / 96 + 400 / 96 - 80 / 96)) < 0.003, 'the last one is flush');
+
+  // `stretch` is the default: the leftover height goes to the lines themselves, so a
+  // centred item inside a grown line sits lower than it would in a tight one.
+  const stretched = build('stretch');
+  const stretchedRow = stretched.analysis.slides[0].nodes[0];
+  const mid = stretchedRow.children.find((node) => (node.classes || []).includes('mid'));
+  const extraPerLine = free / 2;
+  assert.ok(Math.abs(mid.y - (40 / 96 + (80 / 96 + extraPerLine - 40 / 96) / 2)) < 0.01,
+    'centred inside the grown line: ' + mid.y);
+});
+

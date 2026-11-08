@@ -172,6 +172,10 @@ function validateContainer(prefix, element, errors) {
       errors.push(prefix + '.rowSpan must be a positive integer');
     }
   }
+  if (element.alignContent !== undefined
+    && !['start', 'center', 'end', 'flex-start', 'flex-end', 'space-between', 'space-around', 'space-evenly', 'stretch', 'normal'].includes(element.alignContent)) {
+    errors.push(prefix + '.alignContent is not a recognised value');
+  }
   if (element.justifySelf !== undefined
     && !['start', 'center', 'end', 'stretch'].includes(element.justifySelf)) {
     errors.push(prefix + '.justifySelf must be one of: start, center, end, stretch');
