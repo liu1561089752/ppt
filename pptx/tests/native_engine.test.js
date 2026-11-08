@@ -3931,3 +3931,34 @@ test('a flow margin is part of the box it sits in', () => {
   assert.ok(result.report.maxBoxDelta < 0.012, 'delta was ' + result.report.maxBoxDelta);
 });
 
+
+test('a stretched row fills the height its parent gave it', () => {
+  // `flex: 1` sizes the row *after* its children were laid out, so the cross-axis
+  // alignment has to be resolved again: `align-items: stretch` fills the row's final
+  // height, not just the tallest sibling.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .body { display: flex; flex-direction: column; width: 1000px; height: 600px; gap: 20px; }',
+    '  .head { height: 80px; background: #DDDDDD; }',
+    '  .row { display: flex; flex-direction: row; flex: 1; gap: 20px; }',
+    '  .card { flex: 1; background: #EEEEEE; padding: 12px; }',
+    '  .card p { margin: 0; font-size: 13px; }',
+    '</style></head><body><main class="slide"><div class="body">',
+    '  <div class="head"></div>',
+    '  <div class="row"><div class="card"><p>left</p></div><div class="card"><p>right</p></div></div>',
+    '</div></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails, []);
+  const body = result.analysis.slides[0].nodes[0];
+  const row = body.children.find((node) => (node.classes || []).includes('row'));
+  const cards = row.children;
+  // 600 − 80 head − 20 gap = 500px for the row, which `flex: 1` gives it.
+  assert.ok(Math.abs(row.h - 500 / 96) < 0.02, 'the row takes the leftover: ' + row.h);
+  cards.forEach((card) => {
+    assert.ok(Math.abs(card.h - row.h) < 0.01, 'the card fills the row: ' + card.h + ' vs ' + row.h);
+  });
+  assert.deepEqual(result.report.containerFallbacks, []);
+  assert.ok(result.report.maxBoxDelta < 0.012, 'delta was ' + result.report.maxBoxDelta);
+});
+

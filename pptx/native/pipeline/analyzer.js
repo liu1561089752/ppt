@@ -1522,6 +1522,36 @@ function flexBasisOf(style, options) {
   return null;
 }
 
+/**
+ * Re-resolve `align-items`/`align-self` inside a single-line flex row once the row's own
+ * height is final. A row that grew because of `flex: 1` or a declared height makes its
+ * stretched children fill it - the in-loop pass could only see the content height, because
+ * the parent had not been sized yet.
+ */
+function applyRowStretch(node) {
+  if (!node) return;
+  const style = node.style || {};
+  const isRow = String(style.display || '') === 'flex'
+    && String(style.flexDirection || 'row').toLowerCase().startsWith('row')
+    && !String(style.flexWrap || 'nowrap').toLowerCase().startsWith('wrap');
+  if (isRow) {
+    const padding = node.padding || {};
+    const inner = Math.max(0, (Number(node.h) || 0) - (padding.top || 0) - (padding.bottom || 0));
+    const contentY = (Number(node.y) || 0) + (padding.top || 0);
+    const alignItems = String(style.alignItems || 'stretch').toLowerCase();
+    (node.children || []).filter((child) => !child.absolute).forEach((child) => {
+      const self = child.alignSelf || alignItems;
+      if (self === 'stretch') {
+        if (!child.fixedHeight && child.h < inner) child.h = inner;
+      } else if (self === 'center') {
+        child.y = contentY + (inner - child.h) / 2;
+      } else if (self === 'end' || self === 'flex-end') {
+        child.y = contentY + inner - child.h;
+      }
+    });
+  }
+  (node.children || []).forEach(applyRowStretch);
+}
 function layoutFlex(domNode, contentBox, inherited, ctx) {
   const style = ctx.styles.computed(domNode);
   const direction = String(style.flexDirection || 'row').startsWith('column') ? 'column' : 'row';
@@ -1706,14 +1736,19 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       }
       cursor += widthsInLine[position] + gap + extraGap;
     });
-    // Each line's cross size is its own tallest item: stretch fills it, others
-    // align inside it, and the next line starts below it.
+    // Each line's cross size is its own tallest item, but a container whose height the
+    // CSS pinned gives a *single* line all of its inner height: `align-items: stretch`
+    // then fills the container, not just the tallest sibling.
     const tallestInLine = lineNodes.reduce((max, node) => Math.max(max, node.h), 0);
+    const isSingleLine = lines.length === 1;
+    const lineCross = isSingleLine && Number.isFinite(contentBox.h)
+      ? Math.max(tallestInLine, contentBox.h)
+      : tallestInLine;
     lineNodes.forEach((node) => {
       const align = node.alignSelf || alignItems;
-      if (align === 'stretch' && !node.fixedHeight) node.h = Math.max(node.h, tallestInLine);
-      else if (align === 'center') node.y = lineTop + (tallestInLine - node.h) / 2;
-      else if (align === 'end' || align === 'flex-end') node.y = lineTop + tallestInLine - node.h;
+      if (align === 'stretch' && !node.fixedHeight) node.h = Math.max(node.h, lineCross);
+      else if (align === 'center') node.y = lineTop + (lineCross - node.h) / 2;
+      else if (align === 'end' || align === 'flex-end') node.y = lineTop + lineCross - node.h;
     });
     lineGroups.push({ nodes: lineNodes, top: lineTop, height: tallestInLine });
     lineTop += tallestInLine + gap;
@@ -2759,6 +2794,11 @@ function analyzeHtml(html, options = {}) {
       gradient,
       nodes: children
     });
+    // A container's height can come from its own parent (`flex: 1`, a declared height),
+    // which is only known once the parent is sized - after its children were laid out.
+    // `align-items: stretch` then fills that height, so the cross-axis alignment is
+    // resolved once more, top-down, against the final boxes.
+    children.forEach(applyRowStretch);
   });
 
   if (!slides.length) ctx.notes.push('No slide containers were found; the whole document was treated as one slide.');

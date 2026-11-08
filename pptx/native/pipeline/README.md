@@ -74,6 +74,11 @@ the only element carrying the child’s own box. Without it the gate could only 
 parent’s frame, so "the parent is right but every child sits at the top" was invisible;
 that is how a column ignoring `justify-content` survived several rounds of fixtures.
 
+A height often arrives late: a row with `flex: 1` is sized by its parent *after* its own
+children were laid out, so `align-items: stretch` can only fill it in a second, top-down
+pass once every box is final. Without that pass the analyzer reported the content height
+and the engine the stretched one, and the two disagreed by exactly the leftover.
+
 The probe compares the box where the element must *end up*, which for a
 `position: relative` node already includes its offset - the spec carries the static
 position plus `relativeShift`, and the engine applies it there.
