@@ -197,6 +197,32 @@ function validateContainer(prefix, element, errors) {
       });
     }
   }
+  if (element.rowTracks !== undefined) {
+    if (!Array.isArray(element.rowTracks) || !element.rowTracks.length) {
+      errors.push(prefix + '.rowTracks must be a non-empty array');
+    } else {
+      element.rowTracks.forEach((track, index) => {
+        const fixed = track && Number.isFinite(track.height) && track.height >= 0;
+        const auto = track && track.auto === true;
+        const fractional = track && Number.isFinite(track.fr) && track.fr > 0;
+        if (!fixed && !auto && !fractional) {
+          errors.push(prefix + '.rowTracks[' + index
+            + '] needs a non-negative height, a positive fr, or auto: true');
+        }
+        if (fractional && element.rowContentHeight !== undefined
+          && !Number.isFinite(element.rowContentHeight)) {
+          errors.push(prefix + '.rowContentHeight must be a number when a row uses fr');
+        }
+      });
+    }
+  }
+  if (element.autoRowHeight !== undefined
+    && (!Number.isFinite(element.autoRowHeight) || element.autoRowHeight <= 0)) {
+    errors.push(prefix + '.autoRowHeight must be a positive number');
+  }
+  if (element.rowContentHeight !== undefined && !Number.isFinite(element.rowContentHeight)) {
+    errors.push(prefix + '.rowContentHeight must be a number');
+  }
   if (element.alignSelf !== undefined && !['start', 'center', 'end', 'stretch'].includes(element.alignSelf)) {
     errors.push(prefix + '.alignSelf must be one of: start, center, end, stretch');
   }

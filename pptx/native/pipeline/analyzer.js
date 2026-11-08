@@ -49,7 +49,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
   'flexWrap', 'flexGrow', 'flexBasis', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
-  'gridColumn', 'gridRow', 'alignItems',
+  'gridColumn', 'gridRow', 'gridTemplateRows', 'gridAutoRows', 'alignItems',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
@@ -65,7 +65,6 @@ const UNSUPPORTED_ALWAYS = new Set([
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
-  'gridTemplateRows', 'gridAutoRows',
   'flexShrink', 'justifySelf'
 ]);
 
@@ -847,6 +846,20 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       node.gridTracks = node.children.gridTracks;
       delete node.children.gridTracks;
     }
+    if (node.children.gridRowTracks && node.children.gridRowTracks.length) {
+      node.rowTracks = node.children.gridRowTracks;
+      delete node.children.gridRowTracks;
+    }
+    if (node.children.gridAutoRowHeight !== undefined) {
+      node.autoRowHeight = node.children.gridAutoRowHeight;
+      delete node.children.gridAutoRowHeight;
+    }
+    // The analyzer decides whether the container has a content height to divide;
+    // the engine replays that decision instead of re-deriving it from the box.
+    if (node.children.gridContentHeight !== undefined) {
+      node.rowContentHeight = node.children.gridContentHeight;
+      delete node.children.gridContentHeight;
+    }
   } else {
     node.children = layoutFlow(domNode, contentBox, childContext, ctx);
   }
@@ -1185,6 +1198,47 @@ function resolveGridSizes(tracks, totalWidth, gap) {
   });
 }
 
+/**
+ * Row tracks from `grid-template-rows`. Fixed lengths and percentages (against a
+ * declared height) become inches; `auto` stays content-sized and `fr` stays
+ * symbolic, because the leftover it divides is only known after the rows are
+ * sized. The engine replays the same tracks against the same content height.
+ */
+function gridRowTracksOf(style, contentHeight, fontSizePx) {
+  const tokens = expandGridTracks(gridTokens(style.gridTemplateRows));
+  if (!tokens.length) return [];
+
+  const readToken = (token) => {
+    const value = String(token || '').trim().toLowerCase();
+    const fr = /^([\d.]+)fr$/u.exec(value);
+    if (fr) return { fr: Math.max(0.01, Number(fr[1])) };
+    const minmax = /^minmax\(\s*([^,]+?)\s*,\s*(.+)\)$/u.exec(value);
+    if (minmax) return readToken(minmax[2]);
+    const length = parseLength(value);
+    if (length && length.unit !== '%') {
+      const inches = toInches(length, { parentHeight: contentHeight, fontSizePx });
+      if (Number.isFinite(inches) && inches > 0) return { height: inches };
+    }
+    if (length && length.unit === '%' && contentHeight !== null) {
+      return { height: (length.value / 100) * contentHeight };
+    }
+    return { auto: true };
+  };
+
+  return tokens.map(readToken);
+}
+
+/** `grid-auto-rows` as a fixed height; null when the implicit rows fit content. */
+function autoRowHeightOf(style, fontSizePx) {
+  const raw = style.gridAutoRows;
+  const value = String(raw === undefined || raw === null ? '' : raw).trim().toLowerCase();
+  if (!value || value === 'auto' || value === 'min-content' || value === 'max-content') return null;
+  const length = parseLength(value);
+  if (!length || length.unit === '%') return null;
+  const inches = toInches(length, { fontSizePx });
+  return Number.isFinite(inches) && inches > 0 ? inches : null;
+}
+
 /** Parse `grid-column`/`grid-row` into a span, flagging explicit line placement. */
 function gridSpanOf(value) {
   const text = String(value === undefined || value === null ? '' : value).trim().toLowerCase();
@@ -1286,7 +1340,17 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   const declared = kids.map((child) => ctx.styles.computed(child).height !== undefined);
   const heights = nodes.map((node) => (node && Number.isFinite(node.h) ? node.h : 0));
   const rows = gridRowCount(placements);
-  const rowHeights = resolveRowHeights(placements, heights, rows, rowGap);
+  // Row tracks resolve here, against the declared height, so the engine can
+  // replay the same tracks instead of re-reading the cascade.
+  const paddingTop = inchesOf(style.paddingTop, 'y', {}) || 0;
+  const paddingBottom = inchesOf(style.paddingBottom, 'y', {}) || 0;
+  const declaredHeight = inchesOf(style.height, 'y', { fontSizePx: inherited.fontPx });
+  const contentHeight = declaredHeight === null
+    ? null
+    : Math.max(0, declaredHeight - paddingTop - paddingBottom);
+  const rowTracks = gridRowTracksOf(style, contentHeight, inherited.fontPx);
+  const autoRowHeight = autoRowHeightOf(style, inherited.fontPx);
+  const rowHeights = resolveRowHeights(placements, heights, rows, rowGap, rowTracks, autoRowHeight, contentHeight);
   const tops = rowTops(rowHeights, contentBox.y, rowGap);
   const alignItems = String(style.alignItems || 'stretch').toLowerCase();
   const aligned = [];
@@ -1311,6 +1375,9 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
     aligned.push(node);
   });
   aligned.gridTracks = tracks;
+  if (rowTracks.length) aligned.gridRowTracks = rowTracks;
+  if (autoRowHeight !== null) aligned.gridAutoRowHeight = autoRowHeight;
+  if (contentHeight !== null) aligned.gridContentHeight = contentHeight;
   return aligned;
 }
 

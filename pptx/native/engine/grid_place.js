@@ -81,16 +81,63 @@ function gridRowCount(placements) {
 }
 
 /**
- * Row heights from measured item heights: a single-row item defines its row, and
- * an item spanning several rows only grows them when they are too short for it.
+ * Classify the declared rows. A track is a fixed `height`, `auto` (sized by its
+ * items) or `fr` (a share of the height left over); rows past the declared tracks
+ * use `autoRowHeight` when `grid-auto-rows` set one, otherwise they fit content.
  */
-function resolveRowHeights(placements, heights, rowCount, rowGap = 0) {
-  const rows = new Array(Math.max(rowCount, gridRowCount(placements))).fill(0);
+function rowTrackHeights(rowTracks, rowCount, autoRowHeight) {
+  const declared = Array.isArray(rowTracks) ? rowTracks : [];
+  const fallback = Number.isFinite(autoRowHeight) && autoRowHeight > 0 ? autoRowHeight : null;
+  const heights = [];
+  const flexible = [];
+  const fractions = [];
+  const total = Math.max(rowCount, declared.length);
+  for (let index = 0; index < total; index += 1) {
+    const track = declared[index];
+    const fixed = track && Number.isFinite(track.height) && track.height >= 0 ? track.height : null;
+    const fr = track && Number.isFinite(track.fr) && track.fr > 0 ? track.fr : null;
+    if (fixed !== null) {
+      heights.push(fixed);
+      flexible.push(false);
+      fractions.push(0);
+    } else if (fr !== null) {
+      heights.push(0);
+      flexible.push(true);
+      fractions.push(fr);
+    } else if (fallback !== null) {
+      heights.push(fallback);
+      flexible.push(false);
+      fractions.push(0);
+    } else {
+      heights.push(0);
+      flexible.push(true);
+      fractions.push(0);
+    }
+  }
+  return { heights, flexible, fractions };
+}
+
+function resolveRowHeights(placements, heights, rowCount, rowGap = 0, rowTracks = null,
+  autoRowHeight = null, contentHeight = null) {
+  const totalRows = Math.max(rowCount, gridRowCount(placements));
+  const start = rowTrackHeights(rowTracks, totalRows, autoRowHeight);
+  const rows = start.heights;
+  const flexible = start.flexible;
+  const fractions = start.fractions;
+  while (rows.length < totalRows) {
+    rows.push(0);
+    flexible.push(true);
+    fractions.push(0);
+  }
   const heightAt = (index) => (Number.isFinite(heights[index]) ? Math.max(0, heights[index]) : 0);
+  // `fr` rows take a share of the leftover height, so their items must not set them.
+  const canGrow = (row) => flexible[row] !== false && !(fractions[row] > 0 && Number.isFinite(contentHeight));
 
   (placements || []).forEach((place, index) => {
     if (place.rowSpan !== 1) return;
-    if (place.row < rows.length) rows[place.row] = Math.max(rows[place.row], heightAt(index));
+    if (place.row < rows.length && canGrow(place.row)) {
+      rows[place.row] = Math.max(rows[place.row], heightAt(index));
+    }
   });
 
   (placements || [])
@@ -102,9 +149,27 @@ function resolveRowHeights(placements, heights, rowCount, rowGap = 0) {
       for (let r = place.row; r < place.row + place.rowSpan; r += 1) covered += rows[r] || 0;
       const needed = heightAt(index);
       if (needed <= covered) return;
-      const extra = (needed - covered) / place.rowSpan;
-      for (let r = place.row; r < place.row + place.rowSpan; r += 1) rows[r] = (rows[r] || 0) + extra;
+      const growers = [];
+      for (let r = place.row; r < place.row + place.rowSpan; r += 1) {
+        if (canGrow(r)) growers.push(r);
+      }
+      if (!growers.length) return;
+      const extra = (needed - covered) / growers.length;
+      growers.forEach((r) => { rows[r] = (rows[r] || 0) + extra; });
     });
+
+  // Finally hand the leftover height to the fractional rows, in track order.
+  if (Number.isFinite(contentHeight)) {
+    const totalFractions = fractions.reduce((sum, value) => sum + (value || 0), 0);
+    if (totalFractions > 0) {
+      const used = rows.reduce((sum, value) => sum + (value || 0), 0)
+        + rowGap * Math.max(0, totalRows - 1);
+      const leftover = Math.max(0, contentHeight - used);
+      rows.forEach((value, row) => {
+        if (fractions[row] > 0) rows[row] = (leftover * fractions[row]) / totalFractions;
+      });
+    }
+  }
   return rows;
 }
 
@@ -132,6 +197,7 @@ module.exports = {
   normalizeSpan,
   placeGridItems,
   gridRowCount,
+  rowTrackHeights,
   resolveRowHeights,
   rowTops,
   spannedHeight

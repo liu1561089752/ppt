@@ -29,15 +29,16 @@
   h1 { font-size: 36px; line-height: 1.2; color: #F1F5F5; margin: 0; }
   .lead { font-size: 14px; line-height: 1.7; color: #A6B6BA; width: 900px; margin: 0; }
 
-  /* A dashboard grid: the summary spans two columns, the rail spans two rows. */
+  /* A dashboard grid: the summary spans two columns, the rail spans two rows.
+     Row heights come from the grid itself, not from each panel. */
   .board {
     display: grid;
     grid-template-columns: 1.4fr 1fr 1fr;
+    grid-template-rows: 205px 205px;
     gap: 18px;
     width: 1152px;
   }
   .panel {
-    height: 205px;
     background: var(--surface);
     border-radius: 14px;
     padding: 20px 22px;
@@ -45,8 +46,8 @@
     flex-direction: column;
     gap: 8px;
   }
-  .hero { grid-column: span 2; height: 205px; background: #14302F; }
-  .rail { grid-row: span 2; height: 428px; background: #10313A; }
+  .hero { grid-column: span 2; background: #14302F; }
+  .rail { grid-row: span 2; background: #10313A; }
 
   .panel h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
   .panel p { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 0; }

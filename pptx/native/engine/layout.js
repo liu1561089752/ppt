@@ -331,7 +331,8 @@ function placeGrid(container, box, theme, options, sink) {
     const place = placements[index];
     return measureElementHeight(child, spanWidth(place.column, place.columnSpan), theme, options);
   });
-  const rowHeights = resolveRowHeights(placements, heights, gridRowCount(placements), rowGap);
+  const rowHeights = resolveRowHeights(placements, heights, gridRowCount(placements), rowGap,
+    container.rowTracks, container.autoRowHeight, container.rowContentHeight);
   const tops = rowTops(rowHeights, contentY, rowGap);
   const align = container.align || 'stretch';
   if (process.env.NATIVE_DEBUG_GRID) {

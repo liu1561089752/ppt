@@ -2149,3 +2149,100 @@ test('a slide root declared as a grid lays its children out in columns', () => {
   assert.ok(boxes[3].y > boxes[0].y + 0.5, 'the fourth cell wraps to a new row');
 });
 
+
+test('grid-template-rows pins rows and gives fr the leftover height', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; padding: 40px; }',
+    '  .board { display: grid; width: 1200px; height: 600px;',
+    '    grid-template-columns: 1fr 1fr; grid-template-rows: 120px 1fr auto; gap: 20px; }',
+    '  .cell { background: #EEEEEE; padding: 10px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="board">',
+    '  <div class="cell"><div>r0c0</div></div><div class="cell"><div>r0c1</div></div>',
+    '  <div class="cell"><div>r1c0</div></div><div class="cell"><div>r1c1</div></div>',
+    '  <div class="cell"><div>r2c0</div></div><div class="cell"><div>r2c1</div></div>',
+    '  <div class="cell"><div>r3c0</div></div><div class="cell"><div>r3c1</div></div>',
+    '</div></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.report.unsupportedDetails, []);
+
+  const board = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.equal(board.rowTracks.length, 3);
+  assert.ok(Math.abs(board.rowTracks[0].height - 120 / 96) < 0.001, JSON.stringify(board.rowTracks[0]));
+  assert.equal(board.rowTracks[1].fr, 1);
+  assert.equal(board.rowTracks[2].auto, true);
+  assert.ok(Math.abs(board.rowContentHeight - 600 / 96) < 0.001);
+
+  const { layoutSlide } = require('../native/engine/layout');
+  const laid = layoutSlide(result.deck.slides[0], { width: 13.333, height: 7.5 }, result.deck.theme || {}, {});
+  const surfaces = (Array.isArray(laid) ? laid : laid.elements)
+    .filter((element) => element.type === 'shape' && element.fill === 'EEEEEE');
+  assert.equal(surfaces.length, 8);
+  // Row 0 is exactly the declared 120px.
+  assert.ok(Math.abs(surfaces[0].h - 120 / 96) < 0.002, 'row 0 height ' + surfaces[0].h);
+  // The fr row absorbs what the fixed, auto and implicit rows leave.
+  const rowTops = [...new Set(surfaces.map((element) => Number(element.y.toFixed(3))))].sort((a, b) => a - b);
+  assert.equal(rowTops.length, 4, 'four rows: ' + rowTops.join(','));
+  const frHeight = surfaces.find((element) => Math.abs(element.y - rowTops[1]) < 0.001).h;
+  assert.ok(frHeight > 3 && frHeight < 4, 'fr row height ' + frHeight);
+  // The rows plus their gaps fill the declared 600px height.
+  let sum = 0;
+  rowTops.forEach((top) => { sum += surfaces.find((element) => Math.abs(element.y - top) < 0.001).h; });
+  assert.ok(Math.abs(sum + 3 * (20 / 96) - 600 / 96) < 0.02, 'rows total ' + sum);
+});
+
+test('grid-auto-rows sizes the implicit rows', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .board { display: grid; width: 1200px; grid-template-columns: 1fr 1fr;',
+    '    grid-template-rows: 100px; grid-auto-rows: 60px; gap: 10px; }',
+    '  .cell { background: #DDDDDD; }',
+    '</style></head><body><main class="slide">',
+    '<div class="board">',
+    '  <div class="cell"><div>a</div></div><div class="cell"><div>b</div></div>',
+    '  <div class="cell"><div>c</div></div><div class="cell"><div>d</div></div>',
+    '</div></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const board = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(Math.abs(board.autoRowHeight - 60 / 96) < 0.001, 'autoRowHeight ' + board.autoRowHeight);
+
+  const { layoutSlide } = require('../native/engine/layout');
+  const laid = layoutSlide(result.deck.slides[0], { width: 13.333, height: 7.5 }, result.deck.theme || {}, {});
+  const surfaces = (Array.isArray(laid) ? laid : laid.elements)
+    .filter((element) => element.type === 'shape' && element.fill === 'DDDDDD');
+  const first = surfaces[0];
+  const second = surfaces[2];
+  assert.ok(Math.abs(first.h - 100 / 96) < 0.002, 'declared row ' + first.h);
+  assert.ok(Math.abs(second.h - 60 / 96) < 0.002, 'implicit row ' + second.h);
+});
+
+test('fr rows without a declared height fall back to their content', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .board { display: grid; width: 1000px; grid-template-columns: 1fr;',
+    '    grid-template-rows: 1fr 1fr; gap: 10px; }',
+    '  .cell { background: #CCCCCC; height: 100px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="board"><div class="cell"><div>a</div></div><div class="cell"><div>b</div></div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  // An auto-height grid has no leftover to divide, so both rows fit their cell.
+  assert.equal(result.report.unsupportedDetails.length, 0, JSON.stringify(result.report.unsupportedDetails));
+  const { layoutSlide } = require('../native/engine/layout');
+  const laid = layoutSlide(result.deck.slides[0], { width: 13.333, height: 7.5 }, result.deck.theme || {}, {});
+  const surfaces = (Array.isArray(laid) ? laid : laid.elements)
+    .filter((element) => element.type === 'shape' && element.fill === 'CCCCCC');
+  assert.equal(surfaces.length, 2);
+  surfaces.forEach((element) => {
+    assert.ok(Math.abs(element.h - 100 / 96) < 0.002, 'content-sized fr row ' + element.h);
+  });
+});
+

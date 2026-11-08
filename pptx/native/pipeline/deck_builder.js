@@ -472,6 +472,19 @@ function containerElement(node, plan, resolvedTheme, report) {
   if (plan.columns) {
     spec.columns = Math.max(1, plan.columns);
     if (plan.tracks) spec.columnTracks = plan.tracks;
+    if (Array.isArray(node.rowTracks) && node.rowTracks.length) {
+      spec.rowTracks = node.rowTracks.map((track) => {
+        if (Number.isFinite(track.height)) return { height: Number(track.height.toFixed(4)) };
+        if (Number.isFinite(track.fr) && track.fr > 0) return { fr: track.fr };
+        return { auto: true };
+      });
+    }
+    if (Number.isFinite(node.autoRowHeight)) {
+      spec.autoRowHeight = Number(node.autoRowHeight.toFixed(4));
+    }
+    if (Number.isFinite(node.rowContentHeight)) {
+      spec.rowContentHeight = Number(node.rowContentHeight.toFixed(4));
+    }
     spec.gap = containerGap(style, 'row');
     spec.columnGap = style.columnGap !== undefined ? containerGap(style, 'row') : spec.gap;
     spec.rowGap = style.rowGap !== undefined ? containerGap(style, 'column') : spec.gap;

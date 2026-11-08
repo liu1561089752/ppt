@@ -741,6 +741,9 @@ Element arrays still support the historical single-column flow, but real layouts
   align: 'stretch',                // cross axis: start | center | end | stretch
   justify: 'start',                // main axis: start | center | end | space-between | space-around
   columns: 4,                      // turn it into an equal-width grid instead of a single line
+  columnTracks: [{ fr: 1 }, { width: 2.4 }],   // explicit column tracks instead of equal columns
+  rowTracks: [{ height: 1.2 }, { fr: 1 }, { auto: true }],  // explicit row heights
+  autoRowHeight: 0.6,              // height for rows past rowTracks
   background: {                    // optional editable card surface behind the children
     fill: 'FFFFFF', radius: 0.18, lineColor: 'DCE2DE', lineWidth: 0.75,
     shadow: { color: '000000', opacity: 0.16, blur: 10, angle: 45, distance: 3 },
@@ -761,6 +764,7 @@ Behaviour worth knowing:
 - `background` is emitted as a normal editable shape *before* the children, so a card is still "one surface plus its own text boxes".
 - Nested containers resolve recursively; a container without `h` measures its own content, including estimated text height.
 - A child may declare `boxMargin: { top, right, bottom, left }`. Columns honour all four (they also shrink the child's slot), rows honour left/right, and grids ignore margins so a track stays aligned to its cell. The field is **not** called `margin` because the PPTX writer already reads `margin` as text-box insets; passing a margin object under that name silently renders converted text inset by 0.1in.
+- A grid child may declare `columnSpan` / `rowSpan` (integers). Row heights come from `rowTracks`: a fixed `height` in inches pins the row, `auto` fits its items, and `fr` divides whatever height is left over (which needs a declared container height — pass `rowContentHeight`, as the HTML pipeline does). Rows beyond `rowTracks` use `autoRowHeight` when set, otherwise they fit their items. A child that declares its own `h` keeps it instead of stretching.
 - Text inside a container is wrapped against the cell width, so `h` can be omitted entirely for text.
 
 `pptx/examples/native_stress_deck.js` is the reference for the intended usage: twelve designed pages built mostly from containers.
