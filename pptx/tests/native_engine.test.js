@@ -1410,3 +1410,33 @@ test('html pipeline maps img object-position onto the native crop focus', () => 
     'picture geometry must stay finite: ' + JSON.stringify(image));
 });
 
+
+test('every CSS property claimed as supported is actually read', () => {
+  // The "supported" set is a promise. Eight properties were listed there while
+  // nothing ever read them, so `text-transform`, `min-height`, `z-index` and
+  // friends were silently dropped. This test keeps the promise honest.
+  const analyzer = require('../native/pipeline/analyzer.js');
+  const files = ['analyzer.js', 'css.js', 'deck_builder.js', 'html_parser.js'];
+  let source = files
+    .map((file) => fsSync.readFileSync(pathSync.join(pathSync.join(__dirname, '..', 'native', 'pipeline'), file), 'utf8'))
+    .join('\n');
+  const start = source.indexOf('const SUPPORTED_PROPERTIES');
+  const end = source.indexOf(']);', start);
+  source = source.slice(0, start) + source.slice(end);
+
+  // These are resolved through boxShorthand(style, 'padding' | 'margin').
+  const shorthandDriven = new Set([
+    'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft'
+  ]);
+
+  const unread = [];
+  for (const property of analyzer.SUPPORTED_PROPERTIES) {
+    if (shorthandDriven.has(property)) continue;
+    const direct = new RegExp('style\\.' + property + '(?![A-Za-z0-9_])');
+    const bracketed = new RegExp('style\\[\'' + property + '\'\\]');
+    if (!direct.test(source) && !bracketed.test(source)) unread.push(property);
+  }
+  assert.deepEqual(unread, [],
+    'these properties are declared supported but never read: ' + unread.join(', '));
+});

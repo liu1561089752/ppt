@@ -47,13 +47,13 @@ const SUPPORTED_PROPERTIES = new Set([
   'color', 'background', 'backgroundColor', 'backgroundImage', 'boxSizing', 'border', 'borderWidth',
   'borderColor', 'borderStyle', 'borderRadius', 'borderTopLeftRadius',
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
-  'boxShadow', 'opacity', 'borderCollapse', 'fontFamily', 'fontSize', 'fontWeight',
+  'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
 const UNSUPPORTED_ALWAYS = new Set([
-  'overflow', 'transform', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
+  'overflow', 'borderCollapse', 'transform', 'filter', 'backdropFilter', 'clipPath', 'mask', 'mixBlendMode',
   'animation', 'transition', 'float', 'columns', 'columnCount', 'writingMode',
   'backgroundClip', 'textShadow',
   'textOverflow', 'whiteSpace', 'wordBreak', 'hyphens', 'aspectRatio', 'inset',
@@ -164,6 +164,7 @@ function recordUnsupported(ctx, node, property, value, reason) {
  */
 const NOOP_VALUES = {
   overflow: ['visible'],
+  borderCollapse: ['collapse'],
   textShadow: ['none'],
   transform: ['none'],
   filter: ['none'],
