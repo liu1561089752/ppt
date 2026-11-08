@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Native Decorations</title>
+<style>
+  :root {
+    --bg: #0E1A1D;
+    --surface: #F7F9F9;
+    --ink: #16302F;
+    --muted: #5B6B70;
+    --accent: #F2A24C;
+    --teal: #2FA8A0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif; }
+
+  .slide {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    background: var(--bg);
+    padding: 60px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+  }
+  .kicker {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--teal);
+  }
+  h1 { font-size: 38px; line-height: 1.2; color: #F2F5F5; margin: 0; }
+  .lead { font-size: 15px; line-height: 1.7; color: #A9B8BC; width: 860px; margin: 0; }
+  .stamp {
+    position: absolute;
+    right: 72px;
+    bottom: 44px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #57707A;
+  }
+
+  /* Cards carry their own decoration: an accent bar plus a corner index. */
+  .row { display: flex; flex-direction: row; gap: 22px; height: 226px; }
+  .card {
+    position: relative;
+    flex: 1;
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 26px 26px 26px 34px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 24px;
+    width: 6px;
+    height: 56px;
+    background: var(--accent);
+    border-radius: 3px;
+  }
+  .card::after {
+    content: "";
+    position: absolute;
+    right: 18px;
+    top: 16px;
+    width: 34px;
+    height: 22px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #C3D0D2;
+    text-align: right;
+  }
+  .card.a::after { content: "01"; }
+  .card.b::after { content: "02"; }
+  .card.c::after { content: "03"; }
+  .card h3 { font-size: 17px; font-weight: 700; color: var(--ink); margin: 0; }
+  .card p { font-size: 12.5px; line-height: 1.65; color: var(--muted); margin: 0; }
+
+  /* A stat band keeps the composition anchored to the bottom. */
+  .stats {
+    display: flex;
+    flex-direction: row;
+    gap: 40px;
+    background: #14272B;
+    border-radius: 14px;
+    padding: 26px 30px;
+  }
+
+  .stat {
+    position: relative;
+    flex: 1;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stat::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 4px;
+    width: 3px;
+    height: 34px;
+    background: var(--teal);
+    border-radius: 2px;
+  }
+  .stat .value { font-size: 26px; font-weight: 700; color: #EAF1F1; }
+  .stat .label { font-size: 11.5px; color: #8FA5AA; }
+
+  /* Slide 2: a checklist beside the markup it produces. */
+  .columns { display: flex; flex-direction: row; gap: 32px; flex: 1; }
+  .list { display: flex; flex-direction: column; gap: 20px; flex: 1; }
+  .item { position: relative; padding-left: 30px; }
+  .item::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 6px;
+    width: 10px;
+    height: 10px;
+    background: var(--teal);
+    border-radius: 5px;
+  }
+  .item h4 { font-size: 15px; color: #EDF2F2; margin: 0 0 4px; }
+  .item p { font-size: 12.5px; line-height: 1.6; color: #9FB0B4; margin: 0; }
+
+  .panel {
+    width: 430px;
+    background: #14272B;
+    border-radius: 14px;
+    padding: 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .panel h4 { font-size: 12px; letter-spacing: 2px; color: var(--teal); margin: 0; }
+  .panel pre {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 11.5px;
+    line-height: 1.75;
+    color: #C7D6D8;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+
+<main class="slide">
+  <div class="kicker">native decoration / ::before &amp; ::after</div>
+  <h1>装饰不是贴图，是锚定的可编辑形状</h1>
+  <p class="lead">卡片左侧的色条、右上角的序号和底部的竖线都来自 <code>::before</code> / <code>::after</code>：转换器把它们解析成绝对定位的叠加层，锚在原容器上，因此容器本身仍然按声明式布局排布。</p>
+
+  <div class="row">
+    <div class="card a">
+      <h3>锚定在卡片上</h3>
+      <p>装饰的偏移相对卡片计算，卡片被重新排版时装饰跟着走。</p>
+    </div>
+    <div class="card b">
+      <h3>仍然是原生对象</h3>
+      <p>色条是一个圆角矩形，序号是一段文本，都能在 PowerPoint 里直接改。</p>
+    </div>
+    <div class="card c">
+      <h3>不做假</h3>
+      <p>尺寸无法确定的装饰不会硬猜，而是进入未支持清单。</p>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="value">3</div><div class="label">个装饰形状</div></div>
+    <div class="stat"><div class="value">14</div><div class="label">个声明式容器</div></div>
+    <div class="stat"><div class="value">0</div><div class="label">个绝对定位回退</div></div>
+  </div>
+
+</main>
+
+<main class="slide">
+  <div class="kicker">native decoration / checklist</div>
+  <h1>列表圆点也可以是形状</h1>
+  <p class="lead">每一行的圆点是 <code>::before</code> 生成的 10×10 圆角矩形，行本身仍然自动排布。</p>
+
+  <div class="columns">
+    <div class="list">
+      <div class="item">
+        <h4>解析</h4>
+        <p>伪元素规则进入样式表，按选择器与元素匹配，参与层叠与优先级。</p>
+      </div>
+      <div class="item">
+        <h4>定位</h4>
+        <p>绝对定位的伪元素按父元素的边框盒换算偏移，right / bottom 同样支持。</p>
+      </div>
+      <div class="item">
+        <h4>发射</h4>
+        <p>装饰作为容器的叠加层发射，位于子元素之上、容器表面之下。</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h4>OOXML 里长这样</h4>
+      <pre>&lt;p:sp&gt;
+  &lt;p:nvSpPr&gt;…&lt;/p:nvSpPr&gt;
+  &lt;p:spPr&gt;
+    &lt;a:xfrm&gt;
+      &lt;a:off x="548640" y="2651760"/&gt;
+      &lt;a:ext cx="54864" cy="512064"/&gt;
+    &lt;/a:xfrm&gt;
+    &lt;a:prstGeom prst="roundRect"/&gt;
+    &lt;a:solidFill&gt;
+      &lt;a:srgbClr val="F2A24C"/&gt;
+    &lt;/a:solidFill&gt;
+  &lt;/p:spPr&gt;
+&lt;/p:sp&gt;</pre>
+    </div>
+  </div>
+
+  <div class="stamp">NATIVE DECORATIONS</div>
+</main>
+
+</body>
+</html>

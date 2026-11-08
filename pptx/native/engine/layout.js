@@ -22,6 +22,39 @@ function isContainer(element) {
   return !!element && element.type === CONTAINER_TYPE;
 }
 
+/** A container decoration as concrete shapes; `box` is the container frame. */
+function overlayElements(container, box) {
+  const emitted = [];
+  (container.overlays || []).forEach((overlay) => {
+    const frame = {
+      x: box.x + (overlay.x || 0),
+      y: box.y + (overlay.y || 0),
+      w: overlay.w,
+      h: overlay.h
+    };
+    if (!Number.isFinite(frame.w) || !Number.isFinite(frame.h) || frame.w <= 0 || frame.h <= 0) return;
+    if (overlay.fill) {
+      emitted.push(Object.assign({
+        type: 'shape',
+        fill: overlay.fill,
+        line: false
+      }, frame, overlay.radius ? { radius: overlay.radius } : {}));
+    }
+    if (overlay.text) {
+      emitted.push(Object.assign({
+        type: 'text',
+        text: overlay.text,
+        color: overlay.color,
+        fontSize: overlay.fontSize,
+        align: overlay.align || 'center',
+        valign: 'mid',
+        margin: 0
+      }, frame));
+    }
+  });
+  return emitted;
+}
+
 /** Flatten containers into their concrete children in document order. */
 function flattenElements(elements) {
   const flattened = [];
@@ -30,6 +63,10 @@ function flattenElements(elements) {
       const background = containerBackgroundSpec(element);
       if (background) flattened.push(background);
       flattened.push(...flattenElements(element.children));
+      const frame = { x: element.x, y: element.y, w: element.w, h: element.h };
+      if (Number.isFinite(frame.x) && Number.isFinite(frame.y)) {
+        flattened.push(...overlayElements(element, frame));
+      }
     } else {
       flattened.push(element);
     }
@@ -334,6 +371,14 @@ function layoutContainer(container, box, theme = {}, options = {}) {
     height = placeColumn(container, resolvedBox, theme, options, sink);
   }
   if (resolvedBox.h !== undefined) height = Math.max(height, resolvedBox.h);
+  if (container.overlays && container.overlays.length) {
+    // Decorations paint above the flow children so a badge or chevron is not
+    // hidden by a sibling; the container surface is unshifted underneath below.
+    overlayElements(container, { x: resolvedBox.x, y: resolvedBox.y, w: resolvedBox.w, h: height })
+      .forEach((overlay) => {
+        emitElement(overlay, { x: overlay.x, y: overlay.y, w: overlay.w, h: overlay.h }, theme, options, sink);
+      });
+  }
   const background = containerBackgroundSpec(container);
   if (background) {
     sink.unshift(Object.assign(background, {

@@ -57,7 +57,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | Media | `<img>` with `object-fit: cover/contain/fill` and `object-position` → native crop rectangle with focus |
 | Data | `<table>` → native table with real column widths (`<colgroup>/<col>`, then declared first-row cell widths, then equal columns) and merged cells (`colspan`/`rowspan`), `<ul>/<ol>` → bulleted native text box, `<hr>` → connector |
 | Charts | Declared, never guessed: `<table data-chart="bar">` turns a data table into a native chart (first column = categories, each further column = a series named by the header row), and `data-chart` + `data-values="1,2,3"` + optional `data-labels` makes a single series. `bar`/`line`/`pie`/`doughnut`/`area`; `data-chart-title` and `data-chart-legend` are honoured; an unknown type or missing data is reported |
+| Decorations | `::before`/`::after` with `content`, `position: absolute`, a definite `width`/`height` (or `left`+`right` / `top`+`bottom`) and a background fill, a border radius, or text → an overlay of the element's container, emitted as a real shape or text box above the flow children. CSS escapes in `content` are decoded (`"\2192"` → `→`). Anything without a definite box, a non-absolute decoration, or one on the slide root is reported instead of guessed |
 | Stacking | `z-index` decides paint order among siblings; equal or missing values keep document order |
+| Anchoring | An absolutely positioned *text* child of a container becomes an overlay (so the group stays declarative); `right`/`bottom`-only boxes hug their measured content and resolve against the container's padding box. A more complex absolute child demotes the group to absolute coordinates, which the report counts |
 | Surfaces on text | An element that paints a fill/border/shadow *and* holds text becomes a container whose background is the surface, so badges and overlay captions keep their fill and their editable text |
 
 ## Known limitations (by design, not oversights)
@@ -70,8 +72,10 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 - **Cascade is simplified.** `@media` blocks are evaluated against the slide
   viewport (1280x720 by default): `min`/`max-width`, `min`/`max-height`,
   `orientation`, `screen` and `print` are supported, and a condition that cannot
-  be evaluated is reported rather than applied. Pseudo-elements, attribute
-  selectors, `:not()`, sibling combinators and `!important` are ignored. Custom
+  be evaluated is reported rather than applied. `::before`/`::after` are
+  translated when they have a placeable box (see the Decorations row); other
+  pseudo-classes and pseudo-elements, attribute selectors, `:not()`, sibling
+  combinators and `!important` are ignored. Custom
   properties are resolved globally rather than per-subtree.
 - **Percentages** resolve against the direct parent's *content* box, which is the
   authored intent but differs from a browser when a parent's height is auto.

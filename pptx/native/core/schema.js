@@ -143,6 +143,33 @@ function validateContainer(prefix, element, errors) {
   if (element.align !== undefined && !['start', 'center', 'end', 'stretch'].includes(element.align)) {
     errors.push(prefix + '.align must be one of: start, center, end, stretch');
   }
+  if (element.overlays !== undefined) {
+    if (!Array.isArray(element.overlays)) {
+      errors.push(prefix + '.overlays must be an array');
+    } else {
+      element.overlays.forEach((overlay, index) => {
+        const label = prefix + '.overlays[' + index + ']';
+        if (!overlay || typeof overlay !== 'object') {
+          errors.push(label + ' must be an object');
+          return;
+        }
+        ['x', 'y', 'w', 'h'].forEach((key) => {
+          const value = overlay[key];
+          if (key === 'x' || key === 'y') {
+            if (value !== undefined && (!Number.isFinite(value))) errors.push(label + '.' + key + ' must be finite');
+            return;
+          }
+          if (!Number.isFinite(value) || value <= 0) errors.push(label + '.' + key + ' must be a positive number');
+        });
+        if (overlay.fill !== undefined && typeof overlay.fill !== 'string') {
+          errors.push(label + '.fill must be a hex colour string');
+        }
+        if (overlay.text !== undefined && typeof overlay.text !== 'string') {
+          errors.push(label + '.text must be a string');
+        }
+      });
+    }
+  }
   if (element.columnTracks !== undefined) {
     if (!Array.isArray(element.columnTracks) || !element.columnTracks.length) {
       errors.push(prefix + '.columnTracks must be a non-empty array');

@@ -79,6 +79,10 @@ async function main(argv) {
   process.stdout.write('Layout: ' + result.report.declarativeContainers + ' declarative container(s), ' +
     result.report.absoluteGroups + ' absolutely positioned group(s)' +
     ' | engine/analyzer max delta ' + Number(result.report.maxBoxDelta).toFixed(4) + 'in\n');
+  if (result.report.droppedDecorations) {
+    process.stdout.write('Warning: ' + result.report.droppedDecorations +
+      ' ::before/::after decoration(s) belong to a plain element that cannot host an overlay\n');
+  }
   if (result.report.rotatedGroups) {
     process.stdout.write('Warning: ' + result.report.rotatedGroups +
       ' rotated group(s) keep their children unrotated (a container cannot carry a rotation)\n');

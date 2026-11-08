@@ -105,6 +105,7 @@ function parseStylesheet(cssText, options = {}) {
     rules: [],
     variables: Object.create(null),
     pseudoSelectors: [],
+    decorationRules: [],
     mediaQueries: [],
     order: 0
   };
@@ -113,6 +114,7 @@ function parseStylesheet(cssText, options = {}) {
     rules: state.rules,
     variables: state.variables,
     pseudoSelectors: state.pseudoSelectors,
+    decorationRules: state.decorationRules,
     mediaQueries: state.mediaQueries
   };
 }
@@ -161,8 +163,20 @@ function collectRules(css, viewport, state) {
       if (!parsed) return;
       if (parsed.pseudo) {
         // A pseudo rule describes a box the DOM does not contain, so letting it
-        // match the element itself would deform the real element.
+        // match the element itself would deform the real element. ::before and
+        // ::after keep their declarations so the decoration can be rebuilt as a
+        // native shape; every other pseudo is only listed.
         pseudoSelectors.push(rawSelector.trim());
+        if (parsed.pseudoName === 'before' || parsed.pseudoName === 'after') {
+          state.decorationRules.push({
+            selectorText: rawSelector.trim(),
+            parts: parsed.parts,
+            pseudo: parsed.pseudoName,
+            declarations,
+            order: state.order++,
+            specificity: parsed.specificity
+          });
+        }
         return;
       }
       rules.push({
@@ -201,6 +215,8 @@ function parseSimpleSelector(segment) {
 function parseSelector(rawSelector) {
   const raw = String(rawSelector || '');
   const pseudo = /::?[\w-]+/u.test(raw);
+  const pseudoMatch = /::?([\w-]+)(?:\([^)]*\))?\s*$/u.exec(raw);
+  const pseudoName = pseudoMatch ? pseudoMatch[1].toLowerCase() : null;
   const cleaned = raw
     .replace(/::[\w-]+(\([^)]*\))?/gu, '')
     .replace(/:[\w-]+(\([^)]*\))?/gu, '')
@@ -214,7 +230,7 @@ function parseSelector(rawSelector) {
     classes: accumulator.classes + part.classes.length,
     tags: accumulator.tags + (part.tag ? 1 : 0)
   }), { ids: 0, classes: 0, tags: 0 });
-  return { parts, specificity, pseudo };
+  return { parts, specificity, pseudo, pseudoName };
 }
 
 function matchesSimple(node, simple) {
@@ -308,6 +324,8 @@ function applyDeclarations(style, declarations, variables) {
 function createStyleResolver(stylesheet) {
   const cache = new WeakMap();
   const { rules, variables } = stylesheet;
+  const mediaQueries = stylesheet.mediaQueries || [];
+  const decorationRules = stylesheet.decorationRules || [];
 
   function declared(node) {
     if (cache.has(node)) return cache.get(node);
@@ -340,7 +358,18 @@ function createStyleResolver(stylesheet) {
     return result;
   }
 
-  return { declared, computed, variables, rules };
+  /** Declarations of a `::before`/`::after` box for a node, or null. */
+  function decoration(node, pseudo) {
+    const matched = decorationRules
+      .filter((rule) => rule.pseudo === pseudo && matchesSelector(node, rule))
+      .sort(compareSpecificity);
+    if (!matched.length) return null;
+    const style = Object.create(null);
+    matched.forEach((rule) => applyDeclarations(style, rule.declarations, variables));
+    return style;
+  }
+
+  return { declared, computed, decoration, variables, rules, mediaQueries };
 }
 
 function parseLength(value) {

@@ -36,7 +36,7 @@ const {
   backgroundImageOf,
   parseBackgroundFocus
 } = require('./css');
-const { estimateTextHeight } = require('../engine/text_measure');
+const { estimateTextHeight, measureTextPt } = require('../engine/text_measure');
 
 const SUPPORTED_PROPERTIES = new Set([
   'display', 'position', 'left', 'top', 'right', 'bottom', 'width', 'height',
@@ -214,13 +214,17 @@ function createContext(html, options = {}) {
     viewportWidth: Math.round(pageSize.width * 96),
     viewportHeight: Math.round(pageSize.height * 96)
   });
-  const unsupported = (stylesheet.pseudoSelectors || []).map((selectorText) => ({
-    tag: null,
-    classes: [],
-    property: 'selector',
-    value: selectorText,
-    reason: 'Pseudo-elements and pseudo-classes describe boxes that do not exist; their rules are not translated'
-  }));
+  const decorationSelectors = new Set((stylesheet.decorationRules || []).map((rule) => rule.selectorText));
+  const unsupported = (stylesheet.pseudoSelectors || [])
+    // ::before/::after are either turned into overlays or reported per element.
+    .filter((selectorText) => !decorationSelectors.has(selectorText))
+    .map((selectorText) => ({
+      tag: null,
+      classes: [],
+      property: 'selector',
+      value: selectorText,
+      reason: 'Pseudo-elements and pseudo-classes describe boxes that do not exist; their rules are not translated'
+    }));
   const mediaQueries = stylesheet.mediaQueries || [];
   mediaQueries.filter((entry) => !entry.matched).forEach((entry) => {
     unsupported.push({
@@ -464,7 +468,152 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   const node = analyzeNodeTree(domNode, slot, inherited, ctx);
   if (!node) return null;
   applyHeightConstraints(node, slot, ctx);
+  attachDecorations(domNode, node, ctx);
+  absoluteChildOverlays(node);
   return node;
+}
+
+/**
+ * A text child with `position: absolute` is placed by the container but painted
+ * above the flow, which is exactly what a container overlay is. Keeping it out of
+ * `children` lets the group stay declarative; anything more complex than a text
+ * box stays a real (absolute) child and demotes the group, which is reported.
+ */
+function absoluteChildOverlays(node) {
+  if (!Array.isArray(node.children) || !node.children.length) return;
+  const kept = [];
+  let added = false;
+  node.children.forEach((child) => {
+    const convertible = child.absolute
+      && child.kind === 'text'
+      && typeof child.text === 'string'
+      && !(child.children && child.children.length)
+      && [child.x, child.y, child.w, child.h].every((value) => Number.isFinite(value))
+      && child.h > 0 && child.w > 0;
+    if (!convertible) {
+      kept.push(child);
+      return;
+    }
+    const round = (value) => Number(value.toFixed(4));
+    const overlay = {
+      x: round(child.x - node.x),
+      y: round(child.y - node.y),
+      w: round(child.w),
+      h: round(child.h),
+      text: child.text,
+      align: child.align || 'left',
+      valign: child.valign || 'top'
+    };
+    if (child.color) overlay.color = child.color;
+    if (Number.isFinite(child.fontSize)) overlay.fontSize = child.fontSize;
+    if (child.bold) overlay.bold = true;
+    if (child.italic) overlay.italic = true;
+    if (child.fontFace) overlay.fontFace = child.fontFace;
+    if (child.lineSpacingMultiple) overlay.lineSpacingMultiple = child.lineSpacingMultiple;
+    if (node.overlays) node.overlays.push(overlay);
+    else node.overlays = [overlay];
+    added = true;
+  });
+  if (added) node.children = kept;
+}
+
+/**
+ * Decode a CSS `content` value: strip the quotes, then resolve CSS escapes so
+ * `"\2192"` becomes an arrow instead of the literal text.
+ */
+function decodeCssContent(value) {
+  const text = String(value === undefined ? '' : value).replace(/^\s*['"]|['"]\s*$/gu, '');
+  return text
+    .replace(/\\([0-9a-fA-F]{1,6})\s?/gu, (match, hex) => {
+      const point = parseInt(hex, 16);
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : '';
+    })
+    .replace(/\\(.)/gu, '$1');
+}
+
+/**
+ * `::before`/`::after` decorations are extra boxes the DOM does not contain.
+ * An absolutely positioned decoration with a definite size and a background or
+ * content becomes an overlay of the element's container, which keeps the group
+ * declarative instead of forcing it to absolute coordinates.
+ */
+function attachDecorations(domNode, node, ctx) {
+  const overlays = [];
+  const skip = (pseudo, reason, value) => {
+    recordUnsupported(ctx, { tag: domNode.tag, classes: classList(domNode) },
+      '::' + pseudo, value, reason);
+  };
+  ['before', 'after'].forEach((pseudo) => {
+    const declaration = ctx.styles.decoration(domNode, pseudo);
+    if (!declaration) return;
+    const content = declaration.content;
+    if (content === undefined) return; // CSS requires content on a pseudo box
+    const position = String(declaration.position || '').toLowerCase();
+    if (position !== 'absolute') {
+      skip(pseudo, 'Only absolutely positioned decorations have a placeable box', content);
+      return;
+    }
+
+    const parentWidth = node.w;
+    const parentHeight = node.h;
+    if (!Number.isFinite(parentWidth) || !Number.isFinite(parentHeight)) {
+      skip(pseudo, 'The host element has no definite box to anchor the decoration', content);
+      return;
+    }
+
+    const offsetOf = (value, axis) => {
+      const length = parseLength(value);
+      if (!length) return undefined;
+      if (length.unit === '%') {
+        const base = axis === 'x' ? parentWidth : parentHeight;
+        return (length.value / 100) * base;
+      }
+      return toInches(length, { parentWidth, fontSizePx: 16 });
+    };
+    const left = offsetOf(declaration.left, 'x');
+    const right = offsetOf(declaration.right, 'x');
+    const top = offsetOf(declaration.top, 'y');
+    const bottom = offsetOf(declaration.bottom, 'y');
+    let width = offsetOf(declaration.width, 'x');
+    let height = offsetOf(declaration.height, 'y');
+    if (width === undefined && left !== undefined && right !== undefined) width = parentWidth - left - right;
+    if (height === undefined && top !== undefined && bottom !== undefined) height = parentHeight - top - bottom;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      skip(pseudo, 'A decoration needs a definite width and height (auto-sized content is not measured)', content);
+      return;
+    }
+
+    const x = left !== undefined ? left : (right !== undefined ? parentWidth - width - right : 0);
+    const y = top !== undefined ? top : (bottom !== undefined ? parentHeight - height - bottom : 0);
+
+    const background = backgroundOf(declaration);
+    const text = content === 'none' || content === 'normal' ? '' : decodeCssContent(content);
+    const colour = parseColor(declaration.color);
+    if (!(background && background.hex) && !text) {
+      skip(pseudo, 'The decoration paints nothing (no background and no content)', content);
+      return;
+    }
+
+    const overlay = {
+      x: Number(x.toFixed(4)),
+      y: Number(y.toFixed(4)),
+      w: Number(width.toFixed(4)),
+      h: Number(height.toFixed(4))
+    };
+    if (background && background.hex) overlay.fill = background.hex;
+    const radius = parseLength(declaration.borderRadius);
+    if (radius && radius.unit !== '%') overlay.radius = Number(toInches(radius, { fontSizePx: 16 }).toFixed(3));
+    if (text) {
+      overlay.text = text;
+      if (colour && colour.hex) overlay.color = colour.hex;
+      const sizePt = parseLength(declaration.fontSize);
+      if (sizePt) overlay.fontSize = Number((toInches(sizePt, {}) * 72).toFixed(1));
+      overlay.align = declaration.textAlign || 'center';
+    }
+    overlay.pseudo = pseudo;
+    overlays.push(overlay);
+  });
+  if (overlays.length) node.overlays = overlays;
 }
 
 /**
@@ -735,21 +884,97 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     const margins = childMargins(childStyle, { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
     const slotWidth = Math.max(0, contentBox.w - margins.left - margins.right);
     const explicitWidth = inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
-    const slot = {
-      x: contentBox.x + margins.left,
-      y: isAbsolute(childStyle) ? contentBox.y : cursor + margins.top,
-      w: explicitWidth === null ? slotWidth : explicitWidth,
-      explicitWidth: explicitWidth !== null,
-      h: null,
-      parentContentHeight: soloHeight
-    };
-    const node = analyzeNode(child, slot, inherited, ctx);
+    const slot = isAbsolute(childStyle)
+      ? anchoredSlot(childStyle, contentBox, inherited)
+      : {
+        x: contentBox.x + margins.left,
+        y: cursor + margins.top,
+        w: explicitWidth === null ? slotWidth : explicitWidth,
+        explicitWidth: explicitWidth !== null,
+        h: null,
+        parentContentHeight: soloHeight
+      };
+    const node = applyAnchorHints(analyzeNode(child, slot, inherited, ctx), slot);
     if (!node) return;
     node.absolute = isAbsolute(childStyle);
     nodes.push(node);
     if (!node.absolute) cursor = node.y + node.h + margins.bottom;
   });
   return nodes;
+}
+
+/**
+ * Resolve an absolutely positioned child against its container box. Percentages
+ * resolve against the container, and `left/right` plus `top/bottom` are
+ * interchangeable, exactly like CSS.
+ */
+function anchoredSlot(style, contentBox, inherited) {
+  const options = {
+    parentWidth: contentBox.w,
+    parentHeight: contentBox.h === undefined ? null : contentBox.h,
+    fontSizePx: inherited.fontPx
+  };
+  const horizontal = (value) => {
+    const length = parseLength(value);
+    if (!length) return undefined;
+    if (length.unit === '%') return (length.value / 100) * contentBox.w;
+    return toInches(length, options);
+  };
+  const vertical = (value) => {
+    const length = parseLength(value);
+    if (!length) return undefined;
+    if (length.unit === '%') return (length.value / 100) * (contentBox.h || 0);
+    return toInches(length, options);
+  };
+  const left = horizontal(style.left);
+  const right = horizontal(style.right);
+  const top = vertical(style.top);
+  const bottom = vertical(style.bottom);
+  let width = horizontal(style.width);
+  let height = vertical(style.height);
+  if (width === undefined && left !== undefined && right !== undefined) width = contentBox.w - left - right;
+  // Shrink-to-fit text is not measured here; the container width is the safe bound.
+  if (width === undefined) width = contentBox.w;
+  const x = left !== undefined
+    ? contentBox.x + left
+    : (right !== undefined ? contentBox.x + contentBox.w - width - right : contentBox.x);
+  let y = contentBox.y;
+  if (top !== undefined) y = contentBox.y + top;
+  else if (bottom !== undefined && height !== undefined) y = contentBox.y + (contentBox.h || 0) - height - bottom;
+  return {
+    x,
+    y,
+    w: Math.max(0, width),
+    explicitWidth: style.width !== undefined,
+    h: height === undefined ? null : height,
+    parentContentHeight: contentBox.h === undefined ? null : contentBox.h,
+    // No declared width and only a right offset: the box hugs the right edge.
+    hugRight: right !== undefined && left === undefined && style.width === undefined,
+    hugBottom: bottom !== undefined && top === undefined && height === undefined,
+    rightEdge: right === undefined ? undefined : contentBox.x + contentBox.w - right,
+    bottomEdge: bottom === undefined ? undefined : contentBox.y + (contentBox.h || 0) - bottom
+  };
+}
+
+/**
+ * Apply the anchor hints of a slot to the node it produced. A box that hugs an
+ * edge is resized to its content first: the measured text width for text, the
+ * whole container otherwise.
+ */
+function applyAnchorHints(node, slot) {
+  if (!node || !slot) return node;
+  if (slot.hugRight && Number.isFinite(slot.rightEdge)) {
+    if (node.kind === 'text' && typeof node.text === 'string' && node.text.indexOf('\n') === -1) {
+      const fontPt = node.fontSize || 18;
+      const natural = (measureTextPt(node.text, fontPt) / 72) * 1.02;
+      node.w = Math.max(0.2, Math.min(node.w, natural));
+    }
+    node.x = slot.rightEdge - node.w;
+  }
+  if (slot.hugBottom && Number.isFinite(slot.bottomEdge)) {
+    node.y = slot.bottomEdge - (Number.isFinite(node.h) ? node.h : 0);
+  }
+  return node;
 }
 
 function layoutFlex(domNode, contentBox, inherited, ctx) {
@@ -763,10 +988,23 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   if (!kids.length) return [];
 
   const alignItems = String(style.alignItems || 'stretch').toLowerCase();
+  // An absolute child is anchored to the container, never a flow item.
+  const absolute = kids
+    .filter((child) => isAbsolute(ctx.styles.computed(child)))
+    .map((child) => {
+      const slot = anchoredSlot(ctx.styles.computed(child), contentBox, inherited);
+      return applyAnchorHints(analyzeNode(child, slot, inherited, ctx), slot);
+    })
+    .filter(Boolean)
+    .map((node) => {
+      node.absolute = true;
+      return node;
+    });
+  const flow = kids.filter((child) => !isAbsolute(ctx.styles.computed(child)));
 
   if (direction === 'column') {
     let cursor = contentBox.y;
-    const nodes = kids.map((child) => {
+    const nodes = flow.map((child) => {
       const childStyle = ctx.styles.computed(child);
       const margins = childMargins(childStyle, { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
       const explicitWidth = inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
@@ -786,7 +1024,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       return node;
     }).filter(Boolean);
     // Cross-axis alignment inside a column; align-self wins for one child.
-    nodes.forEach((node) => {
+    nodes.filter((node) => !node.absolute).forEach((node) => {
       const align = node.alignSelf || alignItems;
       if (align === 'center') node.x = contentBox.x + (contentBox.w - node.w) / 2;
       else if (align === 'end' || align === 'flex-end') node.x = contentBox.x + contentBox.w - node.w;
@@ -795,41 +1033,41 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
         node.w = Math.max(node.w, contentBox.w);
       }
     });
-    return nodes;
+    return nodes.concat(absolute);
   }
 
-  const fixed = kids.map((child) => {
+  const fixed = flow.map((child) => {
     const childStyle = ctx.styles.computed(child);
     return inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
   });
-  const weights = kids.map((child, index) => {
+  const weights = flow.map((child, index) => {
     if (fixed[index] !== null) return 0;
     const value = Number(ctx.styles.computed(child).flex);
     return Number.isFinite(value) && value > 0 ? value : 1;
   });
   const fixedTotal = fixed.reduce((sum, value) => sum + (value || 0), 0);
   const weightTotal = weights.reduce((sum, value) => sum + value, 0);
-  const free = Math.max(0, contentBox.w - fixedTotal - gap * (kids.length - 1));
+  const free = Math.max(0, contentBox.w - fixedTotal - gap * (flow.length - 1));
   const widths = fixed.map((width, index) => (width !== null
     ? width
     : (weightTotal > 0 ? (free * weights[index]) / weightTotal : 0)));
 
-  const usedWidth = widths.reduce((sum, width) => sum + width, 0) + gap * (kids.length - 1);
+  const usedWidth = widths.reduce((sum, width) => sum + width, 0) + gap * (flow.length - 1);
   const slack = Math.max(0, contentBox.w - usedWidth);
   const justify = String(style.justifyContent || 'flex-start').toLowerCase();
   let startX = contentBox.x;
   let extraGap = 0;
   if (justify === 'center') startX += slack / 2;
   else if (justify === 'flex-end' || justify === 'end') startX += slack;
-  else if (justify === 'space-between' && kids.length > 1) extraGap = slack / (kids.length - 1);
+  else if (justify === 'space-between' && flow.length > 1) extraGap = slack / (flow.length - 1);
   else if (justify === 'space-around') {
-    startX += slack / (kids.length * 2);
-    extraGap = slack / kids.length;
+    startX += slack / (flow.length * 2);
+    extraGap = slack / flow.length;
   }
 
   let cursor = startX;
   const nodes = [];
-  kids.forEach((child, index) => {
+  flow.forEach((child, index) => {
     const node = analyzeNode(child, { x: cursor, y: contentBox.y, w: widths[index], h: null }, inherited, ctx);
     if (node) {
       const self = alignSelfOf(ctx.styles.computed(child));
@@ -841,14 +1079,14 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   // The row's cross size is its tallest item: stretch fills it, others align in it.
   if (nodes.length) {
     const tallest = nodes.reduce((max, node) => Math.max(max, node.h), 0);
-    nodes.forEach((node) => {
+    nodes.filter((node) => !node.absolute).forEach((node) => {
       const align = node.alignSelf || alignItems;
       if (align === 'stretch') node.h = Math.max(node.h, tallest);
       else if (align === 'center') node.y = contentBox.y + (tallest - node.h) / 2;
       else if (align === 'end' || align === 'flex-end') node.y = contentBox.y + tallest - node.h;
     });
   }
-  return nodes;
+  return nodes.concat(absolute);
 }
 
 /** Split a track list on top-level whitespace, keeping repeat(...) intact. */
@@ -1291,9 +1529,23 @@ function analyzeHtml(html, options = {}) {
       w: Math.max(0, pageSize.width - slideInset * 2),
       h: Math.max(0, pageSize.height - slideInset * 2)
     };
-    const children = layoutFlow(slideNode, contentBox,
-      { fontPx: 16, parentBox: contentBox, parentPaddingBox: slidePaddingBox }, ctx);
+    const rootContext = { fontPx: 16, parentBox: contentBox, parentPaddingBox: slidePaddingBox };
+    const rootDisplay = String(style.display || 'block').toLowerCase();
+    // The root is a real box: honour flex/grid instead of forcing block flow.
+    const children = rootDisplay === 'grid'
+      ? layoutGrid(slideNode, contentBox, rootContext, ctx)
+      : (rootDisplay === 'flex'
+        ? layoutFlex(slideNode, contentBox, rootContext, ctx)
+        : layoutFlow(slideNode, contentBox, rootContext, ctx));
     assignRoles(children);
+
+    // The root is not emitted as a container, so a decoration on it has no host.
+    ['before', 'after'].forEach((pseudo) => {
+      const declaration = ctx.styles.decoration(slideNode, pseudo);
+      if (!declaration) return;
+      recordUnsupported(ctx, slideNode, '::' + pseudo, declaration.content,
+        'A decoration on the slide root has no container to anchor to; put it on a card or panel');
+    });
 
     slides.push({
       index: index + 1,

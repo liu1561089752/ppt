@@ -375,6 +375,7 @@ function emptyCounters() {
     lines: 0,
     charts: 0,
     rotatedGroups: 0,
+    droppedDecorations: 0,
     declarativeContainers: 0,
     absoluteGroups: 0,
     containerFallbacks: [],
@@ -461,6 +462,7 @@ function containerElement(node, plan, resolvedTheme, report) {
 
   spec.padding = containerPadding(node);
 
+  if (node.overlays && node.overlays.length) spec.overlays = node.overlays;
   if (plan.columns) {
     spec.columns = Math.max(1, plan.columns);
     if (plan.tracks) spec.columnTracks = plan.tracks;
@@ -549,6 +551,8 @@ function textWithSurface(node, resolvedTheme, report) {
 
 /** Leaf element (text / image / table / line) for a node, with counters bumped. */
 function leafElement(node, resolvedTheme, report) {
+  // A decoration needs a container to overlay; a plain leaf cannot carry one.
+  if (node.overlays && node.overlays.length) report.droppedDecorations += node.overlays.length;
   const element = leafElementRotationFree(node, resolvedTheme, report);
   if (!element || node.rotate === undefined) return element;
   if (element.type === 'container') {
@@ -864,7 +868,8 @@ function buildDeckSpec(analysis, options = {}) {
 
     [
       'textElements', 'richTextElements', 'shapes', 'images', 'backgroundImages',
-      'tables', 'lines', 'charts', 'rotatedGroups', 'declarativeContainers', 'absoluteGroups'
+      'tables', 'lines', 'charts', 'rotatedGroups', 'droppedDecorations',
+      'declarativeContainers', 'absoluteGroups'
     ].forEach((key) => { report[key] += attemptReport[key]; });
     attemptReport.containerFallbacks.forEach((entry) => noteFallback(report, entry.reason));
     report.layoutAttempts = Math.max(report.layoutAttempts, attemptReport.layoutAttempts);

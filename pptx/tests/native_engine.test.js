@@ -1463,8 +1463,11 @@ test('html pipeline never lets pseudo rules deform the element they decorate', (
   assert.equal(element.background.fill, 'EEEEEE', 'pseudo background leaked');
   assert.equal(element.children[0].text, 'hello');
 
-  const reported = result.report.unsupportedDetails.map((entry) => entry.value);
-  assert.deepEqual(reported.sort(), ['.card::before', '.card:hover'],
+  const reported = result.report.unsupportedDetails
+    .map((entry) => entry.property + '=' + entry.value);
+  // ::before is no longer a blind selector: it reports its own reason (here: it
+  // is not absolutely positioned), and :hover is still only listed.
+  assert.deepEqual(reported.sort(), ['::before=""', 'selector=.card:hover'],
     'pseudo rules must be reported, not silently applied');
 });
 
@@ -1890,5 +1893,108 @@ test('html pipeline resolves @media blocks against the slide viewport', () => {
   assert.deepEqual(reported, ['(max-width: 600px)', 'print']);
   assert.ok(result.report.notes.some((note) => note.includes('@media block(s) applied at 1280x720')),
     'the applied count must be reported: ' + JSON.stringify(result.report.notes));
+});
+
+
+const DECORATION_HTML = [
+  '<html><head><style>',
+  '  .slide { position: relative; width: 1280px; height: 720px; background: #0F1C20; }',
+  '  .card {',
+  '    position: absolute; left: 60px; top: 80px; width: 460px; height: 180px;',
+  '    background: #FFFFFF; border-radius: 14px; padding: 24px 28px;',
+  '    display: flex; flex-direction: column; gap: 10px;',
+  '  }',
+  '  .card::before {',
+  '    content: ""; position: absolute; left: 0; top: 18px; width: 6px; height: 60px;',
+  '    background: #F2A24C; border-radius: 3px;',
+  '  }',
+  '  .card::after {',
+  '    content: "\\2192"; position: absolute; right: 18px; bottom: 14px;',
+  '    width: 40px; height: 30px; color: #0F1C20; font-size: 22px; text-align: center;',
+  '  }',
+  '  .card h3 { font-size: 20px; color: #16262B; }',
+  '  .card p { font-size: 13px; color: #5B6B70; }',
+  '  .badge { position: absolute; right: 40px; bottom: 40px; font-size: 12px; color: #9FB0B4; }',
+  '</style></head><body><main class="slide">',
+  '  <div class="card">',
+  '    <h3>带装饰的卡片</h3>',
+  '    <p>装饰条和箭头来自伪元素。</p>',
+  '  </div>',
+  '  <p class="badge">NATIVE</p>',
+  '</main></body></html>'
+].join('\n');
+
+test('html pipeline turns ::before and ::after into container overlays', () => {
+  const result = pipeline.convertHtml(DECORATION_HTML);
+  assert.deepEqual(result.errors, []);
+  const card = result.deck.slides[0].elements
+    .find((element) => element.type === 'container' && element.overlays && element.overlays.length);
+  assert.ok(card, 'the card must stay a declarative container carrying overlays');
+
+  const bar = card.overlays.find((overlay) => overlay.fill === 'F2A24C');
+  assert.ok(bar, 'the ::before accent bar must be an overlay');
+  // left: 0, top: 18px, 6px wide, 60px tall, 3px radius.
+  assert.ok(Math.abs(bar.x - 0) < 0.001);
+  assert.ok(Math.abs(bar.y - 18 / 96) < 0.01, 'y=' + bar.y);
+  assert.ok(Math.abs(bar.w - 6 / 96) < 0.001, 'w=' + bar.w);
+  assert.ok(Math.abs(bar.h - 60 / 96) < 0.001, 'h=' + bar.h);
+  assert.ok(Math.abs(bar.radius - 3 / 96) < 0.002, 'radius=' + bar.radius);
+
+  // content is decoded, so CSS escapes become real characters.
+  const arrow = card.overlays.find((overlay) => overlay.text === '\u2192');
+  assert.ok(arrow, 'the ::after content must decode to an arrow: '
+    + JSON.stringify(card.overlays.map((overlay) => overlay.text)));
+  assert.equal(arrow.color, '0F1C20');
+  assert.equal(arrow.fontSize, 16.5);
+
+  // The engine emits both decorations as real shapes/text.
+  const { layoutSlide } = require('../native/engine/layout');
+  const laid = layoutSlide(result.deck.slides[0], { width: 13.333, height: 7.5 }, result.deck.theme || {}, {});
+  const elements = Array.isArray(laid) ? laid : (laid.elements || []);
+  assert.ok(elements.some((element) => element.fill === 'F2A24C'), 'the accent bar must be emitted');
+  assert.ok(elements.some((element) => element.text === '\u2192'), 'the arrow must be emitted');
+  assert.equal(result.report.droppedDecorations, 0);
+});
+
+test('html pipeline reports decorations it cannot place instead of dropping them', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; }',
+    '  .card { position: absolute; left: 20px; top: 20px; width: 400px; height: 200px; }',
+    // No width/height: the box is auto-sized, which is not measured for decorations.
+    '  .card::before { content: ""; position: absolute; left: 10px; top: 10px; background: #F2A24C; }',
+    '</style></head><body><main class="slide">',
+    '<div class="card"><div>正文</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const reported = result.report.unsupportedDetails.filter((entry) => entry.property === '::before');
+  assert.equal(reported.length, 1, JSON.stringify(result.report.unsupportedDetails));
+  assert.match(reported[0].reason, /definite width and height/u);
+});
+
+test('html pipeline anchors right/bottom absolute children inside a flex column', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { position: relative; width: 1280px; height: 720px; display: flex;',
+    '    flex-direction: column; gap: 20px; padding: 64px; }',
+    '  h1 { font-size: 40px; }',
+    '  .stamp { position: absolute; right: 72px; bottom: 56px; font-size: 12px; }',
+    '</style></head><body><main class="slide"><h1>标题</h1>',
+    '<p class="stamp">NATIVE DECORATIONS</p></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const stamp = result.deck.slides[0].elements.find((element) => element.text === 'NATIVE DECORATIONS');
+  assert.ok(stamp, 'the stamp must survive absolute positioning inside a flex column');
+  // right: 72px against the padding box → 64px padding + 72px inset.
+  const rightEdge = stamp.x + stamp.w;
+  assert.ok(Math.abs(rightEdge - (13.333 - 64 / 96 - 72 / 96)) < 0.02,
+    'right edge ' + rightEdge.toFixed(3));
+  // bottom: 56px against the padded content box.
+  const bottomEdge = stamp.y + stamp.h;
+  assert.ok(Math.abs(bottomEdge - (7.5 - 64 / 96 - 56 / 96)) < 0.02,
+    'bottom edge ' + bottomEdge.toFixed(3));
+  // A shrink-to-fit box: the measured width is far narrower than the container.
+  assert.ok(stamp.w < 6, 'the box must hug its text, got ' + stamp.w);
 });
 

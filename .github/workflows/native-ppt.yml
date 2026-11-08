@@ -83,6 +83,7 @@ jobs:
           npm run pipeline:pptx
           npm run pipeline:parity
           npm run pipeline:chart
+          npm run pipeline:decor
           npm run audit:pipeline
           # The converted table must keep its declared column proportions.
           python scripts/verify_native_ooxml.py pipeline-converted/pipeline-converted.pptx --require-table --require-uneven-columns
@@ -120,6 +121,8 @@ jobs:
           npm run render:images
           npm run render:stress
           npm run render:pipeline
+          npm run render:chart
+          npm run render:decor
           npm run render:batch
           npm run render:theme
           npm run render:parity
@@ -130,13 +133,14 @@ jobs:
           python scripts/preview_deck.py native-images-demo.pptx --output-dir preview/images --sheet preview/images-sheet.png
           python scripts/preview_deck.py pipeline-converted/pipeline-converted.pptx --output-dir preview/pipeline --sheet preview/pipeline-sheet.png
           python scripts/preview_deck.py pipeline-converted/pipeline-chart.pptx --output-dir preview/chart --sheet preview/chart-sheet.png
+          python scripts/preview_deck.py pipeline-converted/pipeline-decorations.pptx --output-dir preview/decor --sheet preview/decor-sheet.png
       - name: Compare against reviewed golden slide images
         working-directory: pptx/native
         run: |
           set -e
           for deck in native-demo native-components-demo native-design-migration-demo \
                       native-design-parity-demo native-layouts-demo native-images-demo \
-                      native-stress-deck pipeline-converted pipeline-chart; do
+                      native-stress-deck pipeline-converted pipeline-chart pipeline-decorations; do
             golden="golden/$deck"
             if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
               python scripts/visual_regression.py \
