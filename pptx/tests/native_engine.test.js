@@ -3314,3 +3314,101 @@ test('a text box is exactly as tall as its lines, so stacked blocks do not drift
     'stacking drift: ' + (stacked[2].y - stacked[0].y));
 });
 
+
+test('aspect-ratio turns a width into a height, and yields to a declared height', async () => {
+  const build = (body, extra = '') => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .video { width: 600px; aspect-ratio: 16 / 9; ' + extra + ' }',
+    '</style></head><body><main class="slide">' + body + '</main></body></html>'
+  ].join('\n'));
+
+  const nodeOf = (result, className) => {
+    let found = null;
+    const walk = (nodes) => (nodes || []).forEach((node) => {
+      if ((node.classes || []).includes(className)) found = node;
+      walk(node.children);
+    });
+    walk(result.analysis.slides[0].nodes);
+    return found;
+  };
+
+  // 16/9 in a 600px box is 337.5px, so the box is 6.25 x 3.5156in.
+  const video = build('<div class="video"></div>');
+  assert.deepEqual(video.report.unsupportedDetails, []);
+  const box = nodeOf(video, 'video');
+  assert.ok(Math.abs(box.h - (600 / (16 / 9) / 96)) < 0.002, 'video height ' + box.h);
+  assert.ok(Math.abs((box.w / box.h) - 16 / 9) < 0.01, 'ratio ' + (box.w / box.h));
+
+  // A plain number works too, and `aspect-ratio: auto` is the initial value.
+  const square = nodeOf(build('<div class="video" style="width: 200px; aspect-ratio: 1"></div>'), 'video');
+  assert.ok(Math.abs(square.w - square.h) < 0.002, 'square ' + square.w + 'x' + square.h);
+  const auto = build('<div class="video" style="height: 50px; aspect-ratio: auto"></div>');
+  assert.deepEqual(auto.report.unsupportedDetails, []);
+  assert.ok(Math.abs(nodeOf(auto, 'video').h - (50 / 96)) < 0.002, 'declared height wins');
+
+  // A declared height always wins: the ratio only fills in a missing dimension.
+  const fixed = nodeOf(build('<div class="video" style="height: 100px"></div>'), 'video');
+  assert.ok(Math.abs(fixed.h - (100 / 96)) < 0.002, 'height kept ' + fixed.h);
+  assert.ok(Math.abs(fixed.w - 6.25) < 0.002, 'width kept ' + fixed.w);
+
+  // Images: the ratio sets the frame and `object-fit` decides the crop inside it.
+  await withTempDir('native-aspect-', (directory) => {
+    const file = writePngFixture(directory, 'wide.png', 800, 400);
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  img { width: 480px; aspect-ratio: 1 / 1; object-fit: cover; }',
+      '</style></head><body><main class="slide">',
+      '  <img src="' + file.replace(/\\/gu, '/') + '" alt="">',
+      '</main></body></html>'
+    ].join('\n'));
+    const image = result.deck.slides[0].elements.find((element) => element.type === 'image');
+    assert.ok(image, 'the image must survive');
+    assert.ok(Math.abs(image.h - (480 / 96)) < 0.002, 'square frame ' + image.h);
+    assert.equal(image.fit, 'cover');
+  });
+});
+
+
+test('stretch alignment never resizes a box whose CSS pinned that axis', () => {
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; flex-direction: row; align-items: stretch; width: 900px; }',
+    '  .tall { width: 300px; height: 300px; background: #EEEEEE; }',
+    '  .pinned { width: 200px; height: 80px; background: #DDDDDD; }',
+    '  .free { width: 200px; background: #CCCCCC; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="row"><div class="tall"></div><div class="pinned">pinned</div>',
+    '  <div class="free">free</div></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  const row = result.deck.slides[0].elements.find((element) => element.type === 'container');
+  assert.ok(row, 'the row must stay a declarative container');
+
+  const withText = (element, needle) => {
+    if (typeof element.text === 'string' && element.text.indexOf(needle) !== -1) return true;
+    return (element.children || []).some((child) => withText(child, needle));
+  };
+  const pinned = row.children.find((child) => withText(child, 'pinned'));
+  const free = row.children.find((child) => withText(child, 'free'));
+  assert.ok(pinned && free, 'both text boxes are row children');
+  assert.equal(pinned.fixedHeight, true, 'the pinned box travels with its flag');
+  assert.ok(Math.abs(pinned.h - (80 / 96)) < 0.002, 'the pinned box keeps its own height: ' + pinned.h);
+  assert.equal(free.fixedHeight, undefined);
+
+  // The engine replays the same rule: the pinned box keeps 80px, the free one fills.
+  const { layoutSlide } = require('../native/engine/layout');
+  const laid = layoutSlide(result.deck.slides[0], { width: 13.333, height: 7.5 }, result.deck.theme || {}, {});
+  const elements = Array.isArray(laid) ? laid : (laid.elements || []);
+  const pinnedBox = elements.find((element) => typeof element.text === 'string' && element.text.indexOf('pinned') !== -1);
+  const freeBox = elements.find((element) => typeof element.text === 'string' && element.text.indexOf('free') !== -1);
+  assert.ok(pinnedBox && freeBox, 'both boxes are emitted');
+  assert.ok(Math.abs(pinnedBox.h - (80 / 96)) < 0.002, 'pinned height ' + pinnedBox.h);
+  assert.ok(freeBox.h > 3, 'the unpinned box stretches: ' + freeBox.h);
+  assert.ok(Math.abs(pinnedBox.y - freeBox.y) < 0.002, 'a non-stretched item aligns at the start');
+});
+

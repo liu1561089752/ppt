@@ -60,7 +60,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
-  'writingMode', 'wordBreak', 'float', 'clear',
+  'writingMode', 'wordBreak', 'float', 'clear', 'aspectRatio',
   'objectFit', 'objectPosition', 'backgroundSize', 'backgroundPosition', 'zIndex', 'visibility'
 ]);
 
@@ -73,7 +73,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   // writing-mode is translated (see applyWritingMode) or reported there.
   'animation', 'transition', 'columns', 'columnCount',
   'backgroundClip', 'textShadow',
-  'textOverflow', 'hyphens', 'aspectRatio', 'inset',
+  'textOverflow', 'hyphens', 'inset',
   'justifySelf'
 ]);
 
@@ -812,6 +812,24 @@ function applyHeightConstraints(node, slot, ctx) {
   }
 }
 
+/**
+ * The number `aspect-ratio` asks for. A block with an auto height is as tall as its
+ * used width divided by this, which is what the property means; when the height is
+ * declared the ratio changes nothing, and CSS ignores it in that case too.
+ */
+function aspectRatioOf(style, width) {
+  const value = String(style.aspectRatio || '').trim().toLowerCase();
+  if (!value || value === 'auto') return null;
+  if (value.indexOf('auto') !== -1) return null;
+  const parts = value.split('/');
+  const ratio = parts.length === 2
+    ? Number(parts[0].trim()) / Number(parts[1].trim())
+    : Number(value);
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  if (!Number.isFinite(width) || width <= 0) return null;
+  return ratio;
+}
+
 function analyzeNodeTree(domNode, slot, inherited, ctx) {
   const style = ctx.styles.computed(domNode);
   if (style.display === 'none' || style.visibility === 'hidden') return null;
@@ -832,7 +850,11 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   const insetBottom = padding.bottom + (border ? border.width / 72 : 0);
 
   let width = slot.w === null || slot.w === undefined ? null : slot.w;
-  const explicitHeight = inchesOf(style.height, 'y', { parentWidth, parentHeight: slot.h, fontSizePx });
+  // With an auto height, `aspect-ratio` means "the height follows the used width".
+  // That is a real box, not a hint: a 16/9 card in a 600px column is 337.5px tall.
+  let explicitHeight = inchesOf(style.height, 'y', { parentWidth, parentHeight: slot.h, fontSizePx });
+  const aspectRatio = aspectRatioOf(style, width);
+  if (aspectRatio !== null && explicitHeight === null && width > 0) explicitHeight = width / aspectRatio;
   const styleWidth = (width === null || slot.explicitWidth)
     ? inchesOf(style.width, 'x', { parentWidth, fontSizePx })
     : null;
@@ -919,6 +941,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     border,
     children: []
   };
+  // Stretch alignment may size a box on its cross axis, but never one whose own
+  // CSS pinned that axis: an 80px chip in a 415px row stays 80px, top aligned.
+  if (declaresLength(style.height)) node.fixedHeight = true;
+  if (declaresLength(style.width)) node.fixedWidth = true;
 
   if (kind === 'unsupported') {
     recordUnsupported(ctx, domNode, 'element', domNode.tag, 'Element type has no native translation');
@@ -1136,6 +1162,14 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
  */
 function hasClear(style) {
   return String(style.clear || 'none').toLowerCase() !== 'none';
+}
+
+/** A CSS length that pins an axis; `auto`, `none` and the keywords do not. */
+function declaresLength(value) {
+  if (value === undefined || value === null) return false;
+  const text = String(value).trim().toLowerCase();
+  return text !== '' && text !== 'auto' && text !== 'none'
+    && text !== 'initial' && text !== 'inherit' && text !== 'unset';
 }
 
 /** `float: left|right` that has to be laid out; `none` and unset are not floats. */
@@ -1379,6 +1413,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       if (node) {
         const self = alignSelfOf(childStyle);
         if (self) node.alignSelf = self;
+        if (declaresLength(ctx.styles.computed(child).width)) node.fixedWidth = true;
         cursor = node.y + node.h + gap + margins.bottom;
       }
       return node;
@@ -1388,7 +1423,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       const align = node.alignSelf || alignItems;
       if (align === 'center') node.x = contentBox.x + (contentBox.w - node.w) / 2;
       else if (align === 'end' || align === 'flex-end') node.x = contentBox.x + contentBox.w - node.w;
-      else if (align === 'stretch') {
+      else if (align === 'stretch' && !node.fixedWidth) {
         node.x = contentBox.x;
         node.w = Math.max(node.w, contentBox.w);
       }
@@ -1451,7 +1486,9 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       const node = analyzeNode(child, { x: cursor, y: lineTop, w: widthsInLine[position], h: null }, inherited, ctx);
       if (node) {
         const self = alignSelfOf(ctx.styles.computed(child));
+        if (declaresLength(ctx.styles.computed(child).height)) node.fixedHeight = true;
         if (self) node.alignSelf = self;
+        if (declaresLength(ctx.styles.computed(child).width)) node.fixedWidth = true;
         // The engine replays these three numbers instead of re-reading the cascade.
         // A wrapped row states the base explicitly (0 = no base) so the engine
         // re-breaks the same lines instead of using the already distributed width.
@@ -1469,7 +1506,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     const tallestInLine = lineNodes.reduce((max, node) => Math.max(max, node.h), 0);
     lineNodes.forEach((node) => {
       const align = node.alignSelf || alignItems;
-      if (align === 'stretch') node.h = Math.max(node.h, tallestInLine);
+      if (align === 'stretch' && !node.fixedHeight) node.h = Math.max(node.h, tallestInLine);
       else if (align === 'center') node.y = lineTop + (tallestInLine - node.h) / 2;
       else if (align === 'end' || align === 'flex-end') node.y = lineTop + tallestInLine - node.h;
     });

@@ -360,6 +360,12 @@ function validateElement(p, element, errors) {
         if (element.vert !== undefined && !['eaVert', 'vert', 'vert270', 'mongolianVert'].includes(element.vert)) {
           errors.push(p + '.vert must be one of: eaVert, vert, vert270, mongolianVert');
         }
+        if (element.fixedWidth !== undefined && typeof element.fixedWidth !== 'boolean') {
+          errors.push(p + '.fixedWidth must be a boolean');
+        }
+        if (element.fixedHeight !== undefined && typeof element.fixedHeight !== 'boolean') {
+          errors.push(p + '.fixedHeight must be a boolean');
+        }
         if (element.bullet !== undefined && typeof element.bullet !== 'boolean' &&
             (typeof element.bullet !== 'object' || element.bullet === null || Array.isArray(element.bullet))) {
           errors.push(p + '.bullet must be a boolean or options object');

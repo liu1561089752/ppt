@@ -291,7 +291,8 @@ function placeRow(container, box, theme, options, sink) {
     const childAlign = child.alignSelf || align;
     let height = heights[index];
     let y = contentY;
-    if (childAlign === 'stretch') height = Math.max(height, innerHeight);
+    // A box whose CSS pinned its height keeps it: stretch only sizes the others.
+    if (childAlign === 'stretch' && !child.fixedHeight) height = Math.max(height, innerHeight);
     else if (childAlign === 'center') y = contentY + (innerHeight - height) / 2;
     else if (childAlign === 'end') y = contentY + innerHeight - height;
     emitElement(child, { x: cursorX, y, w: widths[index], h: height }, theme, options, sink);
@@ -350,7 +351,7 @@ function placeWrappedRow(container, box, theme, options, sink, frame) {
       const childAlign = child.alignSelf || align;
       let height = heights[position];
       let y = lineTop;
-      if (childAlign === 'stretch') height = Math.max(height, tallestInLine);
+    if (childAlign === 'stretch' && !child.fixedHeight) height = Math.max(height, tallestInLine);
       else if (childAlign === 'center') y = lineTop + (tallestInLine - height) / 2;
       else if (childAlign === 'end') y = lineTop + tallestInLine - height;
       emitElement(child, { x: cursorX, y, w: widthsInLine[position], h: height }, theme, options, sink);

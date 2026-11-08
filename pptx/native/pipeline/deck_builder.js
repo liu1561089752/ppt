@@ -259,7 +259,14 @@ function surfaceElementFromNode(node, resolvedTheme) {
  * Containers are layout-only, so a container's own single-side border travels as
  * `edge` and the engine draws the strip once the box is resolved.
  */
-function attachEdge(element, node) {
+/**
+ * Copy the parts of a node that describe its box rather than its content: the
+ * single-side border strip, and whether CSS pinned the width or the height. The
+ * engine needs the latter to know what stretch alignment may resize.
+ */
+function attachBoxFacts(element, node) {
+  if (node.fixedWidth) element.fixedWidth = true;
+  if (node.fixedHeight) element.fixedHeight = true;
   if (!node.edge) return element;
   element.edge = Object.assign({}, node.edge);
   return element;
@@ -523,7 +530,7 @@ function containerElement(node, plan, resolvedTheme, report) {
   const spec = { type: 'container', w: round4(node.w), h: round4(node.h) };
   if (Number.isFinite(node.x)) spec.x = round4(node.x);
   if (Number.isFinite(node.y)) spec.y = round4(node.y);
-  attachEdge(spec, node);
+  attachBoxFacts(spec, node);
 
   spec.padding = containerPadding(node);
 
@@ -620,7 +627,7 @@ function textWithSurface(node, resolvedTheme, report) {
     background: surface,
     children: [text]
   };
-  attachEdge(spec, node);
+  attachBoxFacts(spec, node);
   if (node.rotate !== undefined) {
     // The wrapper is layout-only, so the rotation goes on the surface (emitted
     // from `background` as a leading shape of the container's own box) and on the
@@ -637,7 +644,7 @@ function leafElement(node, resolvedTheme, report) {
   // A decoration needs a container to overlay; a plain leaf cannot carry one.
   if (node.overlays && node.overlays.length) report.droppedDecorations += node.overlays.length;
   const element = leafElementRotationFree(node, resolvedTheme, report);
-  if (element) attachEdge(element, node);
+  if (element) attachBoxFacts(element, node);
   if (!element || node.rotate === undefined) return element;
   if (element.type === 'container') {
     // A surface + text wrapper: rotate every leaf inside it, since the wrapper
