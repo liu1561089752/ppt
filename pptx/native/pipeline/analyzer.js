@@ -3836,7 +3836,22 @@ function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSize
   return widths.map((width) => (width === null ? remainder : width));
 }
 
-const CHART_TYPES = new Set(['bar', 'line', 'pie', 'doughnut', 'area']);
+const CHART_TYPES = new Set(['bar', 'line', 'pie', 'doughnut', 'area', 'radar']);
+
+// The names a designer reaches for. `column` is the same drawing as `bar` with the
+// bars standing up, `hbar` the same one lying down, `donut` the doughnut - spelling
+// them out here is the difference between a chart and a table nobody expected.
+const CHART_ALIASES = {
+  column: { type: 'bar', barDir: 'col' },
+  columns: { type: 'bar', barDir: 'col' },
+  verticalbar: { type: 'bar', barDir: 'col' },
+  hbar: { type: 'bar', barDir: 'bar' },
+  barh: { type: 'bar', barDir: 'bar' },
+  horizontalbar: { type: 'bar', barDir: 'bar' },
+  donut: { type: 'doughnut' },
+  ring: { type: 'doughnut' },
+  spider: { type: 'radar' }
+};
 
 /** The first table inside a node, so data-chart works on a wrapper too. */
 function findTableNode(domNode) {
@@ -3935,14 +3950,17 @@ function readChart(domNode, ctx) {
   const attrs = domNode.attrs || {};
   const requested = String(attrs['data-chart'] || '').trim().toLowerCase();
   if (!requested) return null;
-  if (!CHART_TYPES.has(requested)) {
+  const alias = CHART_ALIASES[requested] || null;
+  const resolved = alias ? alias.type : requested;
+  if (!CHART_TYPES.has(resolved)) {
     recordUnsupported(ctx, domNode, 'data-chart', requested,
-      'Unknown chart type; use bar, line, pie, doughnut or area');
+      'Unknown chart type; use bar or column, line, area, pie, doughnut or radar');
     return null;
   }
 
   const options = {};
   applyChartStyling(attrs, options, domNode, ctx);
+  if (alias && alias.barDir && attrs['data-chart-dir'] === undefined) options.barDir = alias.barDir;
   const title = attrs['data-chart-title'];
 
   let data = null;
@@ -3985,14 +4003,14 @@ function readChart(domNode, ctx) {
     }];
   }
 
-  const shareChart = requested === 'pie' || requested === 'doughnut';
+  const shareChart = resolved === 'pie' || resolved === 'doughnut';
   if (options.showLegend === undefined) options.showLegend = data.length > 1 || shareChart;
   if (shareChart && options.showPercent === undefined) options.showPercent = true;
   if (title) {
     options.showTitle = true;
     options.title = title;
   }
-  return { chartType: requested, data, options };
+  return { chartType: resolved, data, options };
 
 }
 

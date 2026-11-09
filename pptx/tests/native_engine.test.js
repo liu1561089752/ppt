@@ -6753,6 +6753,55 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('column, hbar, donut and radar are names for real charts', async () => {
+  // A designer writes `column`, `hbar`, `donut` or `radar`; each one is the same
+  // DrawingML chart under a different name, and reporting them as unknown types turned
+  // a chart into a table nobody expected.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const build = (attrs) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 800px; }',
+    '</style></head><body><main class="slide">',
+    '<table ' + attrs + '><tr><th>项目</th><th>甲</th></tr>',
+    '<tr><td>一月</td><td>30</td></tr><tr><td>二月</td><td>50</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const chartOf = async (attrs) => {
+    const result = build(attrs);
+    const output = path.join(os.tmpdir(), 'native-chart-alias-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const name = Object.keys(zip.files).find((entry) => /^ppt\/charts\/chart\d+\.xml$/u.test(entry));
+    const xml = name ? await zip.file(name).async('string') : '';
+    fs.rmSync(output, { force: true });
+    return {
+      kind: (/<c:(\w+Chart)>/u.exec(xml) || [])[1] || null,
+      direction: (/<c:barDir val="(\w+)"/u.exec(xml) || [])[1] || null,
+      reported: result.report.unsupportedDetails.map((entry) => entry.property)
+    };
+  };
+
+  const column = await chartOf('data-chart="column"');
+  assert.equal(column.kind, 'barChart', 'column is a bar chart');
+  assert.equal(column.direction, 'col', 'with upright columns');
+  assert.deepEqual(column.reported, [], 'and nothing to report');
+
+  const horizontal = await chartOf('data-chart="hbar"');
+  assert.equal(horizontal.direction, 'bar', 'hbar lies down');
+
+  const overridden = await chartOf('data-chart="column" data-chart-dir="bar"');
+  assert.equal(overridden.direction, 'bar', 'an explicit direction still wins');
+
+  assert.equal((await chartOf('data-chart="donut"')).kind, 'doughnutChart', 'donut is the doughnut');
+  assert.equal((await chartOf('data-chart="radar"')).kind, 'radarChart', 'radar is native');
+  assert.equal((await chartOf('data-chart="spider"')).kind, 'radarChart', 'and spider is its other name');
+});
+
 test('position: fixed anchors to the slide, the way print does', () => {
   // A browser pins a fixed element to its scrolling viewport, which for a deck means
   // wherever the preview window happens to be; paged media pins it to the page box,

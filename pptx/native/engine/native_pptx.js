@@ -185,7 +185,8 @@ function addElement(slide, el, theme, pptx, context = {}) {
       line: pptx.ChartType.line,
       pie: pptx.ChartType.pie,
       doughnut: pptx.ChartType.doughnut,
-      area: pptx.ChartType.area
+      area: pptx.ChartType.area,
+      radar: pptx.ChartType.radar
     };
     const chartType = chartTypes[el.chartType || 'bar'];
     if (!chartType) throw new Error('Unsupported chart type: ' + el.chartType);
