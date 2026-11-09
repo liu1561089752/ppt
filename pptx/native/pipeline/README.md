@@ -73,6 +73,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | font shorthand | Expands to the longhands (style/variant/weight, size, line-height, family - the family kept verbatim incl. comma stacks); unparsable forms stay whole and are named |
 | ::marker colour | Read per `li`; one agreed colour becomes `a:buClr` in the patched `a:pPr`; items that disagree are named instead of silently picking one |
 | caption-side | `bottom` drops the caption under the grid (grid keeps the node top, caption box at grid bottom minus its height); default top unchanged. Chrome-verified |
+| text-transform full-width | ASCII printables map onto U+FF01-FF5E; uppercase/lowercase/capitalize unchanged |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
 

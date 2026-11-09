@@ -5645,3 +5645,28 @@ test('caption-side: bottom moves the caption under the grid', () => {
   }
 });
 
+
+test('text-transform: full-width maps the ASCII range onto fullwidth forms', () => {
+  const build = (markup, css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + (css || ''),
+    '</style></head><body><main class="slide">', markup, '</main></body></html>'
+  ].join('\n'));
+  const textOf = (result) => {
+    const element = result.deck.slides[0].elements[0];
+    return typeof element.text === 'string' ? element.text : (element.text || []).map((run) => run.text).join('');
+  };
+
+  // The CJK typographic request: every ASCII printable gains its fullwidth cousin.
+  const wide = build('<p class="b">Price: $1,200 (USD)</p>', '.b { text-transform: full-width; }');
+  assert.equal(textOf(wide), 'Ｐｒｉｃｅ： ＄１，２００ （ＵＳＤ）');
+  assert.deepEqual(wide.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  // The other transforms keep their behaviour (guards against a regression here).
+  const upper = build('<p class="b">hello</p>', '.b { text-transform: uppercase; }');
+  assert.equal(textOf(upper), 'HELLO');
+  const cap = build('<p class="b">hello world</p>', '.b { text-transform: capitalize; }');
+  assert.equal(textOf(cap), 'Hello World');
+});
+

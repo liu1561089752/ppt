@@ -998,6 +998,12 @@ function transformText(value, transform) {
   if (transform === 'capitalize') {
     return value.replace(/(^|[\s\u3000])([a-z])/gu, (match, lead, letter) => lead + letter.toUpperCase());
   }
+  // `full-width` maps the ASCII range onto its fullwidth forms (U+FF01-FF5E) - the
+  // CJK typographic request, and the characters already exist in the CJK fonts the
+  // deck embeds by face.
+  if (transform === 'full-width') {
+    return value.replace(/[!-~]/gu, (character) => String.fromCharCode(character.charCodeAt(0) + 0xFEE0));
+  }
   return value;
 }
 
