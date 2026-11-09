@@ -6667,6 +6667,39 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('decoration style and sub/superscript spell at the run level', async () => {
+  // dotted/wavy underlines collapse to a plain one, and vertical-align sub/super
+  // carries a baseline offset: both are DrawingML run properties the writer already
+  // forwards. Pinned at the XML level.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .a { text-decoration: underline dotted; } .b2 { text-decoration: underline wavy; } .c { text-decoration: underline; }',
+    '  .c2 { vertical-align: sub; } .d { vertical-align: super; }',
+    '</style></head><body><main class="slide">',
+    '<p><span class="a">点线</span><span class="b2">波浪</span><span class="c">普通</span><span class="c2">下</span><span class="d">上</span></p>',
+    '</main></body></html>'
+  ].join('\n'));
+  const output = path.join(os.tmpdir(), 'native-deco-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(/u="dotted"/.test(xml), 'dotted underline spelled');
+    assert.ok(/u="wavy"/.test(xml), 'wavy underline spelled');
+    assert.ok(/u="sng"/.test(xml), 'plain underline stays single');
+    assert.ok(/baseline="-40000"/.test(xml), 'subscript baseline offset');
+    assert.ok(/baseline="30000"/.test(xml), 'superscript baseline offset');
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
+
 test('doughnut hole size and legend font size map to reader options', () => {
   // Two more reader-native chart settings that were reported away as unknown:
   // holeSize (10-90) and legendFontSize. Out-of-range values are named, not clamped.

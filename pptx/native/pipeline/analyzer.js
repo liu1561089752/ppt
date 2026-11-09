@@ -980,7 +980,12 @@ function buildRuns(domNode, baseStyle, ctx) {
   const decorationOptions = (style, tag) => {
     const options = {};
     const decoration = String((style && (style.textDecorationLine || style.textDecoration)) || '').toLowerCase();
-    if (decoration.includes('underline') || tag === 'u' || tag === 'ins') options.underline = true;
+    if (decoration.includes('underline') || tag === 'u' || tag === 'ins') {
+      // DrawingML spells the decoration style on the same u= attribute: dotted,
+      // dashed, wavy, double. A plain underline stays the boolean.
+      const style = /\b(dotted|dashed|wavy|double)\b/iu.exec(decoration);
+      options.underline = style ? style[1].toLowerCase() : true;
+    }
     if (decoration.includes('line-through') || tag === 's' || tag === 'del' || tag === 'strike') {
       options.strike = true;
     }
