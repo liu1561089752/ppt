@@ -7121,6 +7121,107 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
+test('a background picture survives its container and paints above its own fill', async () => {
+  // Two silent losses, found by rendering a card with a background picture - the slide looked
+  // like plain coloured boxes. (1) `background-image` paints *above* `background-color`; the
+  // picture was pushed before its own box, so the box's fill covered it. (2) A child of a
+  // container cannot carry a picture - a container child has no coordinates of its own - and
+  // the picture was dropped without a word. The group falls back to absolute placement now,
+  // which draws the picture and the box.
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAYAAAATu1kYAAAAJUlEQVR42u3NMQEAAAgDoC251a3gLzSgknB3VwEBAQEBAQEBAQEBAQEBAQHA1wABl6y0GQAAAABJRU5ErkJggg==';
+  const markup = (inner) => [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .row { display: flex; gap: 20px; }',
+    '  .card { width: 210px; }',
+    '  .b { width: 210px; height: 120px; background-image: url(' + PNG + '); background-color: #EEF2F1; }',
+    '</style></head><body><main class="slide">', inner, '</main></body></html>'
+  ].join('\n');
+
+  const flat = pipeline.convertHtml(markup('<div class="b"></div>'));
+  const flatTypes = flat.deck.slides[0].elements.map((element) => element.type);
+  assert.ok(flatTypes.includes('image'), 'the picture is in the deck: ' + flatTypes.join('+'));
+  assert.ok(flatTypes.indexOf('image') > flatTypes.indexOf('shape'),
+    'and it paints above its own fill, not under it: ' + flatTypes.join('+'));
+
+  for (const inner of [
+    '<div class="wrap"><div class="b"></div></div>',
+    '<div class="row"><div class="b"></div></div>',
+    '<div class="row"><div class="card"><div class="b"></div></div></div>'
+  ]) {
+    const nested = pipeline.convertHtml(markup(inner));
+    const count = nested.deck.slides[0].elements.filter((element) => element.type === 'image').length;
+    assert.equal(count, 1, 'one picture, not zero: ' + inner);
+  }
+});
+
+test('a background-size that names a length draws at that length', async () => {
+  // `background-size` was cover, contain, 100% 100% or nothing: anything else fell through to
+  // `contain`, so `background-size: 120px` drew a 1.875in picture where the design asked for
+  // 1.25in. The declared size is resolved per axis now - a length, a percentage of the box,
+  // or `auto` from the source's proportions - and a picture bigger than its box is cropped to
+  // the box, which is what the browser's own clipping shows.
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAYAAAATu1kYAAAAJUlEQVR42u3NMQEAAAgDoC251a3gLzSgknB3VwEBAQEBAQEBAQEBAQEBAQHA1wABl6y0GQAAAABJRU5ErkJggg==';
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const picture = async (css) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  div.b { width: 240px; height: 120px; background-image: url(' + PNG + '); ' + css + ' }',
+      '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+    ].join('\n'));
+    const output = path.join(os.tmpdir(), 'native-bgsize-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    const pic = xml.slice(xml.indexOf('<p:pic>'), xml.indexOf('</p:pic>'));
+    const offset = /<a:off x="(-?\d+)" y="(-?\d+)"\/>/u.exec(pic);
+    const extent = /<a:ext cx="(\d+)" cy="(\d+)"\/>/u.exec(pic);
+    const srcRect = /<a:srcRect([^/>]*)\/?>/u.exec(pic);
+    const inch = (emu) => Number(emu) / 914400;
+    return {
+      x: inch(offset[1]), y: inch(offset[2]), w: inch(extent[1]), h: inch(extent[2]),
+      crop: srcRect ? srcRect[1].trim() : ''
+    };
+  };
+  const close = (actual, expected) => Math.abs(actual - expected) < 0.003;
+
+  // 120px is 1.25in wide; the picture is 24x16, so the height follows at 0.833in, centred in
+  // a 240x120 box that starts at 0.4167in.
+  const sized = await picture('background-size: 120px;');
+  assert.ok(close(sized.w, 1.25), 'width is the declared 120px: ' + sized.w);
+  assert.ok(close(sized.h, 0.8333), 'height follows the source aspect: ' + sized.h);
+  assert.ok(close(sized.x, 1.0417), 'centred horizontally: ' + sized.x);
+  assert.ok(close(sized.y, 0.625), 'centred vertically: ' + sized.y);
+
+  // One axis by the source, one by the design; and a percentage of the box.
+  const heightOnly = await picture('background-size: auto 80px;');
+  assert.ok(close(heightOnly.h, 0.8333) && close(heightOnly.w, 1.25), 'auto 80px: ' + heightOnly.w + 'x' + heightOnly.h);
+  const half = await picture('background-size: 50%;');
+  assert.ok(close(half.w, 1.25), 'half the box is 1.25in: ' + half.w);
+  const both = await picture('background-size: 120px 80px;');
+  assert.ok(close(both.w, 1.25) && close(both.h, 0.8333), 'both axes written: ' + both.w + 'x' + both.h);
+
+  // The position still places it: right bottom puts it at the box's corner.
+  const corner = await picture('background-size: 120px; background-position: right bottom;');
+  assert.ok(close(corner.x, 1.6667) && close(corner.y, 0.8333), 'placed at the corner: ' + corner.x + ',' + corner.y);
+
+  // Bigger than its box: the picture becomes the box and the browser's clipping becomes a
+  // source rectangle - 300px of 240 leaves 10% cut on each side, 200px of 120 leaves 20%.
+  const big = await picture('background-size: 300px;');
+  assert.ok(close(big.w, 2.5) && close(big.h, 1.25), 'the drawn picture is the box: ' + big.w + 'x' + big.h);
+  assert.match(big.crop, /l="10000"/u, 'a centred clip: ' + big.crop);
+  assert.match(big.crop, /t="20000"/u, 'vertically too: ' + big.crop);
+  const cornerClip = await picture('background-size: 300px; background-position: left top;');
+  assert.match(cornerClip.crop, /l="0"/u, 'left top shows the top left: ' + cornerClip.crop);
+  assert.match(cornerClip.crop, /r="20000"/u, 'and cuts the rest away: ' + cornerClip.crop);
+});
+
 test('a background picture stretches, crops and is placed like its CSS says', async () => {
   // A background picture is not an <img>, so it has its own path - and it had its own two
   // silent drops. `background-size: 100% 100%` arrived as the fit-mode spelling "stretch",

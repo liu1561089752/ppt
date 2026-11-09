@@ -1577,6 +1577,29 @@ function gradientOf(style) {
   return null;
 }
 
+/**
+ * `background-size` per axis: a length in inches, a percentage of the box, or `auto`.
+ * `cover` and `contain` are not sizes here - they are fits, and the layer carries them.
+ */
+function backgroundSizeSpec(size) {
+  const text = String(size || '').trim().toLowerCase();
+  if (!text || text === 'auto' ) return [{ auto: true }, { auto: true }];
+  if (text === 'cover' || text === 'contain') return null;
+  const tokens = text.split(/\s+/u).filter(Boolean).slice(0, 2);
+  const axis = (token) => {
+    if (!token || token === 'auto') return { auto: true };
+    const length = parseLength(token);
+    if (!length) return null;
+    if (length.unit === '%') return { percent: length.value };
+    const inches = toInches(length, {});
+    return Number.isFinite(inches) && inches > 0 ? { inches } : null;
+  };
+  const first = axis(tokens[0]);
+  const second = axis(tokens[1]);
+  if (!first || !second) return null;
+  return [first, second];
+}
+
 /** Turn `background-position` into a nine-grid focus preset or a {x,y} pair. */
 function parseBackgroundFocus(value) {
   if (!value) return 'center';
@@ -1655,7 +1678,7 @@ function backgroundImageOf(style) {
   const positionText = String(rawPosition || '').trim().toLowerCase().replace(/\s+/gu, ' ');
   const lengthPosition = /^-?[\d.]+(px|pt|in|cm|mm)( -?[\d.]+(px|pt|in|cm|mm)?)?$/u.test(positionText);
   const focus = lengthPosition ? positionText : parseBackgroundFocus(rawPosition);
-  return { src, fit, size: size || 'auto', focus };
+  return { src, fit, size: size || 'auto', sizeSpec: backgroundSizeSpec(size), focus };
 }
 
 module.exports = {

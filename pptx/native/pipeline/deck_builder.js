@@ -27,6 +27,9 @@
 const defaultTheme = require('../themes/default');
 const { resolveTheme } = require('../themes/design_system');
 const { layoutSlide } = require('../engine/layout');
+// Background pictures are sized and placed here, before the picture element exists, so the
+// focus arithmetic is the engine's rather than a second copy of it.
+const { normalizeFocus } = require('../engine/image_fit');
 const {
   parseColor,
   parseBoxShadow,
@@ -554,6 +557,13 @@ function containerPlan(node, state) {
   if (children.some((child) => child.floated)) {
     return { ok: false, reason: 'children are floated' };
   }
+  // A child that paints a picture behind itself cannot be a container child: a container
+  // child has no coordinates of its own, and a picture is placed by geometry. Without this
+  // the picture was dropped in silence - a card with a background image inside a flex row
+  // drew its colour and no image. The absolute path draws both, so the group falls back.
+  if (children.some((child) => child.backgroundImage)) {
+    return { ok: false, reason: 'a child paints a background image' };
+  }
 
   let direction = 'column';
   let columns = null;
@@ -809,6 +819,72 @@ function rotateLeaves(element, degrees) {
 
 /** Intrinsic pixel size from an image header: PNG, JPEG and GIF are read directly;
  *  anything else returns null and the caller falls back to filling its box. */
+/**
+ * Geometry for a `background-image`, from `background-size` and `background-position`.
+ * A size that is not `cover`/`contain`/`auto` is a drawn size: it is resolved per axis
+ * (a length in inches, a percentage of the box, or `auto` from the source's proportions),
+ * placed by the position, and - when it is bigger than the box - cropped to the box, which
+ * is what the browser's clipping shows.
+ */
+function backgroundPictureGeometry(layer, box, natural) {
+  layer = layer || {};
+  const declared = String(layer.size || 'auto');
+  // `cover` and `contain` are the layer's own fit, resolved by the engine; this function is
+  // for the sizes that name a length or a percentage.
+  if (declared === 'cover' || declared === 'contain') return null;
+  const spec = layer.sizeSpec;
+  const focus = normalizeFocus(layer.focus, {
+    natural: natural ? { width: natural.widthPx, height: natural.heightPx } : null,
+    box,
+    fit: 'contain'
+  });
+  if (!natural) return null;
+  const naturalW = natural.widthPx / 96;
+  const naturalH = natural.heightPx / 96;
+  const axis = (entry, boxSize) => {
+    if (!entry || entry.auto) return null;
+    if (entry.percent !== undefined) return (boxSize * entry.percent) / 100;
+    if (entry.inches !== undefined) return entry.inches;
+    return null;
+  };
+  let w = axis(spec && spec[0], box.w);
+  let h = axis(spec && spec[1], box.h);
+  if (w === null && h === null) {
+    // Both axes auto: the picture keeps its own size, clipped to the box.
+    w = Math.min(naturalW, box.w);
+    h = Math.min(naturalH, box.h);
+  } else {
+    if (w === null) w = h * (naturalW / naturalH);
+    if (h === null) h = w * (naturalH / naturalW);
+  }
+  if (!(w > 0) || !(h > 0)) return null;
+  const offsetX = (box.w - w) * focus.x;
+  const offsetY = (box.h - h) * focus.y;
+  if (w <= box.w + 0.0001 && h <= box.h + 0.0001) {
+    return { x: box.x + offsetX, y: box.y + offsetY, w, h, fit: 'stretch', crop: null, focus };
+  }
+  // Bigger than its box: the drawn picture is the box, and what the browser clips away is a
+  // source rectangle - the same arithmetic `computeCoverCrop` does, with the position in it.
+  const left = Math.max(0, -offsetX / w);
+  const top = Math.max(0, -offsetY / h);
+  const visibleW = Math.min(1, box.w / w);
+  const visibleH = Math.min(1, box.h / h);
+  return {
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    fit: 'crop',
+    crop: {
+      left: Math.min(left, Math.max(0, 1 - visibleW)),
+      top: Math.min(top, Math.max(0, 1 - visibleH)),
+      right: Math.max(0, 1 - visibleW - left),
+      bottom: Math.max(0, 1 - visibleH - top)
+    },
+    focus
+  };
+}
+
 function intrinsicImageSize(src) {
   try {
     if (typeof src !== 'string') return null;
@@ -890,6 +966,17 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     return textElementFromNode(node, null, resolvedTheme);
   }
   if (node.kind === 'image') {
+    // A background picture with an explicit `background-size` is drawn at that size; the
+    // geometry is resolved before the element is built, because the element carries a box.
+    if (node.backgroundSizeSpec && !node.backgroundNatural) {
+      const geometry = backgroundPictureGeometry(
+        { size: node.backgroundSize, sizeSpec: node.backgroundSizeSpec, focus: node.focus, fit: node.objectFit },
+        boxOf(node), intrinsicImageSize(node.src));
+      if (geometry) {
+        node = { ...node, x: geometry.x, y: geometry.y, w: geometry.w, h: geometry.h,
+          objectFit: geometry.fit, crop: geometry.crop || undefined, focus: undefined };
+      }
+    }
     if (node.backgroundNatural) {
       const natural = intrinsicImageSize(node.src);
       if (natural) {
@@ -1074,23 +1161,33 @@ function containerChild(node, parentPlan, context) {
 function emitAbsolute(node, context) {
   const { resolvedTheme, elements, report, state, probes, owners, ownerId } = context;
   if (!node || node.hidden || node.w <= 0.01 || node.h <= 0.01) return;
+  // Pictures and scrims above them are held back until the box that holds them is emitted:
+  // `background-image` paints above `background-color`, and a scrim above the picture. Pushed
+  // first, the box'''s own fill covered both.
+  const deferredPaint = [];
+  const flushDeferredPaint = () => {
+    while (deferredPaint.length) elements.push(deferredPaint.shift());
+  };
 
   if (node.backgroundImage) {
-    // `background-size: auto` draws at the picture's natural size, centred - not
-    // stretched over the box.
-    let natural = null;
-    if ((node.backgroundImage.size || 'auto') === 'auto') natural = intrinsicImageSize(node.backgroundImage.src);
+    // `background-size` decides the drawn size: the natural size, a length, a percentage, or
+    // the box itself for `cover`/`contain`. `backgroundPictureGeometry` resolves the first
+    // three - including the clip a picture bigger than its box needs.
+    const natural = intrinsicImageSize(node.backgroundImage.src);
+    const geometry = backgroundPictureGeometry(node.backgroundImage, boxOf(node), natural);
     let pictureW = node.w;
     let pictureH = node.h;
     let pictureX = xOf(node);
     let pictureY = yOf(node);
-    if (natural) {
-      const naturalW = natural.widthPx / 96;
-      const naturalH = natural.heightPx / 96;
-      pictureW = Math.min(naturalW, node.w);
-      pictureH = Math.min(naturalH, node.h);
-      pictureX = xOf(node) + Math.max(0, (node.w - pictureW) / 2);
-      pictureY = yOf(node) + Math.max(0, (node.h - pictureH) / 2);
+    let pictureFit = node.backgroundImage.fit;
+    let pictureCrop = null;
+    if (geometry) {
+      pictureW = geometry.w;
+      pictureH = geometry.h;
+      pictureX = geometry.x;
+      pictureY = geometry.y;
+      pictureFit = geometry.fit;
+      pictureCrop = geometry.crop;
     }
     const picture = imageElementFromNode({
       src: node.backgroundImage.src,
@@ -1098,16 +1195,22 @@ function emitAbsolute(node, context) {
       y: pictureY,
       w: pictureW,
       h: pictureH,
-      objectFit: natural ? 'contain' : node.backgroundImage.fit,
+      objectFit: geometry ? pictureFit : node.backgroundImage.fit,
       focus: node.backgroundImage.focus,
+      crop: pictureCrop || undefined,
       radius: node.radius,
       alt: ''
     });
     if (picture) {
       picture._probe = 'bg-' + node.id;
-      probes.set(picture._probe, boxOf(node));
+      // The probe is the box the picture is drawn in, not the box that holds it: a
+      // background the design sized smaller than its card is right, and measuring it
+      // against the card reported a 1.8in disagreement for a picture that was correct.
+      probes.set(picture._probe, { x: pictureX, y: pictureY, w: pictureW, h: pictureH });
       owners.set(picture._probe, ownerId);
-      elements.push(picture);
+      // Held back until the box that holds it is emitted: `background-image` paints *above*
+      // `background-color`, so pushing the picture first let its own fill cover it.
+      deferredPaint.push(picture);
       report.images += 1;
       report.backgroundImages += 1;
     }
@@ -1132,7 +1235,7 @@ function emitAbsolute(node, context) {
         scrim._probe = 'scrim-' + node.id;
         probes.set(scrim._probe, boxOf(node));
         owners.set(scrim._probe, ownerId);
-        elements.push(scrim);
+        deferredPaint.push(scrim);
         report.shapes += 1;
       }
     }
@@ -1149,6 +1252,7 @@ function emitAbsolute(node, context) {
         owners.set(spec.background._probe, ownerId);
       }
       emitContainerChildren(spec, node, plan, Object.assign({}, context, { ownerId: node.id }));
+      flushDeferredPaint();
       elements.push(spec);
       return;
     }
@@ -1162,6 +1266,7 @@ function emitAbsolute(node, context) {
       elements.push(surface);
       report.shapes += 1;
     }
+    flushDeferredPaint();
     (node.children || []).forEach((child) =>
       emitAbsolute(child, Object.assign({}, context, { ownerId: node.id })));
     return;
@@ -1174,6 +1279,7 @@ function emitAbsolute(node, context) {
       elements.push(strip);
       report.shapes += 1;
     }
+    flushDeferredPaint();
     emitLeafOverlays(node, context, elements);
     return;
   }
@@ -1194,6 +1300,7 @@ function emitAbsolute(node, context) {
   probes.set(node.id, boxOf(node));
   owners.set(node.id, ownerId);
   elements.push(element);
+  flushDeferredPaint();
   emitLeafOverlays(node, context, elements);
 }
 

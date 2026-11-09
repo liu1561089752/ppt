@@ -2457,6 +2457,10 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
         node.objectFit = 'contain';
       } else {
         node.objectFit = layer.fit;
+        // A `background-size` that names a length or a percentage is a drawn size, not a
+        // fit; it travels to the emitter, which is the only place with the source size.
+        node.backgroundSize = layer.size;
+        node.backgroundSizeSpec = layer.sizeSpec || null;
       }
       node.focus = layer.focus;
       checkCornerMix(domNode, style, ctx);

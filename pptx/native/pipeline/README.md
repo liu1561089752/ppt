@@ -136,6 +136,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | cell decoration | underline (with style) and strike from the cell's own CSS |
 | `text-overflow: clip` overflow | named with the measured widths, only when the line really exceeds the box |
 | `object-position` lengths | read with the source size and box; contain places, cover shifts the crop |
+| `background-size: <length>` / `<percent>` / `auto` | a drawn size per axis; bigger than the box becomes a source-rectangle crop |
+| background picture paint order | held back until its box is emitted: above the fill, below the children |
+| background picture on a container child | the group falls back to absolute placement, named as a container fallback |
 | `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |
 | cell text-transform | applied to the characters before measuring |
 | cell small-caps / word-spacing / text-shadow / text-indent | named once per table |
