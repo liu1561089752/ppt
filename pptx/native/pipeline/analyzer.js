@@ -580,6 +580,9 @@ function checkUnsupported(ctx, domNode, style) {
     // subset report would call `no-repeat` and `none` unsupported when they ask
     // for exactly what the native side does.
     if (property === 'listStyle' || property === 'listStyleType' || property === 'backgroundRepeat') return;
+    // `table-layout: fixed` is the model this solver implements (declared or equal
+    // columns, content wraps rather than stretches), so it says nothing.
+    if (property === 'tableLayout') return;
     if (UNSUPPORTED_ALWAYS.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'CSS feature has no native translation');
     } else if (!SUPPORTED_PROPERTIES.has(property)) {
