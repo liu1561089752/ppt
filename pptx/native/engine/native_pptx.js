@@ -497,6 +497,63 @@ async function patchGradientFills(outputPath, deck, laidOut) {
   fs.writeFileSync(outputPath, buffer);
 }
 
+/**
+ * An inset `box-shadow` is DrawingML's `<a:innerShdw>`, which PptxGenJS cannot write: its
+ * `shadow` option always produces an outer shadow. The node is patched into the shape's
+ * `spPr` here, beside any outer shadow the writer already emitted.
+ */
+function innerShadowXml(shadow) {
+  const direction = Math.round((((Number(shadow.angle) || 0) % 360) + 360) % 360 * 60000);
+  // Points, not EMU: rounding the inches first turned a 1.5pt offset into 2pt.
+  const blur = Math.max(0, Number(shadow.blur) || 0);
+  const distance = Math.max(0, Number(shadow.distance) || 0);
+  return '<a:innerShdw blurRad="' + Math.round(blur * EMU_PER_POINT) + '"'
+    + ' dist="' + Math.round(distance * EMU_PER_POINT) + '"'
+    + ' dir="' + direction + '">'
+    + '<a:srgbClr val="' + cleanColor(shadow.color, '000000') + '">'
+    + '<a:alpha val="' + Math.round((Number(shadow.opacity) || 0.2) * 100000) + '"/>'
+    + '</a:srgbClr></a:innerShdw>';
+}
+
+function applyInnerShadow(shapeXml, shadow) {
+  // Idempotent: a repeated patch replaces its own node instead of stacking a second one.
+  let xml = shapeXml.replace(/<a:innerShdw\b[\s\S]*?<\/a:innerShdw>/gu, '');
+  const node = innerShadowXml(shadow);
+  if (/<a:effectLst>([\s\S]*?)<\/a:effectLst>/u.test(xml)) {
+    return xml.replace(/<a:effectLst>([\s\S]*?)<\/a:effectLst>/u,
+      (whole, inner) => '<a:effectLst>' + inner.replace(/^\s*<a:effectLst\/>|^\s*$/u, '') + node + '</a:effectLst>');
+  }
+  if (/<a:effectLst\/>/u.test(xml)) return xml.replace('<a:effectLst/>', '<a:effectLst>' + node + '</a:effectLst>');
+  // No effect list yet: CT_ShapeProperties puts effectLst after ln and before scene3d/extLst,
+  // and the writer emits nothing after ln for a plain shape, so the end of spPr is right.
+  if (!/<\/p:spPr>/u.test(xml)) throw new Error('Unable to locate spPr for an inner shadow patch');
+  return xml.replace(/<\/p:spPr>/u, '<a:effectLst>' + node + '</a:effectLst></p:spPr>');
+}
+
+async function patchInnerShadows(outputPath, deck, laidOut) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let patched = 0;
+  for (let slideIndex = 0; slideIndex < deck.slides.length; slideIndex++) {
+    const shapes = serializedShapes(laidOut, slideIndex, deck);
+    if (!shapes.some((element) => element.innerShadow)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    let xml = await file.async('string');
+    let shapeIndex = 0;
+    xml = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapes[shapeIndex++];
+      if (!element || !element.innerShadow) return whole;
+      patched += 1;
+      return '<p:sp>' + applyInnerShadow(inner, element.innerShadow) + '</p:sp>';
+    });
+    zip.file(name, xml);
+  }
+  if (!patched) return;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+}
+
 async function applyEastAsianFontPatch(outputPath, fontFace) {
   if (!fontFace) return;
   const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
@@ -914,6 +971,9 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchTextColumns(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);
+  if (laidOutShapes.some((elements) => elements.some((element) => element.innerShadow))) {
+    await patchInnerShadows(outputPath, deck, result.laidOut);
+  }
   await patchImageEffects(outputPath, result.imagePlans);
   if (laidOutShapes.some((elements) => elements.some((element) => element.type === 'chart'
     && element.chartType === 'scatter'))) {
@@ -938,5 +998,6 @@ module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
   applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
-  applyTextIndent, patchTextIndents, applyMarkerColour
+  applyTextIndent, patchTextIndents, applyMarkerColour,
+  innerShadowXml, applyInnerShadow, patchInnerShadows
 };

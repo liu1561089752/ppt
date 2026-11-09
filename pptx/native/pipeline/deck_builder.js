@@ -33,6 +33,7 @@ const { normalizeFocus } = require('../engine/image_fit');
 const {
   parseColor,
   parseBoxShadow,
+  parseInnerShadow,
   backgroundOf,
   backgroundOverlayGradientOf,
   evaluateInches,
@@ -250,9 +251,12 @@ function surfaceElementFromNode(node, resolvedTheme) {
   const background = backgroundOf(style);
   const gradient = gradientOf(style);
   const shadow = parseBoxShadow(style.boxShadow || '');
+  // An inset shadow is DrawingML's `<a:innerShdw>`, which the writer patches in: PptxGenJS
+  // has no option for it. A box that only carries an inset shadow still needs a surface.
+  const innerShadow = parseInnerShadow(style.boxShadow || '');
   const radius = node.radius === undefined ? null : node.radius;
   const border = node.border;
-  if (!background && !gradient && !shadow && !border) return null;
+  if (!background && !gradient && !shadow && !innerShadow && !border) return null;
 
   const element = {
     type: 'shape',
@@ -282,12 +286,13 @@ function surfaceElementFromNode(node, resolvedTheme) {
     element.lineWidth = border.width;
     if (border.transparency) element.lineTransparency = border.transparency;
     if (border.dash) element.lineDash = border.dash;
-  } else if (!background && !gradient && !shadow) {
+  } else if (!background && !gradient && !shadow && !innerShadow) {
     return null;
   } else {
     element.line = false;
   }
   if (shadow) element.shadow = shadow;
+  if (innerShadow) element.innerShadow = innerShadow;
   const opacity = node.opacity === undefined ? Number(style.opacity) : node.opacity;
   if (Number.isFinite(opacity) && opacity < 1) element.transparency = Math.round((1 - opacity) * 100);
   return element;

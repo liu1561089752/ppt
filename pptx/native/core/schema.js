@@ -9,25 +9,30 @@ const IMAGE_FOCUS_PRESETS = new Set([
   'left top', 'right top', 'left bottom', 'right bottom'
 ]);
 
-function validateShadowOptions(prefix, element, errors) {
-  const shadow = element.shadow;
+/**
+ * `shadow` is the outer shadow; `innerShadow` is the inset one, written as `<a:innerShdw>`.
+ * They share a shape, so they share a validator - the key decides the message.
+ */
+function validateShadowOptions(prefix, element, errors, key = 'shadow') {
+  const shadow = element[key];
   if (shadow === undefined || shadow === false || shadow === true) return;
+  const field = prefix + '.' + key;
   if (typeof shadow !== 'object' || Array.isArray(shadow)) {
-    errors.push(prefix + '.shadow must be a boolean or options object');
+    errors.push(field + ' must be a boolean or options object');
     return;
   }
   if (shadow.opacity !== undefined && (!Number.isFinite(shadow.opacity) || shadow.opacity < 0 || shadow.opacity > 1)) {
-    errors.push(prefix + '.shadow.opacity must be between 0 and 1');
+    errors.push(field + '.opacity must be between 0 and 1');
   }
-  ['blur', 'distance'].forEach((key) => {
-    if (shadow[key] !== undefined && (!Number.isFinite(shadow[key]) || shadow[key] < 0)) {
-      errors.push(prefix + '.shadow.' + key + ' must be finite and non-negative');
+  ['blur', 'distance'].forEach((name) => {
+    if (shadow[name] !== undefined && (!Number.isFinite(shadow[name]) || shadow[name] < 0)) {
+      errors.push(field + '.' + name + ' must be finite and non-negative');
     }
   });
-  if (shadow.angle !== undefined && !Number.isFinite(shadow.angle)) errors.push(prefix + '.shadow.angle must be finite');
-  if (shadow.type !== undefined && !['outer', 'inner'].includes(shadow.type)) errors.push(prefix + '.shadow.type must be outer or inner');
+  if (shadow.angle !== undefined && !Number.isFinite(shadow.angle)) errors.push(field + '.angle must be finite');
+  if (shadow.type !== undefined && !['outer', 'inner'].includes(shadow.type)) errors.push(field + '.type must be outer or inner');
   if (shadow.color !== undefined && (typeof shadow.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(shadow.color))) {
-    errors.push(prefix + '.shadow.color must be a six-digit hex color');
+    errors.push(field + '.color must be a six-digit hex color');
   }
 }
 
@@ -352,6 +357,8 @@ function validateElement(p, element, errors) {
       if (element.type === 'image') {
         validateImageFit(p, element, errors);
         validateShadowOptions(p, element, errors);
+  validateShadowOptions(p, element, errors, 'innerShadow');
+    validateShadowOptions(p, element, errors, 'innerShadow');
       }
       if (element.type === 'line' && element.width !== undefined &&
           (!Number.isFinite(element.width) || element.width <= 0)) {
@@ -420,6 +427,8 @@ function validateElement(p, element, errors) {
           }
         });
         validateShadowOptions(p, element, errors);
+  validateShadowOptions(p, element, errors, 'innerShadow');
+    validateShadowOptions(p, element, errors, 'innerShadow');
       }
       if (element.gradient !== undefined) {
         if (element.type !== 'shape') errors.push(p + '.gradient is only supported on shapes');

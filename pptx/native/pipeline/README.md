@@ -148,6 +148,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `<col>` + cell widths | the `<col>` width wins for its column, cell widths fill the rest |
 | fixed columns wider than the table | scaled into the box and named (`12.50in of columns in a 8.33in table`) |
 | row height | a minimum: `tr` height is the row box, `td` height is a content height (+ padding), content wins when taller |
+| `box-shadow` inset layer | written as `<a:innerShdw>` in the same `effectLst` as the outer one (WPS draws it; LibreOffice ignores it) |
+| `box-shadow` with both kinds | each kind keeps its first layer instead of the whole declaration being dropped |
 | `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |
 | cell text-transform | applied to the characters before measuring |
 | cell small-caps / word-spacing / text-shadow / text-indent | named once per table |

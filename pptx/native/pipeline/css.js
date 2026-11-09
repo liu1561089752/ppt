@@ -1424,24 +1424,35 @@ function parseLinearGradient(value) {
 function boxShadowNote(value) {
   const text = String(value === undefined || value === null ? '' : value).trim();
   if (!text || text === 'none') return null;
-  if (/\binset\b/iu.test(text)) return 'An inset shadow paints inside the box; only an outer shadow is translated';
   const layers = splitTopLevel(text, ',');
-  if (layers.length > 1) return 'Only the first shadow layer is translated';
-  const shadow = parseBoxShadow(text);
+  const outer = layers.filter((layer) => !/\binset\b/iu.test(layer));
+  const inner = layers.filter((layer) => /\binset\b/iu.test(layer));
+  // One layer of each kind is translated - an outer shadow as `<a:outerShdw>`, an inset one
+  // as `<a:innerShdw>` - so an inset panel with an outer lift keeps both. Past the first of
+  // each kind there is nothing left to draw, and a spread has no native attribute.
+  if (outer.length > 1 || inner.length > 1) return 'Only the first shadow layer of each kind is translated';
+  const shadow = (outer.length ? parseBoxShadow(text) : null) || (inner.length ? parseInnerShadow(text) : null);
   if (!shadow) return null;
-  if (shadow.spread) return 'The spread of a shadow is dropped: a native outer shadow carries offset, blur and colour';
+  if (shadow.spread) return 'The spread of a shadow is dropped: a native shadow carries offset, blur and colour';
   return null;
 }
 
 function parseBoxShadow(value) {
   const text = String(value || '').trim();
   if (!text || text === 'none') return null;
-  // A layered declaration translates its first layer - the one that carries most of the
-  // look - and boxShadowNote names the rest. An inset layer is refused whole: an inner
-  // shadow is not what a native outer shadow paints, and halving it would be a wrong one.
-  const body = text.includes('inset') ? null
-    : splitTopLevel(text, ',').filter((layer) => !/\binset\b/iu.test(layer))[0] || null;
+  // A layered declaration translates its first layer of each kind - the one that carries
+  // most of the look - and boxShadowNote names the rest. An inset layer is not refused
+  // whole: it is an inner shadow, which DrawingML spells `<a:innerShdw>`, so a design with
+  // an inset panel and an outer lift keeps both instead of losing them together.
+  const body = splitTopLevel(text, ',').filter((layer) => !/\binset\b/iu.test(layer))[0] || null;
   if (!body) return null;
+  return parseShadowLayer(body);
+}
+
+/**
+ * One shadow layer, whichever side of the box it paints on.
+ */
+function parseShadowLayer(body) {
   // Hex letters are case-insensitive in CSS: without A-F, `#C05B3E` fragmented into
   // stray lengths (05, 3), which poisoned the spread and reported a working shadow.
   const tokens = body.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}|[a-z]+|-?[\d.]+(?:px|em|rem|pt)?)/gu);
@@ -1471,6 +1482,18 @@ function parseBoxShadow(value) {
     angle: Number.isFinite(angle) ? (angle + 360) % 360 : 45,
     spread: (spread || 0) * 72
   };
+}
+
+/**
+ * The inset layer of a `box-shadow` declaration - DrawingML's `<a:innerShdw>`. The geometry
+ * is the same as an outer shadow; only the side of the box it paints on differs.
+ */
+function parseInnerShadow(value) {
+  const text = String(value || '').trim();
+  if (!text || text === 'none') return null;
+  const body = splitTopLevel(text, ',').filter((layer) => /\binset\b/iu.test(layer))[0] || null;
+  if (!body) return null;
+  return parseShadowLayer(body);
 }
 
 /** Parse `border: 1px solid #ddd` or `border-width`/`border-color` pairs. */
@@ -1707,6 +1730,7 @@ module.exports = {
   backgroundOverlayGradientOf,
   untranslatedBackgroundLayers,
   parseBoxShadow,
+  parseInnerShadow,
   parseBorder,
   backgroundOf,
   gradientOf,

@@ -4512,10 +4512,13 @@ test('a box-shadow becomes a native outer shadow with the CSS direction', () => 
   ].join('\n'));
   const reasons = spread.report.unsupportedDetails
     .filter((entry) => entry.property === 'boxShadow').map((entry) => entry.reason);
-  assert.equal(reasons.length, 3, 'spread, inset and a second layer are each reported');
+  assert.equal(reasons.length, 2, 'a spread and a second layer are each reported');
   assert.ok(reasons.some((reason) => reason.includes('spread')));
-  assert.ok(reasons.some((reason) => reason.includes('inset')));
   assert.ok(reasons.some((reason) => reason.includes('first shadow layer')));
+  assert.ok(!reasons.some((reason) => reason.includes('inset')),
+    'an inset layer is an inner shadow now, so it is not a gap');
+  const elements = spread.deck.slides[0].elements;
+  assert.ok(elements.some((element) => element.innerShadow), 'the inset box keeps its shadow');
 });
 
 test('opacity fades a leaf, multiplies with the colour alpha, and is reported on a subtree', () => {
@@ -5745,6 +5748,52 @@ test('text-decoration is a run property, and the values without one are named', 
 });
 
 
+test('an inset shadow is written as an inner effect, beside the outer one', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  // PptxGenJS has no inner shadow, so the node is patched into the shape's spPr. Checked in
+  // the part: 6px of blur is 4.5pt (57150 EMU), a 2px offset is 1.5pt (19050), straight down
+  // is 90 degrees (5400000). WPS draws it; LibreOffice ignores <a:innerShdw>, so this page is
+  // not part of the two-reader comparison.
+  const html = [
+    '<html><head><style>',
+    '  * { box-sizing: border-box; }',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  .card { width: 300px; height: 160px; background: #FFFFFF; padding: 16px; }',
+    '  .pressed { box-shadow: inset 0 2px 6px rgba(0,0,0,0.30); }',
+    '  .both { box-shadow: inset 0 2px 6px rgba(0,0,0,0.30), 0 6px 14px rgba(0,0,0,0.25); }',
+    '</style></head><body><main class="slide">',
+    '<div class="card pressed">a</div><div class="card both">b</div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.report.unsupportedDetails, [], 'an inner shadow is not a gap any more');
+  const file = path.join(os.tmpdir(), 'inner-shadow-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, file);
+    const zip = await JSZip.loadAsync(fs.readFileSync(file));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const inner = [...xml.matchAll(/<a:innerShdw blurRad="(\d+)" dist="(\d+)" dir="(\d+)"/gu)];
+    assert.equal(inner.length, 2, 'both cards carry an inner shadow');
+    assert.equal(Number(inner[0][1]), 57150, '6px of blur is 4.5pt');
+    assert.equal(Number(inner[0][2]), 19050, '2px of offset is 1.5pt, not rounded to 2');
+    assert.equal(Number(inner[0][3]), 5400000, 'straight down is 90 degrees');
+    const outer = [...xml.matchAll(/<a:outerShdw/gu)];
+    assert.equal(outer.length, 1, 'the outer layer of the mixed declaration survives');
+    // One effect list per shape: the inner node lives beside the outer one, not in its own
+    // effectLst, which would be schema-invalid.
+    const lists = [...xml.matchAll(/<a:effectLst>([\s\S]*?)<\/a:effectLst>/gu)].map((match) => match[1]);
+    assert.equal(lists.length, 2);
+    assert.ok(lists.some((inner1) => inner1.includes('outerShdw') && inner1.includes('innerShdw')),
+      'the mixed card keeps both effects in one list');
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
 test('a box-shadow parses its hex colour and its first layer', () => {
   const build = (css) => pipeline.convertHtml([
     '<html><head><style>',
@@ -5769,11 +5818,24 @@ test('a box-shadow parses its hex colour and its first layer', () => {
   assert.deepEqual(layered.report.unsupportedDetails.map((entry) => entry.property), ['boxShadow'],
     'the second layer is named, not dropped in silence');
 
-  // An inset declaration is refused whole: an outer shadow would be the wrong look.
+  // An inset declaration is an inner shadow now: DrawingML spells it `<a:innerShdw>`, so it
+  // travels as `innerShadow` and is not reported at all. It used to be refused whole, and a
+  // declaration that carried an inset layer beside an outer one lost both.
   const inset = build('.b { width: 200px; height: 80px; background: #fff;'
     + ' box-shadow: inset 0 2px 6px rgba(0,0,0,0.3); }');
-  assert.equal(inset.deck.slides[0].elements[0].shadow, undefined);
-  assert.deepEqual(inset.report.unsupportedDetails.map((entry) => entry.property), ['boxShadow']);
+  const insetShadow = inset.deck.slides[0].elements[0].innerShadow;
+  assert.ok(insetShadow, 'the inset layer becomes an inner shadow');
+  assert.equal(inset.deck.slides[0].elements[0].shadow, undefined, 'and not an outer one');
+  assert.equal(Number(insetShadow.blur.toFixed(2)), 4.5, '6px is 4.5pt');
+  assert.equal(Number(insetShadow.distance.toFixed(2)), 1.5, '2px is 1.5pt');
+  assert.equal(Number(insetShadow.opacity.toFixed(2)), 0.3);
+  assert.deepEqual(inset.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const both = build('.b { width: 200px; height: 80px; background: #fff;'
+    + ' box-shadow: inset 0 2px 6px rgba(0,0,0,0.3), 0 6px 14px rgba(0,0,0,0.25); }');
+  assert.ok(both.deck.slides[0].elements[0].shadow, 'the outer layer still lands');
+  assert.ok(both.deck.slides[0].elements[0].innerShadow, 'and so does the inset one');
+  assert.deepEqual(both.report.unsupportedDetails.map((entry) => entry.property), []);
 });
 
 

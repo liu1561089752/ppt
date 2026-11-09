@@ -53,6 +53,17 @@
   .check .row::before { content: "\2192  "; color: #C05B3E; font-weight: 700; }
   .check .row::after { content: "  \00B7  " attr(data-k); color: #93A09B; font-size: 11px; }
 
+  /* ---- 深度页 ---- */
+  /* box-shadow 的 inset 层是 <a:innerShdw>，外阴影是 <a:outerShdw>；一层压下去、一层抬起来，
+     同一张卡片可以两者都有。 */
+  .depth { display: flex; gap: 26px; margin-top: 8px; }
+  .panel { flex: 1; height: 260px; background: #FFFFFF; border-radius: 14px; padding: 24px; }
+  .panel h3 { margin: 0 0 10px; font-size: 16px; font-weight: 600; color: #17332F; }
+  .panel p { margin: 0; font-size: 13px; line-height: 1.85; color: #55605C; }
+  .pressed { box-shadow: inset 0 4px 18px rgba(23, 51, 47, 0.45); }
+  .lifted { box-shadow: 0 10px 26px rgba(23, 51, 47, 0.22); }
+  .both { box-shadow: inset 0 4px 18px rgba(23, 51, 47, 0.38), 0 10px 26px rgba(23, 51, 47, 0.22); }
+
   .foot { position: absolute; left: 64px; bottom: 36px; font-size: 11px; color: #9AA5A1; }
 </style>
 </head>
@@ -126,6 +137,26 @@
     <div class="row" data-k="P2"><b>视觉回归</b>：金标已上锁，参考画面仍需人工判断</div>
   </div>
   <div class="foot">::before / ::after 的字是这一行的 run · 标签取自 data-k</div>
+</main>
+
+<main class="slide">
+  <div class="kicker">Depth · 阴影</div>
+  <h1>一层压下去，一层抬起来</h1>
+  <div class="depth">
+    <div class="panel pressed">
+      <h3>内阴影</h3>
+      <p>inset 层写成 a:innerShdw。WPS 画出来，LibreOffice 忽略它，所以这页不进双读取器比对。</p>
+    </div>
+    <div class="panel lifted">
+      <h3>外阴影</h3>
+      <p>普通层写成 a:outerShdw：偏移、模糊、方向与颜色透明度都按 CSS 换算。</p>
+    </div>
+    <div class="panel both">
+      <h3>两者都有</h3>
+      <p>两层各取第一层：以前遇到 inset 整条丢掉，内外阴影一起消失。</p>
+    </div>
+  </div>
+  <div class="foot">内阴影与外阴影都是可编辑的形状效果，不是贴图。</div>
 </main>
 
 </body>
