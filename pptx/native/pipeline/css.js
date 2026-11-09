@@ -42,7 +42,31 @@ function camelCase(property) {
 
 function parseDeclarations(text) {
   const declarations = [];
-  String(text || '').split(';').forEach((chunk) => {
+  // A naive `split(';')` cuts a data URI apart: the base64 payload carries semicolons
+  // (`image/png;base64,`), so the layer lost its tail. Scan instead, honouring quotes
+  // and parentheses.
+  const text0 = String(text || '');
+  const chunks = [];
+  let chunkStart = 0;
+  let quote = null;
+  let parenDepth = 0;
+  for (let scan = 0; scan < text0.length; scan += 1) {
+    const ch = text0[scan];
+    if (quote) {
+      if (ch === String.fromCharCode(92)) scan += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === String.fromCharCode(39)) { quote = ch; continue; }
+    if (ch === '(') parenDepth += 1;
+    else if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+    else if (ch === ';' && parenDepth === 0) {
+      chunks.push(text0.slice(chunkStart, scan));
+      chunkStart = scan + 1;
+    }
+  }
+  chunks.push(text0.slice(chunkStart));
+  chunks.forEach((chunk) => {
     const colon = chunk.indexOf(':');
     if (colon === -1) return;
     const property = chunk.slice(0, colon).trim().toLowerCase();

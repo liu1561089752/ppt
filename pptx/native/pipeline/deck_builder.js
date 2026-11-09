@@ -809,6 +809,28 @@ function leafElementRotationFree(node, resolvedTheme, report) {
   if (node.hidden) return null;
   if (node.kind === 'text' || node.kind === 'list') {
     if (!node.text && !node.runs) return null;
+    // A background picture behind text: the image element first (document order
+    // paints it beneath), then the text on top - both stay editable.
+    if (node.bgImage && node.bgImage.src) {
+      const imageNode = {
+        kind: 'image', x: xOf(node), y: yOf(node), w: node.w, h: node.h,
+        src: node.bgImage.src, alt: '', objectFit: node.bgImage.fit || 'cover',
+        focus: node.bgImage.focus, style: {}
+      };
+      const image = imageElementFromNode(imageNode);
+      const text = textElementFromNode(node, null, resolvedTheme);
+      if (image && text) {
+        report.images += 1;
+        report.textElements += 1;
+        if (node.runs) report.richTextElements += 1;
+        delete text.x; delete text.y;
+        return {
+          type: 'container', x: Number(xOf(node).toFixed(4)), y: Number(yOf(node).toFixed(4)),
+          w: Number(node.w.toFixed(4)), h: Number(Math.max(0.02, node.h).toFixed(4)),
+          direction: 'column', children: [image, text]
+        };
+      }
+    }
     report.textElements += 1;
     if (node.runs) report.richTextElements += 1;
     const wrapped = textWithSurface(node, resolvedTheme, report);

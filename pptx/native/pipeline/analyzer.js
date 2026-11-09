@@ -1944,6 +1944,18 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   if (kind === 'text' || kind === 'list') {
     // A list item is measured on its flattened text: each item is its own paragraph, and the
     // run array only decides which paragraph breaks where.
+    // A background picture behind text is a real native pair - the picture element
+    // first, the text on top - so the layer travels with the node instead of
+    // vanishing behind the words.
+    const textLayer = backgroundImageOf(style);
+    if (textLayer) {
+      node.bgImage = { src: textLayer.src, fit: textLayer.fit, focus: textLayer.focus };
+      untranslatedBackgroundLayers(style).forEach((what) => {
+        recordUnsupported(ctx, domNode,
+          'backgroundImage', style.backgroundImage || style.background,
+          'Only one picture layer behind the text can be painted: ' + what + ' is dropped');
+      });
+    }
     const measured = measureTextElement(domNode, style, contentWidth, fontSizePx, ctx,
       { richHeight: kind !== 'list' });
     Object.assign(node, measured);

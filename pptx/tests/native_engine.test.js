@@ -1,6 +1,8 @@
 'use strict';
 
 const test = require('node:test');
+const analyzer = require('../native/pipeline/analyzer.js');
+const css = require('../native/pipeline/css.js');
 const assert = require('node:assert/strict');
 const { toInches, normalizePageSize } = require('../native/core/units');
 const { validateDeck } = require('../native/core/schema');
@@ -6607,5 +6609,39 @@ test('vertical glyph defaults stay silent, alternatives are named', () => {
   ].join('\n'));
   const note = list.report.unsupportedDetails.find((entry) => entry.property === 'listStylePosition');
   assert.ok(note.reason.includes('hang'), 'the reason names the real limitation: ' + note.reason);
+});
+
+
+test('a background picture behind text draws as image-under-text', () => {
+  // The scrim idiom with a photo instead of a gradient: `background: url(...) no-repeat
+  // center` on a text box. The layer used to vanish (a naive split(';') first cut the
+  // data URI at its payload semicolons, then the text kind never consulted the layer).
+  const analysis = analyzer.analyzeHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { width: 300px; height: 120px; background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==") no-repeat center; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">bg text</div></main></body></html>'
+  ].join('\n'));
+  const textNode = analysis.slides[0].nodes.find((entry) => entry.kind === 'text');
+  assert.ok(textNode.bgImage && textNode.bgImage.src.startsWith('data:image/png'), 'the layer travels with the text node');
+  const deck = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { width: 300px; height: 120px; background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==") no-repeat center; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">bg text</div></main></body></html>'
+  ].join('\n'));
+  const container = deck.deck.slides[0].elements[0];
+  assert.deepEqual(container.children.map((child) => child.type), ['image', 'text'],
+    'the image element paints beneath the text, both editable');
+});
+
+test('data URIs survive declaration parsing', () => {
+  // `background: url("data:image/png;base64,...")` carries semicolons inside the value;
+  // the naive split cut the payload and silently lost the layer.
+  const sheet = css.parseStylesheet('.b { background-image: url("data:image/png;base64,AAAA"); color: red; }');
+  const declarations = sheet.rules[0].declarations;
+  assert.equal(declarations.length, 2);
+  assert.match(declarations[0].value, /base64,AAAA/);
+  assert.equal(declarations[1].value, 'red');
 });
 
