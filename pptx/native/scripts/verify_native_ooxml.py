@@ -36,6 +36,52 @@ R_ID_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 R_ATTRS = {"id", "embed", "link", "pict"}
 
 
+# The schema is a sequence, not a set. PowerPoint enforces the order of these children
+# and answers a swapped pair with an offer to repair the file; a renderer that reads
+# children by name does not care, so the order has to be checked here.
+# Each entry is the ordered list of slots a container allows; a slot may hold one of
+# several alternatives, which is how the fill and the bullet groups work.
+CHILD_ORDER = {
+    "spPr": [["xfrm"], ["custGeom", "prstGeom"], ["noFill", "solidFill", "gradFill",
+                                       "blipFill", "pattFill", "grpFill"],
+              ["ln"], ["effectLst", "effectDag"], ["scene3d"], ["sp3d"], ["extLst"]],
+    "rPr": [["ln"], ["noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill"],
+             ["effectLst", "effectDag"], ["highlight"], ["uLnTx", "uLn"],
+             ["uFillTx", "uFill"], ["latin"], ["ea"], ["cs"], ["sym"],
+             ["hlinkClick"], ["hlinkMouseOver"], ["rtl"], ["extLst"]],
+    "pPr": [["lnSpc"], ["spcBef"], ["spcAft"], ["buClrTx", "buClr"],
+             ["buSzTx", "buSzPct", "buSzPts"], ["buFontTx", "buFont"],
+             ["buNone", "buAutoNum", "buChar", "buBlip"], ["tabLst"], ["defRPr"], ["extLst"]],
+    "bodyPr": [["prstTxWarp"], ["noAutofit", "normAutofit", "spAutoFit"],
+                ["scene3d"], ["sp3d"], ["flatTx"], ["extLst"]],
+    "tcPr": [["lnL"], ["lnR"], ["lnT"], ["lnB"], ["lnTlToBr"], ["lnBlToTr"],
+              ["cell3D"], ["noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill"],
+              ["headers"], ["extLst"]],
+    "ln": [["noFill", "solidFill", "gradFill", "pattFill"], ["prstDash", "custDash"],
+           ["round", "bevel", "miter"], ["headEnd"], ["tailEnd"], ["extLst"]],
+}
+
+
+def audit_child_order(root: ET.Element) -> list[str]:
+    """Every container the writer patches, checked against its schema sequence."""
+    problems: list[str] = []
+    for element in root.iter():
+        container = local_name(element.tag)
+        slots = CHILD_ORDER.get(container)
+        if slots is None:
+            continue
+        reached = -1
+        for child in list(element):
+            name = local_name(child.tag)
+            index = next((position for position, slot in enumerate(slots) if name in slot), None)
+            if index is None:
+                problems.append(f"<{container}> holds <{name}>, which the schema does not allow there")
+                continue
+            if index < reached:
+                problems.append(f"<{container}> puts <{name}> after a later slot")
+            reached = max(reached, index)
+    return problems
+
 def audit_integrity(path: Path) -> list[str]:
     """Package-level checks a reader runs before it draws anything.
 
@@ -175,6 +221,7 @@ def inspect(path: Path) -> dict[str, int]:
         for name in slide_names:
             root = ET.fromstring(archive.read(name))
             problems.extend(audit_enums(root))
+            problems.extend(audit_child_order(root))
             counts["shapes"] += len(root.findall(".//p:sp", NS))
             # A rotation is an xfrm attribute; 0 means "not rotated".
             for rotation in root.findall(".//a:xfrm", NS):
@@ -255,7 +302,9 @@ def inspect(path: Path) -> dict[str, int]:
                        if name.startswith("ppt/charts/chart") and name.endswith(".xml")
                        and "/_rels/" not in name]
         for name in chart_names:
-            problems.extend(audit_enums(ET.fromstring(archive.read(name))))
+            chart_root = ET.fromstring(archive.read(name))
+            problems.extend(audit_enums(chart_root))
+            problems.extend(audit_child_order(chart_root))
     # The package-level checks run on every invocation: a file a reader offers to repair
     # is broken even when the render looks right.
     integrity = audit_integrity(package_path)
@@ -268,9 +317,48 @@ def inspect(path: Path) -> dict[str, int]:
     return counts
 
 
+def self_test() -> int:
+    """Prove the checks still fire, on XML written to fail them.
+
+    A gate that never fires is worse than no gate, so each control is a document the
+    check has to reject - including the invented element that shipped before the
+    ordering check existed."""
+    drawing = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    controls = [
+        ("a good pPr", "<a:pPr><a:spcBef/><a:buChar char='x'/><a:defRPr/></a:pPr>", False),
+        ("a bullet before its spacing", "<a:pPr><a:buChar char='x'/><a:spcBef/></a:pPr>", True),
+        ("a line after the fill", "<a:rPr><a:solidFill/><a:ln/></a:rPr>", True),
+        ("an invented element", "<a:rPr><a:emphasisMark/></a:rPr>", True),
+        ("a fill after the line", "<a:spPr><a:ln/><a:solidFill/></a:spPr>", True),
+        ("a valid anchor", "<a:bodyPr anchor='ctr'/>", False),
+        ("an invalid anchor", "<a:bodyPr anchor='middle'/>", True),
+    ]
+    failures: list[str] = []
+    for label, body, should_flag in controls:
+        try:
+            root = ET.fromstring(f'<root xmlns:a="{drawing}">{body}</root>')
+        except ET.ParseError as error:
+            failures.append(f"{label}: the control itself does not parse ({error})")
+            continue
+        found = audit_child_order(root) + [
+            problem for child in list(root) for problem in audit_enums(child)
+        ] + audit_enums(root)
+        if should_flag and not found:
+            failures.append(f"{label}: the check did not fire")
+        if not should_flag and found:
+            failures.append(f"{label}: the check fired on a valid document ({found[0]})")
+    if failures:
+        print("Self-test failed:")
+        for failure in failures:
+            print("  " + failure)
+        return 1
+    print(f"Self-test passed: {len(controls)} controls")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("pptx", type=Path)
+    parser.add_argument("pptx", type=Path, nargs="?")
     parser.add_argument("--require-gradient", action="store_true")
     parser.add_argument("--require-shadow", action="store_true")
     parser.add_argument("--require-alpha", action="store_true")
@@ -281,7 +369,12 @@ def main() -> int:
     parser.add_argument("--require-rotation", action="store_true")
     parser.add_argument("--require-merged-cells", action="store_true")
     parser.add_argument("--require-uneven-columns", action="store_true")
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    if args.self_test:
+        return self_test()
+    if args.pptx is None:
+        parser.error("a .pptx is required unless --self-test is given")
     if not args.pptx.is_file():
         parser.error(f"PPTX not found: {args.pptx}")
     counts = inspect(args.pptx)

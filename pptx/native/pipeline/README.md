@@ -145,6 +145,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | outline beside a border | named - a shape carries one line, the border wins |
 | shape ids | unique and sequential per slide (a table used to collide with a text box) |
 | package integrity | content types, relationship targets and r:id use checked as a gate |
+| child order | checked - spPr/rPr/pPr/bodyPr/tcPr/ln are schema sequences, `--self-test` proves the check fires |
 | outline alone | native - the shape line, dash included |
 | text-emphasis | named - DrawingML has no emphasis mark (a render proved the old markup drew nothing) |
 | table-layout: fixed | native - colW plus the fixed flag |
