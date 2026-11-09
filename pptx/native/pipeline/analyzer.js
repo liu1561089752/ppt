@@ -42,6 +42,12 @@ const {
   parseBackgroundFocus
 } = require('./css');
 const { estimateTextHeight, estimateRichTextHeight, estimateLineCount, measureTextPt, clampText } = require('../engine/text_measure');
+const { normalLineHeight } = require('../engine/font_manager');
+
+/** Fontkit is an optional dependency; metrics stay best-effort without it. */
+function fontkit() {
+  try { return require('fontkit'); } catch (_) { return null; }
+}
 const { flexWidths } = require('../engine/flex_size');
 const { flexLines, flexColumns, alignLines } = require('../engine/flex_lines');
 const {
@@ -636,24 +642,52 @@ function fontPxOf(style, inheritedPx) {
   return inches === null ? inheritedPx : inches * 96;
 }
 
+/**
+ * `line-height: normal` for the face the element asks for, or 1.25 when metrics are unreadable.
+ *
+ * The stack is walked in CSS order and the first face that exists on this machine wins, because
+ * that is the face the reader will use. When nothing in the stack exists the browser falls into
+ * its per-character generic fallback, whose line box we cannot read statically - the 1.25
+ * estimate is kept for that case, since a serif guess measured *smaller* than the reader.
+ */
+function normalLineMultiple(familyStack) {
+  const families = fontFamilyList(familyStack);
+  const metricsOf = (family) => {
+    if (!family) return null;
+    const metrics = normalLineHeight(family, fontkit());
+    return metrics === null || !Number.isFinite(metrics) ? null : Number(metrics.toFixed(3));
+  };
+  for (const family of families) {
+    const metrics = metricsOf(family);
+    if (metrics !== null) return Math.max(1.0, metrics);
+  }
+  return 1.25;
+}
+
 function lineSpacingOf(style, fontPx) {
   const raw = style.lineHeight;
-  if (!raw || raw === 'normal') return { multiple: 1.25, explicit: null };
+  if (!raw || raw === 'normal') return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
   const length = parseLength(raw);
-  if (!length) return { multiple: 1.25, explicit: null };
+  if (!length) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
   if (length.unit === '') return { multiple: Number(length.value) || 1.25, explicit: null };
   const inches = toInches(length, { fontSizePx: fontPx });
-  if (!inches) return { multiple: 1.25, explicit: null };
+  if (!inches) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
   return { multiple: Math.max(0.8, Number((inches / (fontPx / 96)).toFixed(3))), explicit: inches };
 }
 
 /** Build rich-text runs from inline children, keeping bold/italic/colour spans. */
+/** Every family a `font-family` declaration names, in order, quotes stripped. */
+function fontFamilyList(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  if (!text) return [];
+  return text.split(',')
+    .map((name) => name.trim().replace(/^["']|["']$/gu, '').trim())
+    .filter(Boolean);
+}
+
 /** The first family a `font-family` declaration names, or null. */
 function runFontFamily(value) {
-  const text = String(value === undefined || value === null ? '' : value).trim();
-  if (!text) return null;
-  const first = text.split(',')[0].replace(/^["']|["']$/gu, '').trim();
-  return first || null;
+  return fontFamilyList(value)[0] || null;
 }
 
 function baseRunFlags(baseStyle) {

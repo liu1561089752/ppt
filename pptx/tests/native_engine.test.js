@@ -5324,3 +5324,38 @@ test('a positioned child paints above the in-flow boxes it sits on', () => {
   assert.equal(surface.radius, 0.177, 'and its rounded corners');
 });
 
+
+test('line-height: normal comes from the metrics of the first face that exists', () => {
+  const metrics = require('../native/engine/font_manager.js');
+  const fontkit = (() => { try { return require('fontkit'); } catch (_) { return null; } })();
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .local { font-family: "Microsoft YaHei"; font-size: 100px; line-height: normal; width: 500px; }',
+    '  .stacked { font-family: "Mystery Face", "Microsoft YaHei"; font-size: 100px; line-height: normal; width: 500px; }',
+    '  .missing { font-family: "Mystery Face", "Also Missing"; font-size: 100px; line-height: normal; width: 500px; }',
+    '  .explicit { font-family: "Microsoft YaHei"; font-size: 100px; line-height: 1.2; width: 500px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="local">汉字</div><div class="stacked">汉字</div>',
+    '<div class="missing">汉字</div><div class="explicit">汉字</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const elements = result.deck.slides[0].elements;
+  const heightOf = (selector) => {
+    const index = ['local', 'stacked', 'missing', 'explicit'].indexOf(selector);
+    return +(elements[index].h * 96).toFixed(1);
+  };
+  const normal = metrics.normalLineHeight('Microsoft YaHei', fontkit);
+  if (normal !== null) {
+    // The face exists here, so its real metrics replace the 1.25 estimate.
+    assert.equal(heightOf('local'), +(normal * 100).toFixed(1));
+    // A stack whose first face is missing falls through to the one that exists.
+    assert.equal(heightOf('stacked'), heightOf('local'), 'the walk follows the CSS stack');
+  }
+  // No face in the stack exists: the 1.25 estimate stays, because the reader's generic
+  // fallback measured *taller* than any static guess we could make.
+  assert.equal(heightOf('missing'), 125);
+  // An explicit line-height is untouched by any of this.
+  assert.equal(heightOf('explicit'), 120);
+});
+
