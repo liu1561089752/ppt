@@ -6508,3 +6508,20 @@ test('the table border draws its perimeter', () => {
   assert.equal(borders[2].color, 'D98A4B', 'the cell keeps its own bottom edge');
 });
 
+
+test('percentage line-height is a font multiple', () => {
+  // 150% of a 16px font is 24px: a 1.5 multiple of the element's own size. The percent
+  // case used to fall through to the default multiple (1.25) because a box-relative
+  // percent has no basis here - a silent 17% tighter leading.
+  const build = (lineHeight) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { font-size: 16px; line-height: ' + lineHeight + '; }',
+    '</style></head><body><main class="slide"><p class="b">text</p></main></body></html>'
+  ].join('\n'));
+  assert.equal(build('150%').deck.slides[0].elements[0].lineSpacingMultiple, 1.5);
+  assert.equal(build('200%').deck.slides[0].elements[0].lineSpacingMultiple, 2);
+  assert.equal(build('1.8').deck.slides[0].elements[0].lineSpacingMultiple, 1.8);
+  assert.equal(build('32px').deck.slides[0].elements[0].lineSpacingMultiple, 2);
+});
+

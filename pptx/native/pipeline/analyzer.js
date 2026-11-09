@@ -803,6 +803,12 @@ function lineSpacingOf(style, fontPx) {
   const length = parseLength(raw);
   if (!length) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
   if (length.unit === '') return { multiple: Number(length.value) || 1.25, explicit: null };
+  // A percentage line-height is a multiple of the element's own font size
+  // (150% of 16px = 24px = 1.5); it is not a box-relative percent.
+  if (length.unit === '%') {
+    const multiple = Number((length.value / 100).toFixed(3));
+    return { multiple: Math.max(0.8, multiple), explicit: null };
+  }
   const inches = toInches(length, { fontSizePx: fontPx });
   if (!inches) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
   return { multiple: Math.max(0.8, Number((inches / (fontPx / 96)).toFixed(3))), explicit: inches };
