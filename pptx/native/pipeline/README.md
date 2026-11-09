@@ -155,6 +155,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | data-chart-secondary-axis | named - the writer emits one value axis only |
 | object-fit: none | native - source pixel size (96 px/in), slot clips the overflow as a source rectangle |
 | undeclared column widths | min/max-content split matching Chrome (verified against getBoundingClientRect) |
+| font-weight < 400 | named - draws at regular weight, no light axis in the format |
+| typography read-back | letter-spacing/small-caps/justify/strike/uppercase/pre land in the XML; the rest are named |
 | cell line-height | native a:lnSpc per cell (spcPct or spcPts) |
 | cell white-space: nowrap | named once per table - no per-cell wrap switch in the writer |
 | object-fit: scale-down | native - contain that never enlarges |

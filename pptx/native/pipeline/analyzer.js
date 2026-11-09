@@ -634,6 +634,12 @@ function checkUnsupported(ctx, domNode, style) {
       if (Number.isFinite(numeric) && numeric > 500 && numeric < 600) {
         recordUnsupported(ctx, domNode, 'fontWeight', style[property],
           'A weight between 501 and 599 draws as regular: no native spelling exists for intermediate weights');
+      } else if (Number.isFinite(numeric) && numeric > 0 && numeric < 400) {
+        // DrawingML spells bold or not: a light run draws at regular weight, which is a
+        // heavier look than the design asked for. Naming the fix beats drawing it wrong.
+        recordUnsupported(ctx, domNode, 'fontWeight', style[property],
+          'A weight below 400 draws as regular: the format has bold or not, no light axis -'
+            + ' name a Light family in font-family to get the cut');
       }
       return;
     }

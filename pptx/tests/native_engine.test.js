@@ -5190,6 +5190,71 @@ test('a table cell carries its line spacing, and names the wrap it cannot switch
     'and not once per cell');
 });
 
+test('typography either reaches the file or is named', async () => {
+  // The same read-back rule as the chart options, applied to type: every CSS typography
+  // property either lands in the XML or is named. The probe found one silent drop - a
+  // light weight drawn as regular - and the rest already honest.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const build = (css, text) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  p { font-size: 24px; width: 900px; }',
+    css,
+    '</style></head><body><main class="slide"><p class="x">' + (text || 'Typography 排版') + '</p></main></body></html>'
+  ].join('\n'));
+  const xmlOf = async (css, text) => {
+    const result = build(css, text);
+    const output = path.join(os.tmpdir(), 'native-typo-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    return { xml, report: result.report };
+  };
+
+  const spacing = await xmlOf('p.x { letter-spacing: 2px; }');
+  assert.match(spacing.xml, /spc="150"/u, '2px of tracking is 1.5pt of spc');
+
+  const caps = await xmlOf('p.x { font-variant: small-caps; }');
+  assert.match(caps.xml, /cap="small"/u, 'small caps are cap="small"');
+
+  const justified = await xmlOf('p.x { text-align: justify; }');
+  assert.match(justified.xml, /algn="just"/u, 'justify is algn="just"');
+
+  const struck = await xmlOf('p.x { text-decoration: line-through; }');
+  assert.match(struck.xml, /strike="sngStrike"/u, 'a line through is sngStrike');
+
+  const upper = await xmlOf('p.x { text-transform: uppercase; }');
+  assert.match(upper.xml, /<a:t>TYPOGRAPHY 排版<\/a:t>/u, 'uppercase reaches the characters');
+
+  const pre = await xmlOf('p.x { white-space: pre; }', '两  个');
+  assert.match(pre.xml, /<a:t>两  个<\/a:t>/u, 'pre keeps the double space');
+
+  // The rest have no native spelling and say so.
+  for (const [css, property] of [
+    ['p.x { word-spacing: 8px; }', 'wordSpacing'],
+    ['p.x { hyphens: auto; }', 'hyphens'],
+    ['p.x { text-shadow: 2px 2px 4px #000; }', 'textShadow'],
+    ['p.x { font-stretch: condensed; }', 'fontStretch'],
+    ['p.x { font-weight: 300; }', 'fontWeight']
+  ]) {
+    const result = await xmlOf(css);
+    assert.ok(result.report.unsupportedDetails.some((entry) => entry.property === property),
+      property + ' is named rather than dropped');
+  }
+
+  // 400 and 500 are regular, 600 and up are bold: both spellable, both silent.
+  for (const weight of [400, 500, 600, 700]) {
+    const result = await xmlOf('p.x { font-weight: ' + weight + '; }');
+    assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), [],
+      weight + ' needs no report');
+  }
+});
+
 test('an undeclared table shares its width the way the browser does', () => {
   // A table that declares no widths used to be split evenly, which made a 60px label
   // column 350px wide and wrapped a sentence Chrome kept on one line. Chrome measures
@@ -6731,7 +6796,12 @@ test('a variable weight between 501 and 599 is named', () => {
   ].join('\n'));
   assert.equal(build('550').report.unsupportedDetails.filter((entry) => entry.property === 'fontWeight').length, 1);
   assert.deepEqual(build('600').report.unsupportedDetails.map((entry) => entry.property), [], '600 maps to bold');
-  assert.deepEqual(build('300').report.unsupportedDetails.map((entry) => entry.property), [], 'light draws as regular, no surprise');
+  // A light weight used to be drawn as regular in silence; regular is heavier than the
+  // design asked for, so it is named with the way out: a Light family in font-family.
+  const light = build('300').report.unsupportedDetails.filter((entry) => entry.property === 'fontWeight');
+  assert.equal(light.length, 1, 'a light weight is named');
+  assert.match(light[0].reason, /Light family/u, light[0].reason);
+  assert.deepEqual(build('400').report.unsupportedDetails.map((entry) => entry.property), [], 'regular is exact');
 });
 
 
