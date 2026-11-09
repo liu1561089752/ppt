@@ -567,6 +567,10 @@ function checkUnsupported(ctx, domNode, style) {
   Object.keys(style).forEach((property) => {
     if (property.startsWith('--')) return;
     if (isNoopValue(property, style[property])) return;
+    // `word-spacing: normal` is the initial value and changes nothing; a declared
+    // value is judged per value below, because the generic report would call it
+    // a subset gap when the truth is about what a run can carry.
+    if (property === 'wordSpacing') return;
     // A table cell translates its four sides independently, so a single-side
     // border is not a limitation there (it is for every other element).
     if ((domNode.tag === 'td' || domNode.tag === 'th') && TABLE_CELL_BORDER_PROPERTIES.has(property)) return;
@@ -582,6 +586,13 @@ function checkUnsupported(ctx, domNode, style) {
       recordUnsupported(ctx, domNode, property, style[property], 'Property is outside the supported subset');
     }
   });
+  // There is no per-word spacing channel on a run (charSpacing is per character), so
+  // a declared word-spacing is a real residue: words keep their ordinary advance.
+  const wordSpacing = String(style.wordSpacing || '').trim();
+  if (wordSpacing && wordSpacing !== 'normal' && wordSpacing !== 'inherit' && wordSpacing !== '0px') {
+    recordUnsupported(ctx, domNode, 'wordSpacing', style.wordSpacing,
+      'Words keep their ordinary advance; a run has per-character spacing, not per-word');
+  }
   // Every marker draws as the native round bullet: `disc`, `square`, `decimal` all
   // look the same, so the declaration is named once with the truth. `none` is not a
   // limitation - it switches the bullet off, which the list node reads.
@@ -1058,9 +1069,14 @@ function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx,
   }
   const whiteSpace = String(style.whiteSpace || 'normal').toLowerCase();
   const noWrap = whiteSpace === 'nowrap';
-  if (whiteSpace !== 'normal' && !noWrap) {
+  // `pre-line` is what this text walk already does - breaks kept, space runs collapsed,
+  // the box wraps - so it is an equivalent implementation and not a limitation. The
+  // other pre* values keep space runs in CSS, which the walk collapses; that residue
+  // is what the report names.
+  if (whiteSpace !== 'normal' && !noWrap && whiteSpace !== 'pre-line') {
     recordUnsupported(ctx, domNode, 'whiteSpace', style.whiteSpace,
-      'Only white-space: nowrap is translated; the pre* values also preserve whitespace, which the DOM text walk already collapsed');
+      'Line breaks are kept, but runs of spaces collapse to one, which '
+        + whiteSpace + ' preserves');
   }
   if (noWrap) measureOptions.noWrap = true;
   // A run with its own size is measured at that size: charging `12 个夹具` to the 33pt

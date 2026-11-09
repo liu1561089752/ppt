@@ -66,6 +66,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | list-style | `none` switches the bullet off (verified); other markers draw the native round bullet and say so |
 
 | background-repeat | `no-repeat` is the fitted-picture default and stays silent; `repeat`/`repeat-x` name that the picture is drawn once | Outer shadows with offset, blur and hex/rgba colour (rendered, verified). Layered values keep their first layer and name the rest; inset is refused whole. The hex bug: the tokeniser lacked A-F, so `#C05B3E` became stray lengths that blackened the shadow and reported it | `underline`/`line-through` are run properties (rendered and verified, including both on one run); `overline`, a decoration colour and a declared thickness are named - no native channel | `translate()`/`rotate()` compose as one plan (a later translate is turned with the rotation; percentages resolve against the box); `scale()`/`skew()` and a non-centre `transform-origin` are reported |
+| white-space | `pre-line` is the behaviour (silent); `pre`/`pre-wrap` name that space runs collapse. `word-spacing: normal` is silent; a declared value names the per-character-only channel |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
 
