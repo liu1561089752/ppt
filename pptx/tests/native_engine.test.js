@@ -6753,6 +6753,45 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('position: fixed anchors to the slide, the way print does', () => {
+  // A browser pins a fixed element to its scrolling viewport, which for a deck means
+  // wherever the preview window happens to be; paged media pins it to the page box,
+  // and that is the meaning a footer at `bottom: 40px` carries on a slide. Measured
+  // against Chrome on the stress fixture: the browser put the footer at y=854 (below
+  // the 720px canvas), the deck puts it at the slide's bottom edge, which is the one
+  // a reader can use.
+  const build = (wrapper) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .deep { position: relative; margin-left: 100px; height: 120px; }',
+    '  .pin { position: fixed; left: 56px; bottom: 40px; font-size: 12px; }',
+    '</style></head><body><main class="slide">',
+    wrapper,
+    '</main></body></html>'
+  ].join('\n'));
+  const pinOf = (result) => {
+    let found = null;
+    const walk = (element) => {
+      if (element.text !== undefined && String(Array.isArray(element.text)
+        ? element.text.map((run) => run.text).join('') : element.text).includes('页脚')) found = element;
+      (element.children || []).forEach(walk);
+    };
+    result.deck.slides[0].elements.forEach(walk);
+    return found;
+  };
+  const flat = pinOf(build('<p class="pin">页脚</p>'));
+  assert.ok(flat, 'the footer exists');
+  // 720 - 40 = 680px from the top, less the line box the estimate gives it.
+  assert.ok(Math.abs(flat.y * 96 - (680 - flat.h * 96)) <= 1.5,
+    'the footer sits on the slide bottom edge: y=' + (flat.y * 96).toFixed(1));
+  // A positioned ancestor does not move it: the slide is the containing block.
+  const nested = pinOf(build('<div class="deep"><p class="pin">页脚</p></div>'));
+  assert.ok(nested, 'the nested footer exists too');
+  assert.ok(Math.abs(nested.y - flat.y) < 0.01,
+    'and a positioned ancestor does not drag it down: ' + (nested.y * 96).toFixed(1) + ' vs ' + (flat.y * 96).toFixed(1));
+  assert.ok(Math.abs(nested.x - flat.x) < 0.01, 'nor across: ' + (nested.x * 96).toFixed(1));
+});
+
 test('the top-level boxes land where Chrome put them', () => {
   // Recorded from a real browser: pipeline-grid.html opened in Chrome 156 and read with
   // getBoundingClientRect(), each slide's children in document order, in CSS px relative
