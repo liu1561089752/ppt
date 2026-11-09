@@ -104,6 +104,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | percent line-height | 150% → 1.5 multiple of own font (was silently 1.25 default); unitless/px were right |
 | flex margin auto | Auto margins absorb line slack (center a declared-width item); was drawn at line start |
 | variable font weight | 501-599 named (draws regular, no native intermediate); ≥600 bold, ≤500 regular silent |
+| WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
