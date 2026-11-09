@@ -3114,7 +3114,9 @@ test('a multi-slide HTML keeps every page inside the canvas', () => {
   const pathSync = require('node:path');
   const html = fs.readFileSync(pathSync.join(__dirname, '..', 'examples', 'pipeline-stress.html'), 'utf8');
   const result = pipeline.convertHtml(html);
-  assert.equal(result.deck.slides.length, 3);
+  // The stress fixture grew to seven pages: cover, columns, gradient/shadow cards,
+  // chart + table, flow + timeline, image cover crop.
+  assert.equal(result.deck.slides.length, 7);
   assert.equal(result.report.layout.total, 0, JSON.stringify(result.report.layout.slides));
   // Each slide carries its own theme-derived background and its own elements.
   result.deck.slides.forEach((slide, index) => {

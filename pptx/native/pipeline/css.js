@@ -1292,7 +1292,9 @@ function parseLinearGradient(value) {
     stops.push({
       color: color.hex,
       transparency: Math.round((1 - color.alpha) * 100),
-      position: explicit ? Number(explicit[2]) / 100 : (stops.length === 0 ? 0 : null)
+      // CSS clamps out-of-range stop positions (130% draws at 100%); the schema wants
+      // 0..1, so the clamp happens at parse time.
+      position: explicit ? Math.min(1, Math.max(0, Number(explicit[2]) / 100)) : (stops.length === 0 ? 0 : null)
     });
   }
   if (stops.length < 2) return null;

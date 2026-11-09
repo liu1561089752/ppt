@@ -75,12 +75,18 @@ function convertHtml(html, options = {}) {
  */
 function resolveDeckImagePaths(deck, baseDirectory) {
   const isAbsolute = (value) => path.isAbsolute(value) || /^[a-zA-Z]:[\\/]/u.test(value);
+  const rebase = (element) => {
+    if (element.type !== 'image' || !element.path) return;
+    if (isAbsolute(element.path) || /^(?:data|https?):/iu.test(element.path)) return;
+    element.path = path.resolve(baseDirectory, element.path);
+  };
+  // Pictures travel inside containers too, so the walk covers the whole tree.
+  const walk = (element) => {
+    rebase(element);
+    (element.children || []).forEach(walk);
+  };
   deck.slides.forEach((slide) => {
-    (slide.elements || []).forEach((element) => {
-      if (element.type !== 'image' || !element.path) return;
-      if (isAbsolute(element.path) || /^(?:data|https?):/iu.test(element.path)) return;
-      element.path = path.resolve(baseDirectory, element.path);
-    });
+    (slide.elements || []).forEach(walk);
   });
   return deck;
 }

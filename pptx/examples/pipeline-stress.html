@@ -120,5 +120,81 @@
   <div class="foot">原生 PowerPoint 对象 · 可在 PowerPoint 中直接改字改色</div>
 </main>
 
+
+  <!-- 3 · 渐变横幅 + 阴影卡片 + 透明度叠层 -->
+  <main class="slide">
+    <div style="position:absolute;left:0;top:0;width:1280px;height:220px;background:linear-gradient(105deg,#10303A 0%,#1C4B57 60%,#D98A4B 130%);"></div>
+    <div style="position:relative;margin-top:40px;">
+      <p class="kicker">GRADIENT BANNER</p>
+      <h2 style="margin:10px 0 0;font-size:32px;color:#FFFFFF;">渐变横幅与阴影卡片</h2>
+    </div>
+    <div style="display:flex;gap:24px;margin-top:60px;">
+      <div style="flex:1;padding:20px;background:#FFFFFF;border-radius:12px;box-shadow:6px 10px 24px #10303A26;">
+        <h3 style="margin:0 0 8px;font-size:16px;color:#1D2A2E;">投影卡片一</h3>
+        <p style="margin:0;font-size:12px;line-height:1.8;color:#4A5A5E;">box-shadow 落在第一层原生阴影上，圆角 12px 保持卡片轮廓。</p>
+      </div>
+      <div style="flex:1;padding:20px;background:#1C4B57;border-radius:12px;position:relative;">
+        <div style="position:absolute;left:0;top:0;width:100%;height:100%;background:#D98A4B;opacity:0.35;"></div>
+        <h3 style="margin:0 0 8px;font-size:16px;color:#FFFFFF;position:relative;">透明叠层</h3>
+        <p style="margin:0;font-size:12px;line-height:1.8;color:#CFE0DA;position:relative;">半透明叠层画出 35% 透明度的橙色面。</p>
+      </div>
+    </div>
+  </main>
+  <!-- 4 · 原生图表 + 数据表 -->
+  <main class="slide">
+    <h2 class="title">季度业绩图与明细</h2>
+    <p class="sub">原生柱状图与原生表格并排：左侧图表可编辑，右侧表格按行分页。</p>
+    <div style="display:flex;gap:28px;">
+      <div style="width:640px;height:380px;" data-chart="bar">
+        <table>
+          <tr><th>季度</th><th>销售额</th><th>毛利</th></tr>
+          <tr><td>Q1</td><td>128</td><td>46</td></tr>
+          <tr><td>Q2</td><td>156</td><td>58</td></tr>
+          <tr><td>Q3</td><td>142</td><td>51</td></tr>
+          <tr><td>Q4</td><td>187</td><td>72</td></tr>
+        </table>
+      </div>
+      <table style="width:480px;">
+        <tr><th>指标</th><th>目标</th><th>实际</th></tr>
+        <tr><td>新签客户</td><td>40</td><td>46</td></tr>
+        <tr><td>续费率</td><td>90%</td><td>93%</td></tr>
+        <tr><td>客单价</td><td>12.8 万</td><td>13.4 万</td></tr>
+      </table>
+    </div>
+  </main>
+  <!-- 5 · 流程 + 时间轴 -->
+  <main class="slide">
+    <h2 class="title">实施流程与里程碑</h2>
+    <div class="steps" style="margin-top:24px;">
+      <div class="step"><p class="step-num">01</p><h3 style="margin:0 0 6px;font-size:15px;color:#1D2A2E;">调研</h3><p style="margin:0;font-size:12px;color:#566;line-height:1.7;">业务访谈与数据盘点，输出需求清单。</p></div>
+      <div class="step"><p class="step-num">02</p><h3 style="margin:0 0 6px;font-size:15px;color:#1D2A2E;">设计</h3><p style="margin:0;font-size:12px;color:#566;line-height:1.7;">信息架构与视觉方案评审。</p></div>
+      <div class="step"><p class="step-num">03</p><h3 style="margin:0 0 6px;font-size:15px;color:#1D2A2E;">交付</h3><p style="margin:0;font-size:12px;color:#566;line-height:1.7;">灰度上线与培训交接。</p></div>
+    </div>
+    <div style="margin-top:56px;position:relative;height:120px;">
+      <div style="position:absolute;left:0;top:56px;width:1168px;height:2px;background:#DCD7CE;"></div>
+      <div style="position:absolute;left:40px;top:48px;width:16px;height:16px;border-radius:8px;background:#D98A4B;"></div>
+      <div style="position:absolute;left:40px;top:20px;font-size:13px;color:#1D2A2E;">1 月 · 立项</div>
+      <div style="position:absolute;left:480px;top:48px;width:16px;height:16px;border-radius:8px;background:#1C4B57;"></div>
+      <div style="position:absolute;left:480px;top:84px;font-size:13px;color:#1D2A2E;">6 月 · 试点</div>
+      <div style="position:absolute;left:960px;top:48px;width:16px;height:16px;border-radius:8px;background:#10303A;"></div>
+      <div style="position:absolute;left:960px;top:20px;font-size:13px;color:#1D2A2E;">12 月 · 推广</div>
+    </div>
+  </main>
+  <!-- 6 · 图片裁切 + 图注 -->
+  <main class="slide">
+    <h2 class="title">图片裁切与图注</h2>
+    <div style="display:flex;gap:26px;margin-top:20px;">
+      <div style="width:420px;height:300px;overflow:hidden;border-radius:14px;">
+        <img style="width:420px;height:300px;object-fit:cover;object-position:center;" src="stress-photo.png">
+      </div>
+      <div style="flex:1;">
+        <p style="margin:0 0 10px;font-size:14px;line-height:1.9;color:#2B3B3F;">图片以 cover 模式裁切进 420×300 的圆角容器，焦点居中；Mixed 中英文混排一起验证 CJK 与拉丁基线的行盒对齐。</p>
+        <table style="width:100%;">
+          <tr><th>模式</th><th>说明</th></tr>
+          <tr><td>cover</td><td>铺满裁切</td></tr>
+          <tr><td>contain</td><td>完整显示</td></tr>
+        </table>
+      </div>
+    </div>
+  </main>
 </body>
-</html>
