@@ -2238,7 +2238,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
             !(child.type === 'element' && (child.tag === 'ul' || child.tag === 'ol')))
         };
         const built = buildRuns(shallow, style, ctx);
-        return { level: item.level, text: item.text, runs: built.hasFormatting ? built.runs : null };
+        return { level: item.level, text: item.text, ordered: item.ordered, runs: built.hasFormatting ? built.runs : null };
       });
       const rich = itemRuns.some((item) => item.runs) || itemRuns.some((item) => item.level > 0);
       // A nested list is a bullet level, not more words on the parent line: each item is
@@ -2255,7 +2255,19 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
             // Every run of the item carries the bullet: the writer takes a paragraph's
             // properties from the run it closes the paragraph on, which is the last one,
             // so a bullet only on the first run lost the first item of every list.
-            options.bullet = markerOption || true;
+            // A nested list keeps its own marker language: an ol inside counts, a ul
+            // inside rounds - the browser switches markers per level, so the deck does
+            // too instead of the outer list's marker on every line.
+            const itemOrdered = item.ordered !== undefined ? item.ordered : orderedTag;
+            // A nested list keeps its own marker language: an ol inside counts, a ul
+            // inside rounds - the browser switches markers per level, so the deck does
+            // too instead of the outer list's marker on every line.
+            const itemMarker = itemOrdered === orderedTag
+              ? (markerOption || true)
+              : (itemOrdered
+                  ? { type: 'number', style: 'arabicPeriod' }
+                  : { code: '2022' });
+            options.bullet = itemMarker;
             // `value="7"` starts that item's count at 7; the reader spells it as
             // the paragraph's own buAutoNum startAt.
             if (item.node && item.node.attrs && item.node.attrs.value !== undefined) {
@@ -4343,12 +4355,13 @@ function ownListItemText(item) {
   return parts.join(' ').replace(/\s+/gu, ' ').trim();
 }
 
-function readListItems(domNode, level = 0, out = []) {
+function readListItems(domNode, level = 0, out = [], parentOrdered = null) {
+  const ordered = String(domNode.tag || '').toLowerCase() === 'ol';
   elementChildren(domNode).filter((child) => child.tag === 'li').forEach((item) => {
     const own = ownListItemText(item);
-    if (own) out.push({ node: item, text: own, level });
+    if (own) out.push({ node: item, text: own, level, ordered });
     elementChildren(item).filter((child) => child.tag === 'ul' || child.tag === 'ol')
-      .forEach((nested) => readListItems(nested, level + 1, out));
+      .forEach((nested) => readListItems(nested, level + 1, out, ordered));
   });
   return out;
 }

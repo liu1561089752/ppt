@@ -6667,6 +6667,23 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('a nested list keeps its own marker language', () => {
+  // The browser switches markers per level: an ol inside a ul counts, a ul inside
+  // an ol rounds. The deck stamped the outer marker on every line.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<ol><li>外一</li><li>外二<ul><li>内一</li></ul></li></ol>',
+    '</main></body></html>'
+  ].join('\n'));
+  const element = result.deck.slides[0].elements[0];
+  const nested = element.text.find((run) => run.text === '内一');
+  assert.ok(nested, 'the nested item is its own paragraph');
+  assert.equal(nested.options.indentLevel, 1, 'one level in');
+  assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
+});
+
 test('a table cell radius is named as squaring off', () => {
   // An OOXML table cell has no corner geometry; the styled radius drew nothing
   // silently.
