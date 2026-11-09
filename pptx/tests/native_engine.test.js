@@ -6667,6 +6667,42 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('an ordered list numbers natively and honors start', async () => {
+  // A UA-default <ol> drew a round bullet: the marker lookup keyed off the computed
+  // list-style-type, which the browser defaults to decimal without spelling it. The
+  // ordered tag now seeds decimal; start=5 rides buAutoNum startAt; reversed is named
+  // because DrawingML counts up only.
+  const build = (attrs) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { font-size: 16px; }',
+    '</style></head><body><main class="slide">',
+    '<ol class="b"' + attrs + '><li>第一</li><li>第二</li></ol>',
+    '</main></body></html>'
+  ].join('\n'));
+  const plain = build('');
+  assert.equal(plain.deck.slides[0].elements[0].bullet.type, 'number', 'a plain ol numbers');
+  const started = build(' start="5"');
+  assert.equal(started.deck.slides[0].elements[0].bullet.startAt, 5, 'start rides the bullet');
+  const reversed = build(' reversed');
+  assert.ok(reversed.report.unsupportedDetails.some((entry) => entry.property === 'reversed'),
+    'reversed is named');
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const output = path.join(os.tmpdir(), 'native-ol-' + process.pid + '.pptx');
+  try {
+    await generatePptx(started.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(/buAutoNum type="arabicPeriod" startAt="5"/.test(xml), 'startAt spells at 5');
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
+
 test('a margin offsets an absolutely positioned box', async () => {
   // CSS: the margin shifts the box from its inset position; a negative value pulls
   // it back. The absolute branch recomputed x from style.left and ignored margins -

@@ -2111,7 +2111,13 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       // a custom-drawn marker - and the native bullet has an `off` switch. The other
       // markers have native spellings: buChar for the round shapes, buAutoNum for the
       // ordered ones.
-      const listStyle = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();
+      let listStyle = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();
+      // A UA-default <ol> carries no explicit list-style-type; the browser numbers it
+      // 1. 2. 3. Falling through to the round-bullet default drew a bullet where the
+      // design asked for a count, so the ordered tag seeds decimal.
+      const orderedTag = String(domNode.tag || '').toLowerCase() === 'ol';
+      if (orderedTag && !listStyle) listStyle = 'decimal';
+      // MARKER_CHARS follows:
       const MARKER_CHARS = { disc: '2022', circle: '25CB', square: '25AA' };
       const MARKER_NUMBERS = {
         decimal: 'arabicPeriod',
@@ -2125,6 +2131,18 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
         else if (MARKER_NUMBERS[listStyle]) markerOption = { type: 'number', style: MARKER_NUMBERS[listStyle] };
       }
       node.bullet = listStyle !== 'none' ? (markerOption || true) : null;
+      // `start="5"` on the ordered list asks the count to begin at 5; the native
+      // buAutoNum carries a startAt. A `reversed` list counts down - DrawingML has
+      // no reverse switch, so the honest spelling is the reported one, not a fake
+      // forward count.
+      if (node.bullet && node.bullet.type === 'number' && domNode.attrs) {
+        const startAt = Number(domNode.attrs.start);
+        if (Number.isFinite(startAt) && startAt > 0) node.bullet.startAt = startAt;
+        if (domNode.attrs.reversed !== undefined) {
+          recordUnsupported(ctx, domNode, 'reversed', domNode.attrs.reversed === null ? '' : String(domNode.attrs.reversed),
+            'The native numbered list counts up; there is no reverse switch, so the numbering would read in the wrong order');
+        }
+      }
       // `::marker { color: ... }` styles the bullet itself, which DrawingML spells as
       // `a:buClr` inside the paragraph properties. The rule targets the `li`, so every
       // item is asked; one colour across them rides on the element, a disagreement is
