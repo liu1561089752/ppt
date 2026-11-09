@@ -2383,6 +2383,21 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
         }
       }
     }
+    else if (textOverflow === 'clip') {
+      // A clipping box cuts the line at its edge; a reader draws the rest past the box. It
+      // only matters when the line really is longer than the box, so the width is measured
+      // rather than assumed - and only a single line can be cut this way.
+      const clipsOverflow = String(style.overflow || 'visible').toLowerCase();
+      if ((clipsOverflow === 'hidden' || clipsOverflow === 'clip') && node.noWrap
+        && Number.isFinite(contentWidth) && contentWidth > 0) {
+        const lineWidthIn = measureTextPt(node.text, measured.fontSizePt) / 72;
+        if (lineWidthIn > contentWidth + 0.02) {
+          recordUnsupported(ctx, domNode, 'textOverflow', 'clip',
+            'The box cuts this line at its edge; the deck keeps the words and a reader draws them'
+              + ' past the box (' + lineWidthIn.toFixed(2) + 'in of text in a ' + contentWidth.toFixed(2) + 'in box)');
+        }
+      }
+    }
       // `-webkit-line-clamp: N` keeps N lines and ends the last with an ellipsis - the way a
   // card grid gets an even row of excerpts. Browsers only honour it inside a `-webkit-box`,
   // so a clamp written anywhere else is reported instead of silently applied.

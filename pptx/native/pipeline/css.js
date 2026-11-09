@@ -973,7 +973,9 @@ function applyDeclarations(style, declarations, variables) {
       set('borderRadius', topLeft);
       return;
     }
-    set(camelCase(property), resolvedValue);
+    // `word-wrap` is the legacy spelling of `overflow-wrap` (CSS Text 3): one canonical
+    // name, so a design that uses the old word is not reported for it.
+    set(property === 'word-wrap' ? 'overflowWrap' : camelCase(property), resolvedValue);
   });
   return style;
 }

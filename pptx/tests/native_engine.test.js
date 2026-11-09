@@ -5202,6 +5202,44 @@ test('a table cell carries its line spacing, and names the wrap it cannot switch
     'and not once per cell');
 });
 
+test('a clipped single line is named, and word-wrap is the old name for overflow-wrap', () => {
+  // `text-overflow: clip` in a box that clips cuts the line at its edge. A reader draws the
+  // words past the box instead, so the case is named - but only when the line really is
+  // longer than the box, which is measured rather than assumed.
+  const build = (css, text) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  p.x { width: 240px; font-size: 20px; }',
+    css,
+    '</style></head><body><main class="slide"><p class="x">',
+    text || '这是一段很长很长的说明文字，会被截断并加省略号',
+    '</p></main></body></html>'
+  ].join('\n'));
+
+  const clipped = build('p.x { overflow: hidden; white-space: nowrap; text-overflow: clip; }');
+  const named = clipped.report.unsupportedDetails.filter((entry) => entry.property === 'textOverflow');
+  assert.equal(named.length, 1, 'the clipped overflow is named');
+  assert.match(named[0].reason, /in of text in a [\d.]+in box/u, named[0].reason);
+
+  const fits = build('p.x { overflow: hidden; white-space: nowrap; text-overflow: clip; }', '短');
+  assert.deepEqual(fits.report.unsupportedDetails.map((entry) => entry.property), [], 'a line that fits is silent');
+
+  const wrapping = build('p.x { overflow: hidden; }');
+  assert.deepEqual(wrapping.report.unsupportedDetails.map((entry) => entry.property), [],
+    'a wrapping block hides nothing the deck could not draw');
+
+  // The ellipsis case truncates instead, so it needs no word.
+  const ellipsis = build('p.x { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }');
+  assert.deepEqual(ellipsis.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  // `word-wrap` is the legacy spelling of `overflow-wrap` (CSS Text 3). The deck breaks long
+  // words either way, so reporting the old name was noise about a word, not about a loss.
+  for (const css of ['p.x { word-wrap: break-word; }', 'p.x { overflow-wrap: break-word; }']) {
+    assert.deepEqual(build(css).report.unsupportedDetails.map((entry) => entry.property), [],
+      'no report for ' + css);
+  }
+});
+
 test('cell text carries its own decoration, case and honest gaps', async () => {
   // A table cell builds its own run properties, so it needs its own audit: the cell's
   // decoration and its text-transform were read from inline elements only, which left a

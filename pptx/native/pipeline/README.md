@@ -134,6 +134,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | table cell radius | named (no corner geometry in the file format; once per table) |
 | nested list markers | each level keeps its own marker language (was the outer marker everywhere) |
 | cell decoration | underline (with style) and strike from the cell's own CSS |
+| `text-overflow: clip` overflow | named with the measured widths, only when the line really exceeds the box |
+| `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |
 | cell text-transform | applied to the characters before measuring |
 | cell small-caps / word-spacing / text-shadow / text-indent | named once per table |
 | loose list nesting | a list directly inside another still renders its items (was dropped) |
