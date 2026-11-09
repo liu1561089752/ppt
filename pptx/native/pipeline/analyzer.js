@@ -4270,6 +4270,13 @@ function readTableCell(cell, ctx, rowBackground) {
   const weight = String(style.fontWeight || '').toLowerCase();
   const sizePt = parseLength(style.fontSize);
   const fontSizePt = sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(2)) : 10.5;
+  // An OOXML table cell has no corner geometry; a styled radius would silently
+  // square off. Named once per table (the flag lives on the ctx).
+  if (radiusOf(style) && !ctx.cellRadiusNamed) {
+    ctx.cellRadiusNamed = true;
+    recordUnsupported(ctx, cell, 'borderRadius', style.borderRadius,
+      'A table cell has no corner geometry in the file format; the radius squares off');
+  }
   const colspan = spanOf(cell, 'colspan', 12);
   const rowspan = spanOf(cell, 'rowspan', 64);
   const padding = boxShorthand(style, 'padding');

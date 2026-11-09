@@ -6667,6 +6667,24 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('a table cell radius is named as squaring off', () => {
+  // An OOXML table cell has no corner geometry; the styled radius drew nothing
+  // silently.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '  .t td { border-radius: 12px; background: #C05B3E; }',
+    '</style></head><body><main class="slide">',
+    '<table class="t" style="border-collapse: separate; border-spacing: 8px;"><tr><td>x</td><td>y</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const report = result.report.unsupportedDetails.find((entry) => entry.property === 'borderRadius');
+  assert.ok(report, 'the cell radius is named');
+  assert.equal(report.value, '12px');
+  // Once per table, not once per cell.
+  assert.equal(result.report.unsupportedDetails.filter((entry) => entry.property === 'borderRadius').length, 1);
+});
+
 test('an absolutely positioned box pinned on both sides stretches', () => {
   // CSS resolves the width as the span between the insets when left and right both
   // pin the box; the solver hugged the content instead - an inset box came out

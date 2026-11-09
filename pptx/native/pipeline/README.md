@@ -131,6 +131,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | links | external/mailto ride as run hyperlinks; #fragment anchors are named (no slide to resolve against) |
 | quotes: none | suppresses the synthesized q quotes, as the browser does |
 | absolute left+right | the box stretches between the insets (was hugging its content) |
+| table cell radius | named (no corner geometry in the file format; once per table) |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
