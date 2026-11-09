@@ -7121,6 +7121,38 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
+test('a declared row height is a minimum, and where it is written matters', () => {
+  // Chrome is the reference, measured before the code was written: tr { height: 60px }
+  // gives a 60px row, td { height: 60px } gives 60px of content plus the cell's 6px padding
+  // either side (72px), a height smaller than the content is ignored, and a <thead> row
+  // honours its own height.
+  const build = (markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 800px; font-size: 13px; border-collapse: collapse; }',
+    '  td, th { padding: 6px 8px; }',
+    '</style></head><body><main class="slide">',
+    markup,
+    '</main></body></html>'
+  ].join('\n'));
+  const rows = (markup) => {
+    const table = build(markup).deck.slides[0].elements.filter((entry) => entry.type === 'table')[0];
+    return table.options.rowH.map((inches) => Math.round(inches * 96));
+  };
+
+  assert.equal(rows('<table><tr style="height: 60px"><td>a</td></tr><tr><td>b</td></tr></table>')[0], 60,
+    'a row height is the row box');
+  assert.equal(rows('<table><tr><td style="height: 60px">a</td></tr></table>')[0], 72,
+    'a cell height is a content height, so the padding is added');
+  assert.equal(rows('<table><tr><td style="height: 60px; box-sizing: border-box;">a</td></tr></table>')[0], 60,
+    'border-box already includes it');
+  const header = '<table><thead><tr style="height: 44px"><th>a</th></tr></thead>'
+    + '<tbody><tr><td>b</td></tr></tbody></table>';
+  assert.equal(rows(header)[0], 44, 'a header row keeps its height');
+  const small = rows('<table><tr style="height: 10px"><td>内容更高的一行文字 taller than ten pixels</td></tr></table>')[0];
+  assert.ok(small > 20, 'a height smaller than the content is ignored, got ' + small + 'px');
+});
+
 test('a <col> width and a cell width share the table', () => {
   // The two ways to declare a column used to be exclusive: one <col> width made the
   // first-row cell widths invisible, so the rest of the columns were split equally.

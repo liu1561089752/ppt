@@ -214,5 +214,42 @@
   <div class="foot">原生表格对象：每个单元格仍是可编辑文本，列宽与行高是表格属性，不是图片。</div>
 </main>
 
+
+<!-- 三 · 行高是下限 -->
+<main class="slide">
+  <div class="kicker">Table · 行高</div>
+  <h1>行高是最小值，不是固定值</h1>
+  <p class="lede">表头行写 <code>height: 44px</code>，正文行写 <code>height: 60px</code>；最后一行只给 20px，但里面的文字比它高，于是这一行由内容决定高度——这正是浏览器的行为，导出的表格照抄。</p>
+  <div class="rule"></div>
+
+  <table class="data" style="width: 100%">
+    <thead>
+      <tr style="height: 44px">
+        <th>阶段</th>
+        <th>动作</th>
+        <th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="height: 60px">
+        <td>01</td>
+        <td>取数</td>
+        <td>按口径拉取近十二个月的原始明细</td>
+      </tr>
+      <tr style="height: 60px">
+        <td>02</td>
+        <td>对账</td>
+        <td>与财务口径逐项比对，差异超过千分之三则回退</td>
+      </tr>
+      <tr style="height: 20px">
+        <td>03</td>
+        <td>出图</td>
+        <td>这一行只声明了 20px：内容比它高，于是行高由文字决定，而不是被压扁。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="foot">行高写在 tr 上是行盒高度；写在 td 上是内容高度，内边距另外加上。</div>
+</main>
 </body>
 </html>

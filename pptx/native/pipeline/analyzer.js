@@ -5036,10 +5036,40 @@ function readTable(domNode, ctx, contentWidth) {
       verticalInsetIn: cell.paddingTop + cell.paddingBottom
     });
   };
-  const rowHeights = metrics.map((cells) => {
+  /**
+   * A declared row height is a *minimum*, and where it is written decides what it covers:
+   * `tr { height: 60px }` makes the row 60px, `td { height: 60px }` makes the row 60px of
+   * content plus that cell's vertical padding (Chrome measures 72px for 6px of padding), and
+   * a height smaller than the content is simply ignored. Measured in Chrome before writing it.
+   */
+  const declaredHeightOf = (style) => {
+    const length = parseLength(style.height);
+    if (!length || length.unit === '%') return 0;
+    const inches = toInches(length, { fontSizePx: 16 });
+    return inches !== null && Number.isFinite(inches) && inches > 0 ? inches : 0;
+  };
+  const declaredRowHeight = (rowIndex) => {
+    const entry = rowNodes[rowIndex];
+    if (!entry || !entry.rowNode) return 0;
+    let tallest = declaredHeightOf(ctx.styles.computed(entry.rowNode));
+    elementChildren(entry.rowNode).forEach((cellNode) => {
+      if (cellNode.tag !== 'td' && cellNode.tag !== 'th') return;
+      const style = ctx.styles.computed(cellNode);
+      const content = declaredHeightOf(style);
+      if (!content) return;
+      if (String(style.boxSizing || '').toLowerCase() === 'border-box') {
+        tallest = Math.max(tallest, content);
+        return;
+      }
+      const padding = boxShorthand(style, 'padding');
+      tallest = Math.max(tallest, content + padding.top + padding.bottom);
+    });
+    return tallest;
+  };
+  const rowHeights = metrics.map((cells, rowIndex) => {
     // A rowspan cell is measured over the rows it covers, further down.
     const tallest = cells.reduce((max, cell) => (cell.rowspan > 1 ? max : Math.max(max, cellHeight(cell))), 0);
-    return Number(Math.max(0.16, tallest).toFixed(4));
+    return Number(Math.max(0.16, tallest, declaredRowHeight(rowIndex)).toFixed(4));
   });
   metrics.forEach((cells, rowIndex) => {
     cells.forEach((cell) => {
