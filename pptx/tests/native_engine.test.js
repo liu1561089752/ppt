@@ -6667,6 +6667,28 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('doughnut hole size and legend font size map to reader options', () => {
+  // Two more reader-native chart settings that were reported away as unknown:
+  // holeSize (10-90) and legendFontSize. Out-of-range values are named, not clamped.
+  const build = (tableTag) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { font-size: 13px; }',
+    '</style></head><body><main class="slide">',
+    '<table ' + tableTag + '><tr><th>项</th><th>值</th></tr>',
+    '<tr><td>甲</td><td>40</td></tr><tr><td>乙</td><td>60</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const chartOf = (result) => result.deck.slides[0].elements.find((entry) => entry.type === 'chart');
+  const hole = build('data-chart="doughnut" data-chart-title="t" data-chart-hole-size="60"');
+  assert.equal(chartOf(hole).options.holeSize, 60);
+  const badHole = build('data-chart="doughnut" data-chart-title="t" data-chart-hole-size="900"');
+  assert.equal(chartOf(badHole).options.holeSize, undefined);
+  assert.ok(badHole.report.unsupportedDetails.some((entry) => entry.property === 'data-chart-hole-size'));
+  const legend = build('data-chart="bar" data-chart-title="t" data-chart-legend-font-size="12"');
+  assert.equal(chartOf(legend).options.legendFontSize, 12);
+});
+
 test('an explicit colour attribute outranks the header palette', () => {
   // Header cells that paint a colour name their series, but a data-chart-colors
   // attribute is a design statement: it wins even when the fixture-wide th style

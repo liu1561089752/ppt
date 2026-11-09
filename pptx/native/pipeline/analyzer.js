@@ -3848,7 +3848,8 @@ function applyChartStyling(attrs, options, domNode, ctx) {
     'data-chart-label-position', 'data-chart-value-format', 'data-chart-axis-titles',
     'data-chart-legend', 'data-chart-title', 'data-chart-grid', 'data-chart-grouping',
     'data-chart-dir', 'data-chart-text-color', 'data-values', 'data-labels',
-    'data-chart-gap-width', 'data-chart-smooth', 'data-chart-cat-label-rotate']);
+    'data-chart-gap-width', 'data-chart-smooth', 'data-chart-cat-label-rotate',
+    'data-chart-hole-size', 'data-chart-legend-font-size']);
   Object.keys(attrs).filter((name) => name.startsWith('data-chart-') && !KNOWN_CHART_ATTRS.has(name))
     .forEach((name) => {
       recordUnsupported(ctx, domNode, name, String(attrs[name]),
@@ -3950,6 +3951,18 @@ function applyChartStyling(attrs, options, domNode, ctx) {
     if (value === 'true' || value === '1') options.lineSmooth = true;
     else if (value === 'false' || value === '0') options.lineSmooth = false;
     else recordUnsupported(ctx, domNode, 'data-chart-smooth', smooth, 'Use true or false');
+  }
+  const holeSize = attrs['data-chart-hole-size'];
+  if (holeSize !== undefined) {
+    const value = Number(holeSize);
+    if (Number.isFinite(value) && value >= 10 && value <= 90) options.holeSize = value;
+    else recordUnsupported(ctx, domNode, 'data-chart-hole-size', holeSize, 'Use a percentage from 10 to 90');
+  }
+  const legendFontSize = attrs['data-chart-legend-font-size'];
+  if (legendFontSize !== undefined) {
+    const value = Number(legendFontSize);
+    if (Number.isFinite(value) && value > 0) options.legendFontSize = value;
+    else recordUnsupported(ctx, domNode, 'data-chart-legend-font-size', legendFontSize, 'Use a font size in points');
   }
   const labelRotate = attrs['data-chart-cat-label-rotate'];
   if (labelRotate !== undefined) {
