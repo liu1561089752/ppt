@@ -7121,6 +7121,85 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
+test('a <col> width and a cell width share the table', () => {
+  // The two ways to declare a column used to be exclusive: one <col> width made the
+  // first-row cell widths invisible, so the rest of the columns were split equally.
+  // Chrome on the fixture in examples/pipeline-table.html measures 200 / 148 / 552 for a
+  // 900px fixed table with <col> 200px, a header cell of 120px content width and 14px
+  // padding either side, and one column left open.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  * { box-sizing: border-box; }',
+    '  table { width: 900px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }',
+    '  td, th { padding: 11px 14px; }',
+    '</style></head><body><main class="slide">',
+    '<table><colgroup><col style="width: 200px"></colgroup>',
+    '<tr><th>项目</th><th style="width: 120px; box-sizing: content-box">状态</th><th>备注</th></tr>',
+    '<tr><td>a</td><td>b</td><td>c</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const table = result.deck.slides[0].elements.filter((entry) => entry.type === 'table')[0];
+  assert.deepEqual(table.options.colW.map((inches) => Math.round(inches * 96)), [200, 148, 552],
+    'the <col> width, the content width plus padding, and the rest');
+  assert.deepEqual(result.report.unsupportedDetails, []);
+});
+
+test('a cell width is a content width, whatever its borders do', () => {
+  // Chrome is the reference and the numbers below were measured in it: a 200px cell with
+  // 6px/8px padding draws a 216px column, 217px when it carries a 1px collapsed border,
+  // 218px when the borders are separate, 220px for 2px separate borders, and exactly 200px
+  // either with box-sizing: border-box or when the width comes from a <col>.
+  const build = (markup, cellCss, tableCss) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 800px; font-size: 13px; ' + (tableCss || 'border-collapse: collapse;') + ' }',
+    '  td, th { padding: 6px 8px; }',
+    cellCss || '',
+    '</style></head><body><main class="slide">',
+    markup,
+    '</main></body></html>'
+  ].join('\n'));
+  const cell = (style) => '<table><tr><th style="' + style + '">甲</th><th>乙</th></tr>'
+    + '<tr><td>1</td><td>2</td></tr></table>';
+  const columnPx = (result) => {
+    const table = result.deck.slides[0].elements.filter((entry) => entry.type === 'table')[0];
+    return Math.round(table.options.colW[0] * 96 * 10) / 10;
+  };
+
+  assert.equal(columnPx(build(cell('width: 200px'))), 216, 'padding widens the column');
+  assert.equal(columnPx(build(cell('width: 200px'), 'th, td { border: 1px solid #000; }')), 217,
+    'a collapsed border is shared, so half of it lands here');
+  const separate = build(cell('width: 200px'), 'th, td { border: 1px solid #000; }',
+    'border-collapse: separate;');
+  assert.equal(columnPx(separate), 218, 'separate borders are not shared');
+  assert.equal(columnPx(build(cell('width: 200px'), 'th, td { border: 2px solid #000; }',
+    'border-collapse: separate;')), 220);
+  assert.equal(columnPx(build(cell('width: 200px; box-sizing: border-box;'),
+    'th, td { border: 1px solid #000; }')), 200, 'border-box already includes them');
+  assert.equal(columnPx(build('<table><colgroup><col style="width: 200px"></colgroup>'
+    + '<tr><th>甲</th><th>乙</th></tr><tr><td>1</td><td>2</td></tr></table>')), 200,
+    'a <col> width carries no padding');
+
+  // A fixed-layout table whose columns ask for more room than it has is named, not silenced:
+  // CSS would let the table grow, a slide cannot.
+  const fixed = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 800px; table-layout: fixed; border-collapse: collapse; }',
+    '</style></head><body><main class="slide">',
+    '<table><colgroup><col style="width: 600px"><col style="width: 600px"></colgroup>',
+    '<tr><th>甲</th><th>乙</th></tr><tr><td>1</td><td>2</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const fixedTable = fixed.deck.slides[0].elements.filter((entry) => entry.type === 'table')[0];
+  assert.deepEqual(fixedTable.options.colW.map((inches) => Math.round(inches * 100) / 100), [4.17, 4.17],
+    'the proportions are kept inside the box');
+  const named = fixed.report.unsupportedDetails.filter((entry) => entry.property === 'column-widths');
+  assert.equal(named.length, 1, 'the overshoot is named once');
+  assert.match(named[0].value, /^12\.50in of columns in a 8\.33in table$/u);
+});
+
 test('a chart wears the typography of the element around it', () => {
   // A card that sets `font-size: 12px; color: #5A6A66` used to get a chart drawn in the
   // writer's own 18pt black: legible, but not part of the page. The chart now takes the

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Native Table · 列宽、边框与数字对位</title>
+<style>
+  :root {
+    --paper: #FBFAF7;
+    --ink: #1E2A28;
+    --deep: #2F5D50;
+    --muted: #6B7674;
+    --rule: #E2DCD2;
+    --tint: #F1F4F2;
+    --accent: #C2703F;
+  }
+  /* The page is border-box (a 1280px slide with padding is 1280px wide); the cell in the
+     second table opts back out, which is the case worth showing. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #DDE2DF; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; }
+  .slide {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    padding: 56px 64px;
+    background: var(--paper);
+    color: var(--ink);
+    overflow: hidden;
+  }
+  .kicker {
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--deep);
+    font-weight: 600;
+  }
+  h1 {
+    margin: 10px 0 0;
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .lede {
+    margin: 12px 0 0;
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--muted);
+    width: 760px;
+  }
+  .rule { height: 3px; width: 64px; background: var(--deep); margin: 22px 0 26px; }
+  .foot {
+    position: absolute;
+    left: 64px;
+    bottom: 34px;
+    font-size: 11px;
+    color: #9AA5A2;
+    letter-spacing: 0.4px;
+  }
+
+  /* The table itself: declared column widths, rules only between rows, numbers to the right. */
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  table.data th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--deep);
+  }
+  table.data td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: middle;
+  }
+  table.data td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  table.data tr.strong td { font-weight: 600; }
+  table.data td.tag {
+    color: var(--accent);
+    font-size: 12px;
+    letter-spacing: 0.6px;
+  }
+  .note {
+    width: 900px;
+    padding: 14px 16px;
+    background: var(--tint);
+    border-left: 3px solid var(--deep);
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--muted);
+  }
+  .note b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- 一 · 声明了列宽的表 -->
+<main class="slide">
+  <div class="kicker">Table · 列宽</div>
+  <h1>每列多宽，是设计说了算</h1>
+  <p class="lede">三列宽度写在 <code>&lt;colgroup&gt;</code> 里：区域 22%、口径 30%、其余留给数值。单元格的 <code>width</code> 是内容宽度，内边距与边框会把它撑宽——浏览器怎么算，导出的原生表格就怎么算。</p>
+  <div class="rule"></div>
+
+  <table class="data">
+    <colgroup>
+      <col style="width: 22%">
+      <col style="width: 30%">
+      <col>
+      <col style="width: 130px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>区域</th>
+        <th>口径</th>
+        <th>说明</th>
+        <th style="text-align: right">金额（万元）</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>华东</td>
+        <td>合并口径</td>
+        <td>含三家经销商的返点重算</td>
+        <td class="num" style="width: 130px">1,284.50</td>
+      </tr>
+      <tr>
+        <td>华南</td>
+        <td>自然口径</td>
+        <td>按回款确认，不做跨期调整</td>
+        <td class="num">968.20</td>
+      </tr>
+      <tr>
+        <td>华北</td>
+        <td>合并口径</td>
+        <td>含一次性的渠道补贴</td>
+        <td class="num">742.00</td>
+      </tr>
+      <tr>
+        <td>华中</td>
+        <td>自然口径</td>
+        <td>经销商自提，运费由渠道承担</td>
+        <td class="num">412.35</td>
+      </tr>
+      <tr>
+        <td>西南</td>
+        <td>合并口径</td>
+        <td>含跨区调拨的两次内部结算</td>
+        <td class="num">289.65</td>
+      </tr>
+      <tr class="strong">
+        <td>合计</td>
+        <td>—</td>
+        <td>五区域加总，未剔除内部交易</td>
+        <td class="num">3,696.70</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="foot">每一行的横线是单元格自己的 border-bottom；合计行加粗，不是另画一条底色。</div>
+</main>
+
+<!-- 二 · 固定列宽 + 单元格宽度，两者的盒模型 -->
+<main class="slide">
+  <div class="kicker">Table · 盒模型</div>
+  <h1>单元格的宽度是内容宽度</h1>
+  <p class="lede">下面这张表用 <code>table-layout: fixed</code> 固定了列宽。第二列没有写 <code>&lt;col&gt;</code>，而是由表头单元格自己声明 <code>width: 120px</code> 并退回 <code>box-sizing: content-box</code>：两侧内边距各 14px，浏览器把它画成 148px 的列——宽度只算内容，内边距另加。</p>
+  <div class="rule"></div>
+
+  <table class="data" style="width: 900px; table-layout: fixed">
+    <colgroup>
+      <col style="width: 200px">
+      <col>
+      <col>
+    </colgroup>
+    <thead>
+      <tr>
+        <th>项目</th>
+        <th style="width: 120px; box-sizing: content-box">状态</th>
+        <th>备注</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>列宽由 &lt;col&gt; 给定</td>
+        <td class="tag">200px</td>
+        <td>没有内边距，200px 就是 200px。</td>
+      </tr>
+      <tr>
+        <td>单元格 width: 120px</td>
+        <td class="tag">148px</td>
+        <td>内容 120px + 左右内边距 28px（默认 content-box）。</td>
+      </tr>
+      <tr>
+        <td>未声明的列</td>
+        <td class="tag">余量</td>
+        <td>表格宽度减去已知两列，剩下的都给这一列。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note" style="margin-top: 26px">
+    <b>三个数值都对得上。</b> 这一页的列宽、内边距与文字对位在浏览器与导出的原生表格里一致；若固定列宽之和超过表格宽度，导出的表会按比例缩进框内并写明差异——幻灯片没有让表格长大的余地。
+  </div>
+
+  <div class="foot">原生表格对象：每个单元格仍是可编辑文本，列宽与行高是表格属性，不是图片。</div>
+</main>
+
+</body>
+</html>

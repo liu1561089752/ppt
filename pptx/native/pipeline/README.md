@@ -144,6 +144,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `npm run lint` | static gate, no dependency: syntax, house style, no stdout in library code |
 | chart typography | face, size (px→pt) and colour inherited from the element that declares the chart; `<caption>` styles the title |
 | chart series colour | only a colour the header cell *declares* names a series; an inherited body grey does not |
+| cell width | a content width: padding and (halved) collapsed borders widen the column, `box-sizing: border-box` does not |
+| `<col>` + cell widths | the `<col>` width wins for its column, cell widths fill the rest |
+| fixed columns wider than the table | scaled into the box and named (`12.50in of columns in a 8.33in table`) |
 | `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |
 | cell text-transform | applied to the characters before measuring |
 | cell small-caps / word-spacing / text-shadow / text-indent | named once per table |

@@ -3864,6 +3864,29 @@ function widthInchesOf(value, contentWidth, fontSizePx) {
 }
 
 /**
+ * A cell's `width` is a *content* width: the column the browser draws is wider by the cell's
+ * padding and its borders. Chrome measures 217px for `width: 200px; padding: 6px 8px` with a
+ * 1px collapsed border (218px when the borders are separate, 200px with `box-sizing:
+ * border-box`, and exactly 200px for a `<col>` width, which carries no padding).
+ */
+function columnWidthOfCell(style, contentWidth, fontSizePx, collapsed) {
+  const declared = widthInchesOf(style.width, contentWidth, fontSizePx);
+  if (declared === null) return null;
+  if (String(style.boxSizing || '').toLowerCase() === 'border-box') return declared;
+  const padding = boxShorthand(style, 'padding');
+  let extra = padding.left + padding.right;
+  ['left', 'right'].forEach((side) => {
+    // Only the vertical borders widen a column, and a collapsed border is shared with the
+    // neighbour - which is why the browser adds half of it here.
+    const border = parseBorder(borderSideDeclaration(style, side));
+    if (!border || !(border.width > 0)) return;
+    const inches = border.width / 72;
+    extra += collapsed ? inches / 2 : inches;
+  });
+  return declared + extra;
+}
+
+/**
  * Resolve one width per column. Explicit <col> widths win, then the first row's
  * declared cell widths, and anything still unknown shares what is left; the
  * result is scaled so the columns always fill the table box exactly.
@@ -3871,6 +3894,10 @@ function widthInchesOf(value, contentWidth, fontSizePx) {
 function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSizePx) {
   if (!columns) return null;
   const widths = new Array(columns).fill(null);
+
+  const tableNode = findTableNode(domNode) || domNode;
+  const tableStyle = ctx.styles.computed(tableNode);
+  const collapsed = String(tableStyle.borderCollapse || '').toLowerCase() === 'collapse';
 
   let cursor = 0;
   collectColNodes(domNode).forEach((column) => {
@@ -3882,9 +3909,9 @@ function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSize
     }
   });
 
-  if (widths.every((width) => width === null)) {
-    // Fall back to declared first-row cell widths, which is how most authors
-    // express table proportions.
+  if (widths.some((width) => width === null)) {
+    // Declared first-row cell widths fill whatever <col> left open, which is how most
+    // authors express the rest of the table. A <col> width wins for its own column.
     const firstRowDom = (domNode.children || [])
       .flatMap((child) => (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot'
         ? (child.children || []) : [child]))
@@ -3894,9 +3921,11 @@ function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSize
       let index = 0;
       cells.forEach((cell) => {
         const style = ctx.styles.computed(cell);
-        const declared = widthInchesOf(style.width, contentWidth, fontSizePx);
+        const declared = columnWidthOfCell(style, contentWidth, fontSizePx, collapsed);
         const span = spanOf(cell, 'colspan', columns);
-        for (let step = 0; step < span && index < columns; step += 1, index += 1) widths[index] = declared;
+        for (let step = 0; step < span && index < columns; step += 1, index += 1) {
+          if (widths[index] === null) widths[index] = declared;
+        }
       });
     }
   }
@@ -3907,6 +3936,15 @@ function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSize
   const missing = columns - known.length;
   if (missing === 0) {
     if (knownSum <= 0) return null;
+    // A fixed-layout table in CSS grows past its declared width when its columns ask for
+    // more room; a slide has no room to grow into, so the columns keep their proportions
+    // inside the box - and the difference is named, because it is a real difference.
+    if (knownSum > contentWidth + 0.02
+      && String(tableStyle.tableLayout || '').toLowerCase() === 'fixed') {
+      recordUnsupported(ctx, tableNode, 'column-widths',
+        knownSum.toFixed(2) + 'in of columns in a ' + contentWidth.toFixed(2) + 'in table',
+        'Fixed-layout columns are scaled into the table box instead of widening it');
+    }
     return widths.map((width) => (width / knownSum) * contentWidth);
   }
   const remainder = Math.max(0, contentWidth - knownSum) / missing;

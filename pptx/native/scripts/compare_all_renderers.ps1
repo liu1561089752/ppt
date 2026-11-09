@@ -14,7 +14,9 @@ param(
   [string[]]$Decks = @('pipeline-structural', 'pipeline-paginate', 'pipeline-decorations',
     'pipeline-chart', 'pipeline-stress', 'pipeline-vertical', 'pipeline-columns', 'pipeline-grid',
     # A deck of pictures: crops, background sizes, and the paint order inside a card.
-    'pipeline-media'),
+    'pipeline-media',
+    # Declared column widths, row rules and the cell box model.
+    'pipeline-table'),
   [string]$Directory = 'pipeline-converted',
   # Pages whose body text a reader flows itself: each implementation breaks the lines with
   # its own fonts, so the ink moves inside the column while the column frame agrees. They
