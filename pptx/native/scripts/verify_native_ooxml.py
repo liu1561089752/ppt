@@ -82,6 +82,40 @@ def audit_child_order(root: ET.Element) -> list[str]:
             reached = max(reached, index)
     return problems
 
+def audit_tables(root: ET.Element) -> list[str]:
+    """A table row must fill the grid exactly once, and the grid must fill the frame.
+
+    PowerPoint derives a cell's column from the sum of the gridSpan values before it, so
+    a row that spans fewer or more columns than the grid has is not a cosmetic slip: it is
+    a table the reader cannot place. The frame's width is the other half of the same
+    contract - a grid that does not add up to it draws at a width nobody asked for."""
+    problems: list[str] = []
+    for table in root.iter():
+        if local_name(table.tag) != "tbl":
+            continue
+        widths = [column.get("w") for column in table.findall("a:tblGrid/a:gridCol", NS)]
+        if not widths:
+            problems.append("<a:tbl> has no <a:gridCol> row")
+            continue
+        columns = len(widths)
+        for row_index, row in enumerate(table.findall("a:tr", NS)):
+            spans = 0
+            for cell in row.findall("a:tc", NS):
+                # A cell marked hMerge="1" is the continuation of a span that already
+                # counted its columns: it fills a slot, it does not add one.
+                if cell.get("hMerge") in ("1", "true"):
+                    continue
+                declared = cell.get("gridSpan")
+                try:
+                    spans += int(declared) if declared is not None else 1
+                except ValueError:
+                    problems.append(f"cell gridSpan {declared!r} is not an integer")
+                    spans += 1
+            if spans != columns:
+                problems.append(f"table row {row_index + 1} spans {spans} column(s) of {columns}")
+    return problems
+
+
 def audit_integrity(path: Path) -> list[str]:
     """Package-level checks a reader runs before it draws anything.
 
@@ -222,6 +256,7 @@ def inspect(path: Path) -> dict[str, int]:
             root = ET.fromstring(archive.read(name))
             problems.extend(audit_enums(root))
             problems.extend(audit_child_order(root))
+            problems.extend(audit_tables(root))
             counts["shapes"] += len(root.findall(".//p:sp", NS))
             # A rotation is an xfrm attribute; 0 means "not rotated".
             for rotation in root.findall(".//a:xfrm", NS):
@@ -305,6 +340,7 @@ def inspect(path: Path) -> dict[str, int]:
             chart_root = ET.fromstring(archive.read(name))
             problems.extend(audit_enums(chart_root))
             problems.extend(audit_child_order(chart_root))
+            problems.extend(audit_tables(chart_root))
     # The package-level checks run on every invocation: a file a reader offers to repair
     # is broken even when the render looks right.
     integrity = audit_integrity(package_path)
@@ -332,6 +368,19 @@ def self_test() -> int:
         ("a fill after the line", "<a:spPr><a:ln/><a:solidFill/></a:spPr>", True),
         ("a valid anchor", "<a:bodyPr anchor='ctr'/>", False),
         ("an invalid anchor", "<a:bodyPr anchor='middle'/>", True),
+        # A table row has to fill its grid exactly once: short is as broken as long.
+        ("a table that adds up",
+         "<a:tbl><a:tblGrid><a:gridCol w='1'/><a:gridCol w='1'/></a:tblGrid>"
+         "<a:tr><a:tc/><a:tc/></a:tr></a:tbl>", False),
+        ("a table with a merge placeholder",
+         "<a:tbl><a:tblGrid><a:gridCol w='1'/><a:gridCol w='1'/></a:tblGrid>"
+         "<a:tr><a:tc gridSpan='2'/><a:tc hMerge='1'/></a:tr></a:tbl>", False),
+        ("a short row",
+         "<a:tbl><a:tblGrid><a:gridCol w='1'/><a:gridCol w='1'/></a:tblGrid>"
+         "<a:tr><a:tc/></a:tr></a:tbl>", True),
+        ("a long row",
+         "<a:tbl><a:tblGrid><a:gridCol w='1'/><a:gridCol w='1'/></a:tblGrid>"
+         "<a:tr><a:tc/><a:tc/><a:tc/></a:tr></a:tbl>", True),
     ]
     failures: list[str] = []
     for label, body, should_flag in controls:
@@ -340,7 +389,7 @@ def self_test() -> int:
         except ET.ParseError as error:
             failures.append(f"{label}: the control itself does not parse ({error})")
             continue
-        found = audit_child_order(root) + [
+        found = audit_child_order(root) + audit_tables(root) + [
             problem for child in list(root) for problem in audit_enums(child)
         ] + audit_enums(root)
         if should_flag and not found:
