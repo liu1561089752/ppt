@@ -5594,3 +5594,54 @@ test('::marker colours the bullet, not the text', () => {
   assert.deepEqual(mixed.report.unsupportedDetails.map((entry) => entry.property), ['::marker']);
 });
 
+
+test('caption-side: bottom moves the caption under the grid', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    '<table class="t"><caption>表题</caption><tr><td>a</td><td>b</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const spots = (result) => {
+    const spotsOut = {};
+    result.deck.slides[0].elements.forEach((element) => {
+      if (element.type === 'text' && typeof element.text === 'string') spotsOut.captionY = +(element.y * 96).toFixed(1);
+      if (element.type === 'table') spotsOut.tableY = +(element.y * 96).toFixed(1);
+    });
+    return spotsOut;
+  };
+
+  // Default is top: caption above the grid, grid starting below the caption text.
+  const top = build('.t { }');
+  assert.deepEqual(spots(top).captionY < spots(top).tableY, true, 'top caption above the grid');
+  assert.deepEqual(top.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  // Bottom swaps the order, and the grid itself starts at the node top. Verified in
+  // Chrome: captionTop 78 > tableTop 48 on the same fixture.
+  const bottom = build('.t { caption-side: bottom; }');
+  assert.deepEqual(spots(bottom).captionY > spots(bottom).tableY, true, 'bottom caption under the grid');
+  // The caption box TOP sits one caption-height above the grid bottom, which is where
+  // Chrome puts it (captionTop 78 = gridBottom 95.9 - caption 17.5 on the twin fixture).
+  assert.equal(spots(bottom).captionY,
+    +(spots(bottom).tableY + spotsUnder(bottom) - (spots(bottom).captionY === 0 ? 0 : captionHeight(bottom))).toFixed(1),
+    'the caption sits at the grid bottom');
+  assert.deepEqual(bottom.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  function captionHeight(result) {
+    let height = 0;
+    result.deck.slides[0].elements.forEach((element) => {
+      if (element.type === 'text' && typeof element.text === 'string') height = element.h * 96;
+    });
+    return height;
+  }
+  function spotsUnder(result) {
+    let tableH = 0;
+    result.deck.slides[0].elements.forEach((element) => {
+      if (element.type === 'table') tableH = element.h * 96;
+    });
+    return tableH;
+  }
+});
+

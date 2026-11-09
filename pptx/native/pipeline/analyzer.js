@@ -65,7 +65,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
   'flexWrap', 'flexGrow', 'flexBasis', 'flexShrink', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
   'gridColumn', 'gridRow', 'gridColumnStart', 'gridColumnEnd', 'gridRowStart', 'gridRowEnd',
-  'gridArea', 'gridTemplateRows', 'gridAutoRows', 'alignItems', 'justifyItems', 'justifySelf',
+  'gridArea', 'captionSide', 'gridTemplateRows', 'gridAutoRows', 'alignItems', 'justifyItems', 'justifySelf',
   'alignContent',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
@@ -3750,6 +3750,9 @@ function captionOf(domNode, ctx, contentWidth) {
   };
   if (color && color.hex) caption.color = color.hex;
   if (weight === 'bold' || Number(weight) >= 600) caption.bold = true;
+  // `caption-side: bottom` moves the whole caption under the grid - a real placement
+  // the native text box can take, not a report.
+  if (String(style.captionSide || '').trim().toLowerCase() === 'bottom') caption.below = true;
   if (String(style.fontStyle || '').toLowerCase() === 'italic') caption.italic = true;
   return caption;
 }

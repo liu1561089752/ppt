@@ -384,10 +384,14 @@ function tableColumnWidths(node, columns, total) {
 function captionElementFromNode(node, resolvedTheme) {
   const caption = node.caption;
   if (!caption || !caption.text) return null;
+  // The default side is top: the caption sits above the grid. `bottom` drops it under
+  // the grid, which means the grid itself starts at the node top instead of below the
+  // caption text.
+  const below = Boolean(caption.below);
   const element = {
     type: 'text',
     x: Number(xOf(node).toFixed(4)),
-    y: Number(yOf(node).toFixed(4)),
+    y: Number((below ? yOf(node) + node.h - caption.height : yOf(node)).toFixed(4)),
     w: Number(Math.max(0.2, node.w).toFixed(4)),
     h: Number(Math.max(0.05, caption.height).toFixed(4)),
     text: caption.text,

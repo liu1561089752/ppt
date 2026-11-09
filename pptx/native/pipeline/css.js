@@ -29,7 +29,7 @@ const NAMED_COLORS = {
 
 const INHERITED_PROPERTIES = new Set([
   'color', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight',
-  'letterSpacing', 'textAlign', 'textTransform', 'fontVariant', 'visibility'
+  'letterSpacing', 'textAlign', 'textTransform', 'fontVariant', 'visibility', 'captionSide'
 ]);
 
 const AXIS_RELATIVE = new Set(['left', 'right', 'width', 'marginLeft', 'marginRight', 'paddingLeft', 'paddingRight']);
