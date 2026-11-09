@@ -3941,6 +3941,7 @@ function parseLabelList(value) {
     .filter(Boolean);
 }
 
+
 /**
  * CSS cannot express a data series, so a chart must be declared:
  *   <table data-chart="bar">  → first column is the label axis, each further
@@ -3961,7 +3962,7 @@ function readChart(domNode, ctx) {
   }
 
   const options = {};
-  applyChartStyling(attrs, options, domNode, ctx);
+  applyChartStyling(attrs, options, domNode, ctx, resolved);
   if (alias && alias.barDir && attrs['data-chart-dir'] === undefined) options.barDir = alias.barDir;
   const title = attrs['data-chart-title'];
 
@@ -4042,6 +4043,16 @@ const CHART_LEGEND_POSITIONS = {
 };
 const CHART_LABEL_FLAGS = { value: 'showValue', percent: 'showPercent', series: 'showSerName' };
 const CHART_LABEL_POSITIONS = new Set(['b', 'bestFit', 'ctr', 'l', 'r', 't', 'inEnd', 'outEnd']);
+// The words a designer writes, mapped onto the schema's. `outside-end` is what people
+// type; `outEnd` is what the file holds.
+const CHART_LABEL_POSITION_ALIASES = {
+  'outside-end': 'outEnd', outsideend: 'outEnd', outside: 'outEnd',
+  'inside-end': 'inEnd', insideend: 'inEnd', inside: 'inEnd',
+  'inside-base': 'inBase', insidebase: 'inBase',
+  'best-fit': 'bestFit', bestfit: 'bestFit',
+  center: 'ctr', centre: 'ctr', middle: 'ctr',
+  top: 't', bottom: 'b', left: 'l', right: 'r'
+};
 const CHART_GROUPINGS = new Set(['clustered', 'stacked', 'percentStacked']);
 
 /**
@@ -4050,7 +4061,24 @@ const CHART_GROUPINGS = new Set(['clustered', 'stacked', 'percentStacked']);
  * A value that cannot be translated is reported rather than dropped quietly, and a
  * chart colour list is per series, in the order the series appear.
  */
-function applyChartStyling(attrs, options, domNode, ctx) {
+const CHART_SMOOTHABLE = new Set(['line', 'area', 'radar', 'scatter']);
+
+/**
+ * The label positions the writer can spell for a chart shape. It filters them itself and
+ * deletes the rest without a word, so the same rule is mirrored here - the difference is
+ * that this copy says out loud what it refused.
+ */
+function chartLabelPositionsFor(chartType, grouping) {
+  if (chartType === 'pie' || chartType === 'doughnut') return ['bestFit', 'ctr', 'inEnd', 'outEnd'];
+  if (chartType === 'line' || chartType === 'scatter') return ['b', 'ctr', 'l', 'r', 't'];
+  if (chartType === 'bar') {
+    const stacked = /^(stacked|percentStacked)$/u.test(String(grouping || ''));
+    return stacked ? ['ctr', 'inBase', 'inEnd', 'outEnd'] : ['ctr', 'inBase', 'inEnd'];
+  }
+  return null; // area and radar take any position the reader knows
+}
+
+function applyChartStyling(attrs, options, domNode, ctx, chartType) {
   // An unknown data-chart-* attribute is a typo, and a typo in a styling attribute
   // is a silently lost style. Name it.
   const KNOWN_CHART_ATTRS = new Set(['data-chart', 'data-chart-colors', 'data-chart-labels',
@@ -4104,9 +4132,10 @@ function applyChartStyling(attrs, options, domNode, ctx) {
 
   const labelPosition = String(attrs['data-chart-label-position'] || '').trim();
   if (labelPosition) {
-    if (CHART_LABEL_POSITIONS.has(labelPosition)) options.dataLabelPosition = labelPosition;
+    const spelled = CHART_LABEL_POSITION_ALIASES[labelPosition.toLowerCase()] || labelPosition;
+    if (CHART_LABEL_POSITIONS.has(spelled)) options.dataLabelPosition = spelled;
     else recordUnsupported(ctx, domNode, 'data-chart-label-position', labelPosition,
-      'Use b, bestFit, ctr, l, r, t, inEnd or outEnd');
+      'Use outside-end, inside-end, center, best-fit, top, bottom, left or right');
   }
 
   const valueFormat = attrs['data-chart-value-format'];
@@ -4158,9 +4187,17 @@ function applyChartStyling(attrs, options, domNode, ctx) {
   const smooth = attrs['data-chart-smooth'];
   if (smooth !== undefined) {
     const value = String(smooth).trim().toLowerCase();
-    if (value === 'true' || value === '1') options.lineSmooth = true;
-    else if (value === 'false' || value === '0') options.lineSmooth = false;
-    else recordUnsupported(ctx, domNode, 'data-chart-smooth', smooth, 'Use true or false');
+    const wanted = value === 'true' || value === '1';
+    const refused = value === 'false' || value === '0';
+    if (!wanted && !refused) {
+      recordUnsupported(ctx, domNode, 'data-chart-smooth', smooth, 'Use true or false');
+    } else if (wanted && chartType && !CHART_SMOOTHABLE.has(chartType)) {
+      // A curve needs a line to bend; a bar has none, so the request draws nothing.
+      recordUnsupported(ctx, domNode, 'data-chart-smooth', smooth,
+        'Smoothing bends a line, and a ' + chartType + ' chart draws none');
+    } else {
+      options.lineSmooth = wanted;
+    }
   }
   const holeSize = attrs['data-chart-hole-size'];
   if (holeSize !== undefined) {
@@ -4193,11 +4230,17 @@ function applyChartStyling(attrs, options, domNode, ctx) {
     if (String(labelFormat).trim()) options.dataLabelFormatCode = String(labelFormat).trim();
     else recordUnsupported(ctx, domNode, 'data-chart-label-format', labelFormat, 'Use an Excel number format code');
   }
+  // The writer emits one value axis: a series marked secondary points at an axis that is
+  // never written, so the chart draws a single scale. Claiming the option was honoured
+  // would be the dishonest half of this; it is named with the alternative.
   const secondary = attrs['data-chart-secondary-axis'];
   if (secondary !== undefined) {
-    if (/^(true|on)$/iu.test(String(secondary).trim())) options.secondaryValAxis = true;
-    else if (/^(false|off)$/iu.test(String(secondary).trim())) options.secondaryValAxis = false;
-    else recordUnsupported(ctx, domNode, 'data-chart-secondary-axis', secondary, 'Use true or false');
+    if (/^(true|on|1)$/iu.test(String(secondary).trim())) {
+      recordUnsupported(ctx, domNode, 'data-chart-secondary-axis', secondary,
+        'The writer draws one value axis only: a second scale would need hand-written chart XML - split the series into a second chart instead');
+    } else if (!/^(false|off|0)$/iu.test(String(secondary).trim())) {
+      recordUnsupported(ctx, domNode, 'data-chart-secondary-axis', secondary, 'Use true or false');
+    }
   }
   const labelRotate = attrs['data-chart-cat-label-rotate'];
   if (labelRotate !== undefined) {
@@ -4259,6 +4302,18 @@ function applyChartStyling(attrs, options, domNode, ctx) {
     } else {
       recordUnsupported(ctx, domNode, 'data-chart-text-color', String(textColor),
         'Chart text colour must be a #rrggbb value');
+    }
+  }
+
+  // The writer deletes a label position it cannot spell for this chart shape; name it
+  // instead of handing over an option that quietly disappears.
+  if (options.dataLabelPosition) {
+    const allowed = chartLabelPositionsFor(chartType, options.barGrouping);
+    if (allowed && !allowed.includes(options.dataLabelPosition)) {
+      recordUnsupported(ctx, domNode, 'data-chart-label-position', options.dataLabelPosition,
+        'A ' + chartType + ' chart accepts ' + allowed.join('/') + ' for data labels, not '
+        + options.dataLabelPosition);
+      delete options.dataLabelPosition;
     }
   }
 }
@@ -4349,8 +4404,8 @@ function cellBorderOptions(style) {
   const options = sides.map(option);
   const first = JSON.stringify(options[0]);
   return options.every((entry) => JSON.stringify(entry) === first) ? options[0] : options;
-}
 
+}
 /** A table cell line width in points, floored so PowerPoint still draws it. */
 function borderWidthPt(value) {
   const number = Number(value);

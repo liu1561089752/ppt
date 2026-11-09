@@ -152,6 +152,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `position: fixed` | pinned to the slide box (paged-media meaning), not to a scrolling viewport |
 | chart types | bar/column, hbar, line, area, pie, doughnut/donut, radar/spider - aliases resolve to the same native chart |
 | scatter | native - first numeric column is x, the rest are y series; scatterStyle corrected to marker |
+| data-chart-secondary-axis | named - the writer emits one value axis only |
+| data-chart-smooth | named on chart shapes without a line |
+| data-chart-label-position | friendly spellings (outside-end/center/best-fit) + per-shape limits mirrored and named |
 | `line-height: normal` | per-face metrics via fontkit; generic fallback keeps 1.25 where Chrome measures 1.45 - documented boundary |
 | outline alone | native - the shape line, dash included |
 | text-emphasis | named - DrawingML has no emphasis mark (a render proved the old markup drew nothing) |

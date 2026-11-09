@@ -6753,6 +6753,43 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('a data label position the writer cannot spell is named', () => {
+  // The writer filters label positions per chart shape and deletes the rest without a
+  // word, so the analyzer mirrors the rule and says what it refused. A clustered bar
+  // cannot put a label outside its bar; a stacked one can.
+  const build = (type, attrs) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '</style></head><body><main class="slide">',
+    '<table data-chart="' + type + '" ' + attrs + '><tr><th>项目</th><th>甲</th></tr>',
+    '<tr><td>一月</td><td>30</td></tr><tr><td>二月</td><td>50</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const chartOf = (result) => result.deck.slides[0].elements.find((entry) => entry.type === 'chart');
+
+  const clustered = build('bar', 'data-chart-labels="value" data-chart-label-position="outside-end"');
+  assert.equal(chartOf(clustered).options.dataLabelPosition, undefined,
+    'a clustered bar has nowhere outside to put it');
+  const named = clustered.report.unsupportedDetails.filter((entry) => entry.property === 'data-chart-label-position');
+  assert.equal(named.length, 1, 'and the refusal is named');
+  assert.match(named[0].reason, /accepts ctr\/inBase\/inEnd/u, named[0].reason);
+
+  const stacked = build('bar', 'data-chart-labels="value" data-chart-label-position="outside-end" data-chart-grouping="stacked"');
+  assert.equal(chartOf(stacked).options.dataLabelPosition, 'outEnd', 'a stacked bar can');
+  assert.deepEqual(stacked.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const pie = build('pie', 'data-chart-labels="value" data-chart-label-position="top"');
+  assert.equal(chartOf(pie).options.dataLabelPosition, undefined, 'a pie has no top label');
+  assert.ok(pie.report.unsupportedDetails.some((entry) => entry.property === 'data-chart-label-position'));
+
+  const line = build('line', 'data-chart-labels="value" data-chart-label-position="top"');
+  assert.equal(chartOf(line).options.dataLabelPosition, 't', 'a line can take a top label');
+
+  // The friendly spellings are accepted at all: `outside-end` is what people type.
+  const friendly = build('bar', 'data-chart-labels="value" data-chart-label-position="center"');
+  assert.equal(chartOf(friendly).options.dataLabelPosition, 'ctr');
+});
+
 test('a scatter reads its first column as the x axis and draws markers', async () => {
   // A scatter plots pairs. The table's first column is therefore the x axis, the numbers
   // after it are y series, and a category in that column is a report rather than a
@@ -7358,7 +7395,7 @@ test('alt text reaches the file and srcset names its choice', () => {
   assert.ok(srcset, 'the srcset choice is named');
 });
 
-test('axis bounds, label format and secondary axis spell natively', () => {
+test('axis bounds and label format spell natively; a second axis is named', () => {
   // The three chart attributes were named as unknown; pptxgenjs spells each one,
   // so the honest report was actually hiding native capability.
   const build = (attrs) => {
@@ -7382,8 +7419,13 @@ test('axis bounds, label format and secondary axis spell natively', () => {
   assert.equal(bounded.chart.options.valAxisMaxVal, 100, 'max rides the options');
   const formatted = build('data-chart-label-format="0.0%"');
   assert.equal(formatted.chart.options.dataLabelFormatCode, '0.0%', 'the format code rides');
+  // The writer emits one value axis: a series marked secondary points at an axis that is
+  // never written, so the option is named instead of riding along doing nothing.
   const secondary = build('data-chart-secondary-axis="true"');
-  assert.equal(secondary.chart.options.secondaryValAxis, true, 'the secondary axis rides');
+  assert.equal(secondary.chart.options.secondaryValAxis, undefined, 'no phantom second axis');
+  const named = secondary.report.unsupportedDetails.filter((entry) => entry.property === 'data-chart-secondary-axis');
+  assert.equal(named.length, 1, 'and the request is named');
+  assert.match(named[0].reason, /one value axis/u, 'with the reason: ' + named[0].reason);
   const clean = build('');
   assert.equal(clean.report.unsupportedDetails.length, 0, 'a plain chart stays silent');
 });
@@ -7615,11 +7657,17 @@ test('chart tuning attributes map to reader options', () => {
     '<tr><td>Q1</td><td>120</td></tr><tr><td>Q2</td><td>150</td></tr></table>',
     '</main></body></html>'
   ].join('\n'));
-  const tuned = build('data-chart="bar" data-chart-title="t" data-chart-gap-width="40" data-chart-smooth="true" data-chart-cat-label-rotate="-45"');
+  const tuned = build('data-chart="line" data-chart-title="t" data-chart-gap-width="40" data-chart-smooth="true" data-chart-cat-label-rotate="-45"');
   const chart = tuned.deck.slides[0].elements.find((entry) => entry.type === 'chart');
   assert.equal(chart.options.barGapWidthPct, 40);
-  assert.equal(chart.options.lineSmooth, true);
+  assert.equal(chart.options.lineSmooth, true, 'a line can bend');
   assert.equal(chart.options.catAxisLabelRotate, -45);
+  // A bar has no line to bend, so the request is named rather than dropped.
+  const bentBar = build('data-chart="bar" data-chart-smooth="true"');
+  assert.ok(bentBar.report.unsupportedDetails.some((entry) => entry.property === 'data-chart-smooth'
+    && /draws none/u.test(entry.reason)), 'smoothing a bar chart is named');
+  assert.equal(bentBar.deck.slides[0].elements.find((entry) => entry.type === 'chart').options.lineSmooth,
+    undefined, 'and the option is not set');
   const rejected = build('data-chart="bar" data-chart-title="t" data-chart-gap-width="900"');
   assert.ok(rejected.report.unsupportedDetails.some((entry) => entry.property === 'data-chart-gap-width'),
     'a 900% gap is named, not clamped');
