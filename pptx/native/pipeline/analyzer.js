@@ -4557,7 +4557,28 @@ function readTableCell(cell, ctx, rowBackground) {
   const padding = boxShorthand(style, 'padding');
   const paddingPt = [padding.top, padding.right, padding.bottom, padding.left]
     .map((value) => Number((value * 72).toFixed(2)));
-  const text = normalizedText(cell);
+  // `text-transform` reaches the characters on a block; a cell took the raw text, so the
+  // words drew in their original case. The same helper is used, and the measurement below
+  // reads the transformed string, so the column is sized to what is painted.
+  const cellTransform = String(style.textTransform || '').trim().toLowerCase();
+  const text = cellTransform ? transformText(normalizedText(cell), cellTransform) : normalizedText(cell);
+  // Properties a cell cannot carry are named once per table rather than dropped.
+  if (String(style.wordSpacing || '').trim() && !ctx.cellWordSpacingNamed) {
+    ctx.cellWordSpacingNamed = true;
+    recordUnsupported(ctx, cell, 'wordSpacing', style.wordSpacing,
+      'A table cell cannot space its words apart: the space keeps its own width');
+  }
+  if (String(style.textShadow || '').trim() && !ctx.cellTextShadowNamed) {
+    ctx.cellTextShadowNamed = true;
+    recordUnsupported(ctx, cell, 'textShadow', style.textShadow,
+      'A shadow on cell text has no native spelling: the letters draw flat');
+  }
+  if (String(style.textIndent || '').trim() && Number(parseFloat(style.textIndent)) > 0
+    && !ctx.cellTextIndentNamed) {
+    ctx.cellTextIndentNamed = true;
+    recordUnsupported(ctx, cell, 'textIndent', style.textIndent,
+      'A cell has no first-line indent: the line starts at the cell edge');
+  }
   const options = {
     bold: cell.tag === 'th' || weight === 'bold' || Number(weight) >= 600,
     color: color && color.hex ? color.hex : undefined,
@@ -4574,6 +4595,22 @@ function readTableCell(cell, ctx, rowBackground) {
     options.valign = verticalAlign;
   }
   if (String(style.fontStyle || '').toLowerCase() === 'italic') options.italic = true;
+  // A cell's own decoration is a run property like any other: a total row underlines, a
+  // struck-through price strikes. Reading it only from inline elements lost the cell's.
+  const cellDecoration = String(style.textDecorationLine || style.textDecoration || '').toLowerCase();
+  if (cellDecoration.includes('underline')) {
+    const shape = /\b(dotted|dashed|wavy|double)\b/iu.exec(cellDecoration);
+    // The cell's run mapper reads the object form; a bare `true` wrote no `u` at all.
+    options.underline = { style: shape ? shape[1].toLowerCase() : 'sng' };
+  }
+  if (cellDecoration.includes('line-through')) options.strike = true;
+  // Small caps is applied to a shape's runs by a patch that walks `p:sp`; a cell lives in
+  // a graphicFrame and the writer has no per-cell switch, so it is named once per table.
+  if (/small-caps/u.test(String(style.fontVariant || '').toLowerCase()) && !ctx.cellSmallCapsNamed) {
+    ctx.cellSmallCapsNamed = true;
+    recordUnsupported(ctx, cell, 'fontVariant', style.fontVariant,
+      'A table cell has no small-caps switch: the letters draw at their own size');
+  }
   const spacingPt = letterSpacingPtOf(style);
   if (spacingPt) options.charSpacing = spacingPt;
   // The row height is measured with the cell's line spacing, so the drawn cell has to

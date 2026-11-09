@@ -5202,6 +5202,59 @@ test('a table cell carries its line spacing, and names the wrap it cannot switch
     'and not once per cell');
 });
 
+test('cell text carries its own decoration, case and honest gaps', async () => {
+  // A table cell builds its own run properties, so it needs its own audit: the cell's
+  // decoration and its text-transform were read from inline elements only, which left a
+  // total row un-underlined and an uppercase header in lower case. Something a cell
+  // cannot carry is named once per table instead of disappearing.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const cellXml = async (css, cellHtml) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  table { width: 900px; font-size: 14px; }',
+      '  td { padding: 8px; }',
+      css,
+      '</style></head><body><main class="slide">',
+      '<table><tr>' + (cellHtml || '<td class="c">Cell 单元格</td>') + '</tr></table>',
+      '</main></body></html>'
+    ].join('\n'));
+    const output = path.join(os.tmpdir(), 'native-cell-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    return { xml, report: result.report };
+  };
+
+  const underlined = await cellXml('td.c { text-decoration: underline; }');
+  assert.match(underlined.xml, /<a:rPr[^>]*u="sng"/u, 'a plain underline is u="sng" in a cell');
+
+  const dotted = await cellXml('td.c { text-decoration: underline dotted; }');
+  assert.match(dotted.xml, /<a:rPr[^>]*u="dotted"/u, 'the underline style rides the same attribute');
+
+  const struck = await cellXml('td.c { text-decoration: line-through; }');
+  assert.match(struck.xml, /<a:rPr[^>]*strike="sngStrike"/u, 'a struck cell is struck');
+
+  const shouted = await cellXml('td.c { text-transform: uppercase; }');
+  assert.match(shouted.xml, /<a:t>CELL 单元格<\/a:t>/u, 'the case reaches the characters in a cell too');
+
+  for (const [css, property] of [
+    ['td.c { font-variant: small-caps; }', 'fontVariant'],
+    ['td.c { word-spacing: 6px; }', 'wordSpacing'],
+    ['td.c { text-shadow: 1px 1px 2px #000; }', 'textShadow'],
+    ['td.c { text-indent: 2em; }', 'textIndent']
+  ]) {
+    const result = await cellXml(css);
+    assert.ok(result.report.unsupportedDetails.some((entry) => entry.property === property),
+      property + ' is named for a cell rather than dropped');
+  }
+});
+
 test('typography either reaches the file or is named', async () => {
   // The same read-back rule as the chart options, applied to type: every CSS typography
   // property either lands in the XML or is named. The probe found one silent drop - a

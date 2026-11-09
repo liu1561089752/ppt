@@ -133,6 +133,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | absolute left+right | the box stretches between the insets (was hugging its content) |
 | table cell radius | named (no corner geometry in the file format; once per table) |
 | nested list markers | each level keeps its own marker language (was the outer marker everywhere) |
+| cell decoration | underline (with style) and strike from the cell's own CSS |
+| cell text-transform | applied to the characters before measuring |
+| cell small-caps / word-spacing / text-shadow / text-indent | named once per table |
 | loose list nesting | a list directly inside another still renders its items (was dropped) |
 | closed details | content stays collapsed (was drawn anyway); open keeps everything |
 | overflow-wrap: normal spill | boundary - PowerPoint always breaks long words, so the word breaks here too (all words kept) |
