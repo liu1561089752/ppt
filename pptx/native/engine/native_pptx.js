@@ -863,6 +863,41 @@ async function patchTextIndents(outputPath, deck, laidOut) {
   return true;
 }
 
+/**
+ * Shape ids are one namespace per slide, and the writer numbers tables from its own
+ * counter: a table landing on a number a text box already took makes PowerPoint offer
+ * to repair the file. Nothing refers to these ids - this deck emits no animation
+ * timeline - so a single sequential pass makes them unique again, the group first.
+ */
+async function patchShapeIds(outputPath) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  const names = Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name));
+  let touched = 0;
+  for (const name of names) {
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    const seen = new Set();
+    let next = 1;
+    let changed = false;
+    const updated = xml.replace(/<p:cNvPr id="(\d+)"/gu, (whole, id) => {
+      const value = String(next++);
+      if (seen.has(id) || id !== value) changed = true;
+      seen.add(id);
+      return '<p:cNvPr id="' + value + '"';
+    });
+    if (changed) {
+      zip.file(name, updated);
+      touched += 1;
+    }
+  }
+  if (touched) {
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    fs.writeFileSync(outputPath, buffer);
+  }
+  return touched > 0;
+}
+
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
@@ -880,6 +915,8 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchImageEffects(outputPath, result.imagePlans);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
+  // Last, after every patch that writes shapes: ids stay unique whatever the writer did.
+  await patchShapeIds(outputPath);
   return {
     outputPath,
     report: result.report,

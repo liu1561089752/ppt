@@ -95,7 +95,8 @@
     "render:patterns": "python scripts/render_check.py pipeline-converted/pipeline-patterns.pptx --output-dir render-check/pipeline-patterns",
     "pipeline:paginate": "node pipeline/cli.js ../examples/pipeline-paginate.html --out pipeline-converted/paginate.json --pptx pipeline-converted/pipeline-paginate.pptx",
     "preview:paginate": "python scripts/preview_deck.py pipeline-converted/pipeline-paginate.pptx --output-dir preview/paginate --sheet preview/paginate-sheet.png",
-    "render:paginate": "python scripts/render_check.py pipeline-converted/pipeline-paginate.pptx --output-dir render-check/pipeline-paginate"
+    "render:paginate": "python scripts/render_check.py pipeline-converted/pipeline-paginate.pptx --output-dir render-check/pipeline-paginate",
+    "audit:integrity": "python scripts/verify_native_ooxml.py pipeline-converted/stress40.pptx"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

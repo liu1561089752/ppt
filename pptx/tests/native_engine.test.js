@@ -6756,6 +6756,38 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('shape ids stay unique on a slide that mixes text, pictures and tables', () => {
+  // Shape ids are one namespace per slide, and the writer numbers a table from its
+  // own counter - a table landing on a number a text box already took makes
+  // PowerPoint offer to repair the file, which no render would show.
+  const JSZip = require('../native/node_modules/jszip');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<h1>标题</h1><p>正文</p>',
+    '<img src="' + png + '" style="width: 100px;">',
+    '<table style="width: 400px"><tr><td>甲</td><td>乙</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n');
+  const output = path.join(os.tmpdir(), 'native-shape-ids-' + Date.now() + '.pptx');
+  return generatePptx(pipeline.convertHtml(html).deck, output).then(async () => {
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const ids = [...xml.matchAll(/<p:cNvPr id="(\d+)"/gu)].map((match) => match[1]);
+    assert.ok(ids.length >= 4, 'the slide carries its shapes: ' + ids.join(','));
+    assert.equal(new Set(ids).size, ids.length, 'every id is used once: ' + ids.join(','));
+    assert.deepEqual(ids, ids.map((value, index) => String(index + 1)),
+      'and they run in order, the group first: ' + ids.join(','));
+    fs.rmSync(output, { force: true });
+  });
+});
+
 test('an outline draws alone and is named beside a border', () => {
   // A native shape carries one line, so an outline declared beside a border used to
   // vanish without a word.

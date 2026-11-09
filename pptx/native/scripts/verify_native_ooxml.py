@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import posixpath
 import zipfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -29,6 +30,110 @@ ENUM_VALUES = {
 }
 
 
+REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+R_ID_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+R_ATTRS = {"id", "embed", "link", "pict"}
+
+
+def audit_integrity(path: Path) -> list[str]:
+    """Package-level checks a reader runs before it draws anything.
+
+    Three things make PowerPoint offer to repair a file, and none of them show up in
+    a render: a shape id used twice in one slide, a relationship pointing at a part
+    that is not there, and a part no content type covers. They are cheap to check and
+    they are exactly the failures a renderer with a forgiving parser hides.
+    """
+    problems: list[str] = []
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        media = {name for name in names if not name.endswith("/")}
+
+        # 1. Every part is typed: an Override for it, or a Default for its extension.
+        try:
+            types = ET.fromstring(archive.read("[Content_Types].xml"))
+        except (KeyError, ET.ParseError) as error:
+            return ["[Content_Types].xml is missing or unreadable: " + str(error)]
+        defaults = {node.get("Extension", "").lower() for node in types.findall("{" + CT_NS + "}Default")}
+        overrides = {node.get("PartName", "").lstrip("/") for node in types.findall("{" + CT_NS + "}Override")}
+        for name in sorted(media):
+            if name == "[Content_Types].xml":
+                continue
+            if name in overrides:
+                continue
+            extension = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            if extension in defaults:
+                continue
+            problems.append(f"part {name} has no content type")
+
+        # 2. Every relationship resolves to a part that exists.
+        for name in sorted(media):
+            if not name.endswith(".rels"):
+                continue
+            folder = name.rsplit("/_rels/", 1)[0] if "/_rels/" in name else ""
+            try:
+                rels = ET.fromstring(archive.read(name))
+            except ET.ParseError as error:
+                problems.append(f"{name} is not readable XML: {error}")
+                continue
+            for rel in rels.findall("{" + REL_NS + "}Relationship"):
+                if rel.get("TargetMode") == "External":
+                    continue
+                target = rel.get("Target", "")
+                if target.startswith("/"):
+                    resolved = target.lstrip("/")
+                else:
+                    resolved = posixpath.normpath(posixpath.join(folder, target)) if folder else posixpath.normpath(target)
+                if resolved not in media:
+                    problems.append(f"{name} points at a missing part: {target}")
+
+        # 3. A slide's shape ids are unique, and every r:id/r:embed it uses is declared.
+        for name in sorted(media):
+            if not (name.startswith("ppt/slides/slide") or name.startswith("ppt/charts/chart")) \
+                    or not name.endswith(".xml") or "/_rels/" in name:
+                continue
+            try:
+                root = ET.fromstring(archive.read(name))
+            except ET.ParseError as error:
+                problems.append(f"{name} is not readable XML: {error}")
+                continue
+            seen: dict[str, int] = {}
+            for element in root.iter():
+                if local_name(element.tag) not in ("cNvPr", "cNvGraphicFramePr"):
+                    continue
+                identifier = element.get("id")
+                if identifier is None:
+                    continue
+                seen[identifier] = seen.get(identifier, 0) + 1
+            for identifier, count in seen.items():
+                if count > 1:
+                    problems.append(f"{name} uses shape id {identifier} {count} times")
+                elif not identifier.isdigit() or int(identifier) < 1:
+                    problems.append(f"{name} has shape id {identifier!r}, which is not a positive integer")
+            declared = relationship_ids(archive, name)
+            for element in root.iter():
+                for attribute, value in element.attrib.items():
+                    if not attribute.startswith("{" + R_ID_NS + "}"):
+                        continue
+                    if local_name(attribute) not in R_ATTRS:
+                        continue
+                    if value not in declared:
+                        problems.append(f"{name} uses relationship {value} that its rels does not declare")
+    return problems
+
+
+def relationship_ids(archive: zipfile.ZipFile, part: str) -> set[str]:
+    """The ids a part's own rels file declares."""
+    folder, _, base = part.rpartition("/")
+    rels_name = (folder + "/" if folder else "") + "_rels/" + base + ".rels"
+    try:
+        root = ET.fromstring(archive.read(rels_name))
+    except (KeyError, ET.ParseError):
+        return set()
+    return {rel.get("Id") for rel in root.findall("{" + REL_NS + "}Relationship")}
+
+
+
 def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
@@ -49,6 +154,8 @@ def audit_enums(root: ET.Element) -> list[str]:
 
 
 def inspect(path: Path) -> dict[str, int]:
+    # `path` is reused below for geometry path elements; the file is kept under its own name.
+    package_path = path
     counts = {"slides": 0, "shapes": 0, "texts": 0, "gradients": 0,
               "shadows": 0, "alpha_nodes": 0, "charts": 0, "pictures": 0,
               "image_crops": 0, "rounded_pictures": 0, "outlined_pictures": 0,
@@ -149,6 +256,12 @@ def inspect(path: Path) -> dict[str, int]:
                        and "/_rels/" not in name]
         for name in chart_names:
             problems.extend(audit_enums(ET.fromstring(archive.read(name))))
+    # The package-level checks run on every invocation: a file a reader offers to repair
+    # is broken even when the render looks right.
+    integrity = audit_integrity(package_path)
+    counts["integrity_problems"] = len(integrity)
+    if integrity:
+        counts["_integrity_examples"] = integrity[:5]  # noqa: PLC0206 - report, then fail
     counts["invalid_enums"] = len(problems)
     if problems:
         counts["_problem_examples"] = problems[:5]  # noqa: PLC0206 - report, then fail
@@ -191,6 +304,10 @@ def main() -> int:
         raise SystemExit("Missing required editable OOXML features: " + ", ".join(missing))
     if counts["slides"] < 1:
         raise SystemExit("PPTX contains no slide XML parts")
+    if counts.get("integrity_problems"):
+        examples = counts.get("_integrity_examples") or []
+        raise SystemExit("The package a reader would offer to repair ("
+                         + str(counts["integrity_problems"]) + "): " + "; ".join(examples))
     if counts["invalid_enums"]:
         examples = counts.get("_problem_examples") or []
         raise SystemExit("Invalid enumerated values in the generated OOXML ("

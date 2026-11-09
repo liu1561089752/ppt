@@ -143,6 +143,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | bare text in the slide root | kept - wrapped in an anonymous box (was lost silently); nested case stays named |
 | bare text in a nested container | kept too (generic containers only; li/td/h* keep their direct text for their own readers) |
 | outline beside a border | named - a shape carries one line, the border wins |
+| shape ids | unique and sequential per slide (a table used to collide with a text box) |
+| package integrity | content types, relationship targets and r:id use checked as a gate |
 | outline alone | native - the shape line, dash included |
 | text-emphasis | native - a:emphasisMark with buChar and its fill |
 | table-layout: fixed | native - colW plus the fixed flag |
