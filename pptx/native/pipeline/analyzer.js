@@ -80,6 +80,9 @@ const SUPPORTED_PROPERTIES = new Set([
   'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'boxShadow', 'opacity', 'fontFamily', 'fontSize', 'fontWeight',
   'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform', 'textIndent', 'whiteSpace',
+  // `underline`/`line-through` land as run properties via decorationOptions; `overline`
+  // and a declared thickness or colour are named separately below.
+  'textDecoration', 'textDecorationLine', 'textDecorationColor', 'textDecorationThickness',
   'fontVariant',
   'writingMode', 'wordBreak', 'float', 'clear', 'aspectRatio',
   // The `-webkit-line-clamp` properties; the clamp itself is applied where the text is
@@ -596,6 +599,25 @@ function checkUnsupported(ctx, domNode, style) {
       recordUnsupported(ctx, domNode, 'wordBreak', style.wordBreak,
         'CJK text breaks between characters here; keep-all forbids exactly that break');
     }
+  }
+  // `underline` and `line-through` are run properties; the rest of the decoration
+  // family has no native spelling on a run. `overline` would need a drawn line above
+  // every line of wrapped text, and a decoration colour would need `a:uFill`, which
+  // the writer does not emit - so both are named rather than silently inherited.
+  const decorationLine = String(style.textDecorationLine || style.textDecoration || '').toLowerCase();
+  if (decorationLine.includes('overline')) {
+    recordUnsupported(ctx, domNode, 'textDecoration', style.textDecorationLine || style.textDecoration,
+      'Overline has no native run property; a line above every wrapped line cannot be drawn');
+  }
+  if (style.textDecorationColor) {
+    recordUnsupported(ctx, domNode, 'textDecorationColor', style.textDecorationColor,
+      'The decoration keeps the text colour; the writer emits no underline fill');
+  }
+  // Only the browser`s own stroke width can be meant; a declared thickness has no channel.
+  const thickness = String(style.textDecorationThickness || '').trim();
+  if (thickness && !/^(auto|from-font)$/iu.test(thickness)) {
+    recordUnsupported(ctx, domNode, 'textDecorationThickness', style.textDecorationThickness,
+      'The decoration draws at the reader`s default stroke width');
   }
   // The transform is resolved in analyzeNode, where the box it moves is known.
   // `flex-wrap: wrap` is laid out in real lines by the row branch; a wrapping

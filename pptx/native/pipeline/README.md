@@ -63,7 +63,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 
 | Clip path | `clip-path: polygon(...)` on a box with a declared height becomes a `custGeom` path whose vertices are the polygon corners: the shape itself is the clip, so it stays editable and its outline follows the cut. Percentages and lengths both resolve; anything else (`circle()`, `ellipse()`, `inset()`, `url()`) is reported, and so is a clipped box that has children, because only the box's own paint is clipped here |
 
-| Transform | `translate()`/`rotate()` compose as one plan (a later translate is turned with the rotation; percentages resolve against the box); `scale()`/`skew()` and a non-centre `transform-origin` are reported |
+| Text decoration | `underline`/`line-through` are run properties (rendered and verified, including both on one run); `overline`, a decoration colour and a declared thickness are named - no native channel | `translate()`/`rotate()` compose as one plan (a later translate is turned with the rotation; percentages resolve against the box); `scale()`/`skew()` and a non-centre `transform-origin` are reported |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
 

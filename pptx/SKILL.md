@@ -794,6 +794,7 @@ Behaviour worth knowing:
 - Unmatched boxes are printed, never skipped silently: they are either words the renderer clipped away or a rectangle whose attribution stayed ambiguous.
 - Speaker notes are native `ppt/notesSlides` parts: a hidden `<aside class="notes">` or `data-notes` on the slide container is harvested instead of dropped with the rest of the hidden DOM.
 - The unsupported report counts elements, not measurement calls: a re-measured box does not repeat its declarations.
+- `text-decoration: underline`/`line-through` are native run properties, rendered and verified in LibreOffice including a run that is both at once; the properties used to be *reported as unsupported* while being translated, the opposite lie - the support list simply never contained them. `overline`, a decoration colour and a declared thickness are named per value: no native channel.
 - Inline semantics are runs: `<sup>`/`<sub>` → `baseline`, `<u>`/`<s>` → underline/strike, a plain inline background (`<mark>`) → `highlight`, `<a href>` → `hyperlink`, `<code>` → monospace. The browser's element defaults (`b`, `strong`, `em`, `i`, `mark`, `small`, `code`, `h1`-`h6`) are modelled.
 - A list item is its own paragraph with its own bullet; nesting is `indentLevel`, and the bullet goes on every run of the item because the writer reads paragraph properties from the run that ends the paragraph.
 - `line-height` is written as `spcPts` (multiple x font size), never `spcPct`, which would render ~20% taller than the reserved box.

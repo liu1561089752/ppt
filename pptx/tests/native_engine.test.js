@@ -5393,3 +5393,26 @@ test('visibility: hidden keeps the box in the layout but paints nothing', () => 
   assert.equal(+(goneShapes[0].y * 96).toFixed(1), 40, 'display:none moves the sibling up');
 });
 
+
+test('text-decoration is a run property, and the values without one are named', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><p class="b">hello</p></main></body></html>'
+  ].join('\n'));
+  const optionsOf = (result) => result.deck.slides[0].elements[0].text[0].options;
+
+  // Underline and line-through are run properties, not unsupported CSS.
+  assert.equal(optionsOf(build('.b { text-decoration: underline; }')).underline, true);
+  assert.equal(optionsOf(build('.b { text-decoration: line-through; }')).strike, true);
+
+  // `overline` has no native run property, so it is named instead of silently dropped.
+  const over = build('.b { text-decoration: overline; }');
+  assert.deepEqual(over.report.unsupportedDetails.map((entry) => entry.property), ['textDecoration']);
+
+  // A decoration colour would need an underline fill the writer does not emit.
+  const tinted = build('.b { text-decoration: underline; text-decoration-color: #C05B3E; }');
+  assert.deepEqual(tinted.report.unsupportedDetails.map((entry) => entry.property), ['textDecorationColor']);
+});
+
