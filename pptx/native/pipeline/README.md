@@ -117,6 +117,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | absolute margins | margins offset the box from its inset position (was ignored); negative pulls back |
 | ordered lists | plain ol seeds decimal; start rides startAt; reversed named |
 | elliptical corners | slash radius keeps rx/ry per corner; the pair is named (was silently halved) |
+| page 9 visual | LibreOffice render verified (underlines, baselines, auto margin); WPS gates green on 20 fixtures |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
