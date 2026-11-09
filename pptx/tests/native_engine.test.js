@@ -6366,3 +6366,28 @@ test('pre and pre-wrap keep their runs of spaces', () => {
   assert.ok(!normalText.includes('double  space'), 'normal mode still collapses');
 });
 
+
+test('the report tallies the roles a page translated into', () => {
+  // A reader of the report sees what the structure became - title, body, cards - not
+  // just raw shape counts.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; background: #F7F5F1; }',
+    '  h1 { font-size: 40px; color: #10303A; margin: 0 0 12px; }',
+    '  .lede { font-size: 15px; color: #4A5A5E; width: 720px; }',
+    '  .card { width: 240px; padding: 18px; background: #FFFFFF; border-radius: 12px; }',
+    '  .card h3 { font-size: 16px; color: #1D2A2E; margin: 0 0 8px; }',
+    '  .card p { font-size: 12px; color: #566; margin: 0; }',
+    '</style></head><body><main class="slide">',
+    '<h1>季度经营回顾</h1>',
+    '<p class="lede">四项关键指标全面达标。</p>',
+    '<div class="card"><h3>新签客户</h3><p>46 家。</p></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(result.report.roles.title, 1);
+  assert.equal(result.report.roles.body, 1);
+  assert.equal(result.report.roles.heading, 1);
+  assert.equal(result.report.roles.caption, 1);
+  assert.equal(result.report.textElements >= 4, true);
+});
+

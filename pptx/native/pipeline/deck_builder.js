@@ -1326,6 +1326,15 @@ function buildDeckSpec(analysis, options = {}) {
     return splitOverflowingTable(built, analysis.pageSize, report);
   });
 
+  // A semantic tally: what the source's structure became. A reader of the report
+  // sees "1 title + 1 body + 3 cards" instead of raw shape counts.
+  const roles = {};
+  const tallyRole = (node) => {
+    if (node.role) roles[node.role] = (roles[node.role] || 0) + 1;
+    (node.children || []).forEach(tallyRole);
+  };
+  analysis.slides.forEach((slide) => slide.nodes.forEach(tallyRole));
+  report.roles = roles;
   // Pagination adds slides, so the count a reader sees is the deck's, not the source's.
   report.slides = slides.length;
   const deck = {
