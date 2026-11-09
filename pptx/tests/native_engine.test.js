@@ -5670,3 +5670,35 @@ test('text-transform: full-width maps the ASCII range onto fullwidth forms', () 
   assert.equal(textOf(cap), 'Hello World');
 });
 
+
+test('grid fr and flex-basis allocation matches the browser exactly', () => {
+  // Chrome-measured on the twin fixture: 1fr 2fr in 1200px with a 10px gap gives
+  // 396.7 / 793.3, and two flex-basis:30% items with grow 0 stay 360 each.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    '<div class="g"><div>a</div><div>b</div></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const widths = (result) => {
+    const found = [];
+    const walk = (children) => (children || []).forEach((child) => {
+      if (child.type === 'text' && child.w) found.push(+(child.w * 96).toFixed(1));
+      walk(child.children);
+    });
+    walk(result.deck.slides[0].elements);
+    return found;
+  };
+
+  // A painted cell keeps its measured width (a bare text child does not - the box
+  // exists only in the reader's layout there).
+  const cell = '.g div { height: 50px; background: #E8E1D0; }';
+  const grid = build('.g { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; } ' + cell);
+  assert.deepEqual(widths(grid), [396.7, 793.3]);
+
+  const flex = build('.g { display: flex; gap: 10px; } .g div { flex-basis: 30%; height: 50px; background: #E8E1D0; }');
+  assert.deepEqual(widths(flex), [360, 360]);
+});
+
