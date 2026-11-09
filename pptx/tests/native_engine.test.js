@@ -7121,6 +7121,62 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
+test('a length object-position crops and places the picture it names', async () => {
+  // `object-position` was read as a keyword or a percentage only: a length fell through the
+  // background parser as "center" and the picture was cropped from the middle in silence.
+  // A length can only be read with the source size and the box in hand, so it travels to the
+  // fit resolver - and it means two different things there, as it does in CSS.
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAYAAAATu1kYAAAAJUlEQVR42u3NMQEAAAgDoC251a3gLzSgknB3VwEBAQEBAQEBAQEBAQEBAQHA1wABl6y0GQAAAABJRU5ErkJggg==';
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const picture = async (css) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  img { width: 240px; height: 120px; }',
+      css,
+      '</style></head><body><main class="slide">',
+      '<img src="' + PNG + '" alt="x">',
+      '</main></body></html>'
+    ].join('\n'));
+    const output = path.join(os.tmpdir(), 'native-position-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    const pic = xml.slice(xml.indexOf('<p:pic>'), xml.indexOf('</p:pic>'));
+    const offset = /<a:off x="(-?\d+)" y="(-?\d+)"\/>/u.exec(pic);
+    const srcRect = /<a:srcRect([^/>]*)\/?>/u.exec(pic);
+    return {
+      x: offset ? Number(offset[1]) / 914400 : null,
+      y: offset ? Number(offset[2]) / 914400 : null,
+      crop: srcRect ? srcRect[1].trim() : ''
+    };
+  };
+
+  // A cover crop fills the box, so the offset can only mean "this far from centred": the
+  // window moves by that fraction of the overflow, and the sign decides the direction.
+  const centred = await picture('img { object-fit: cover; }');
+  const down = await picture('img { object-fit: cover; object-position: 10px 5px; }');
+  const up = await picture('img { object-fit: cover; object-position: -10px -5px; }');
+  assert.match(centred.crop, /t="12500"/u, 'the default crop is centred: ' + centred.crop);
+  assert.match(centred.crop, /b="12500"/u, 'top and bottom alike: ' + centred.crop);
+  assert.match(down.crop, /t="9375"/u, '5px down moves the window up: ' + down.crop);
+  assert.match(down.crop, /b="15625"/u, 'and takes the bottom with it: ' + down.crop);
+  assert.match(up.crop, /t="15625"/u, 'and the minus sign goes the other way: ' + up.crop);
+  assert.match(up.crop, /b="9375"/u, 'bottom first: ' + up.crop);
+
+  // A contained picture is smaller than its box, so the offset is placement from the edge:
+  // 20px in a 0.625in of free space lands 0.208in past the box's left edge.
+  const placed = await picture('img { object-fit: contain; object-position: 20px 0; }');
+  assert.ok(Math.abs(placed.x - (0.4167 + 20 / 96)) < 0.002, 'placed at 20px: ' + placed.x);
+  const corner = await picture('img { object-fit: contain; object-position: left top; }');
+  assert.ok(Math.abs(corner.x - 0.4167) < 0.002, 'the keyword form still lands top left: ' + corner.x);
+});
+
 test('a picture with no object-fit is named where that box crops it', () => {
   // CSS stretches an undeclared object-fit; this deck crops to cover so a photo is never
   // distorted. That is a different picture, so it is named - but only where a fixed box

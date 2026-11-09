@@ -55,10 +55,23 @@ function normalizeFit(fit) {
   return value;
 }
 
-function normalizeFocus(focus) {
+function normalizeFocus(focus, context = null) {
   if (focus === undefined || focus === null || focus === '') return { x: 0.5, y: 0.5 };
   if (typeof focus === 'string') {
     const key = focus.trim().toLowerCase().replace(/[-_]+/gu, ' ').replace(/\s+/gu, ' ');
+    // Lengths need the box and the source size; without them the caller only has keywords.
+    if (context && context.natural && context.box) {
+      const tokens = key.split(' ').filter(Boolean);
+      const looksLikeLengths = tokens.length <= 2 && tokens.every((token) => /^-?[\d.]+(px|pt|in|cm|mm)?$/u.test(token))
+        && tokens.some((token) => /^-?[\d.]+$/u.test(token) || /(px|pt|in|cm|mm)$/u.test(token));
+      if (looksLikeLengths) {
+        // The preset key has its hyphens flattened to spaces, so the offsets are read from
+        // the string as written - a minus sign is a direction, not a separator.
+        const lengths = focusFromLengths(String(focus).trim().split(/\s+/u).filter(Boolean),
+          context.natural, context.box, context.fit);
+        if (lengths) return lengths;
+      }
+    }
     const preset = FOCUS_PRESETS.get(key);
     if (!preset) throw new Error('Unknown image focus preset "' + focus + '"');
     return Object.assign({}, preset);
@@ -72,6 +85,51 @@ function normalizeFocus(focus) {
     return { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
   }
   throw new Error('Image focus must be a preset name or an { x, y } object');
+}
+
+/** A CSS length in inches (px is the default unit, as in the rest of the pipeline). */
+function lengthInInches(token) {
+  const match = /^(-?[\d.]+)(px|pt|in|cm|mm)?$/u.exec(String(token).trim());
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return null;
+  const per = { px: PX_PER_INCH, pt: 72, in: 1, cm: 2.54, mm: 25.4 }[match[2] || 'px'];
+  return value / per;
+}
+
+/**
+ * `object-position: 10px 5px` is an offset from the box's top-left, not a percentage, so it
+ * can only be read once the source size and the box are known. The offset is turned into the
+ * same 0..1 focus the percentage form uses: for a cover crop the object overflows the box by
+ * `scaled - box`, and shifting it by `offset` shows that fraction of the overflow; for a
+ * contained picture it is the free space the object is placed in.
+ */
+function focusFromLengths(tokens, natural, box, fit) {
+  const xIn = lengthInInches(tokens[0]);
+  const yIn = tokens.length > 1 ? lengthInInches(tokens[1]) : null;
+  if (xIn === null || (tokens.length > 1 && yIn === null)) return null;
+  const centre = 0.5;
+  const scale = fit === 'none'
+    ? 1
+    : (fit === 'cover'
+      ? Math.max(box.w / natural.width, box.h / natural.height)
+      : Math.min(box.w / natural.width, box.h / natural.height));
+  const scaledW = natural.width * scale;
+  const scaledH = natural.height * scale;
+  // Two different meanings, as in `background-position`. A contained picture is *placed*:
+  // the offset is the distance from the box edge, so it is the fraction of the free space
+  // directly. A cover crop fills the box already, so the offset can only mean "this much
+  // further than centred", which moves the crop window by that fraction of the overflow.
+  const fraction = (offset, size, boxSize) => {
+    const span = fit === 'cover' ? size - boxSize : boxSize - size;
+    if (!Number.isFinite(span) || Math.abs(span) < 1e-6) return centre;
+    const value = fit === 'cover' ? centre - offset / span : offset / span;
+    return Math.min(1, Math.max(0, value));
+  };
+  return {
+    x: fraction(xIn || 0, scaledW, box.w),
+    y: fraction(yIn || 0, scaledH, box.h)
+  };
 }
 
 function normalizeCrop(crop) {
@@ -253,19 +311,21 @@ function roundRectAdjustment(radiusIn, box) {
 function resolveImageGeometry(element, options = {}) {
   const fit = normalizeFit(element.fit);
   const box = normalizeBox(element);
-  const focus = normalizeFocus(element.focus);
+  // The source size is read once, here: a length-based `object-position` needs it, and so
+  // does every fit that keeps proportions.
+  const natural = options.natural || readImageSize(element, options);
+  const focus = normalizeFocus(element.focus, { natural, box, fit });
 
   if (fit === 'stretch') {
-    return { fit, box, srcRect: null, natural: options.natural || readImageSize(element, options) };
+    return { fit, box, srcRect: null, natural };
   }
 
   // An explicit crop rectangle is already expressed in source-image fractions,
   // so it does not depend on the natural pixel size.
   if (fit === 'crop') {
-    return { fit, box, srcRect: normalizeCrop(element.crop), natural: options.natural || readImageSize(element, options) };
+    return { fit, box, srcRect: normalizeCrop(element.crop), natural };
   }
 
-  const natural = options.natural || readImageSize(element, options);
   if (!natural) {
     throw new Error('Image fit "' + fit + '" needs the natural pixel size; provide a readable path/data source or an explicit naturalSize { width, height }');
   }

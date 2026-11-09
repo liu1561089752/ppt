@@ -57,7 +57,12 @@ function validateImageFit(prefix, element, errors) {
   if (element.focus !== undefined) {
     if (typeof element.focus === 'string') {
       const key = element.focus.trim().toLowerCase().replace(/[-_]+/gu, ' ').replace(/\s+/gu, ' ');
-      if (!IMAGE_FOCUS_PRESETS.has(key)) errors.push(prefix + '.focus is not a known focal preset');
+      // A CSS length position (`10px 5px`) is resolved by the fit code, which has the source
+      // size and the box; a preset is resolved from the table. The length form is matched on
+      // the string as written - a minus sign is an offset, not a word separator.
+      const asWritten = element.focus.trim().toLowerCase().replace(/\s+/gu, ' ');
+      const lengthPosition = /^-?[\d.]+(px|pt|in|cm|mm)?( -?[\d.]+(px|pt|in|cm|mm)?)?$/u.test(asWritten);
+      if (!IMAGE_FOCUS_PRESETS.has(key) && !lengthPosition) errors.push(prefix + '.focus is not a known focal preset');
     } else if (!element.focus || typeof element.focus !== 'object' || Array.isArray(element.focus)) {
       errors.push(prefix + '.focus must be a preset name or an { x, y } object');
     } else {

@@ -332,6 +332,12 @@ function boxShorthand(style, prefix) {
 /** `object-position: right top` uses the same grammar as background-position. */
 function descriptionFocus(value) {
   if (!value) return undefined;
+  const raw = String(value).trim().toLowerCase().replace(/\s+/gu, ' ');
+  // A length is resolved by the fit code, which has the source size and the box. It is
+  // caught here, before the background parser, because that parser reads percentages and
+  // keywords and would mix the two: `20px 0` came back as `{ x: 0.5, y: 0 }`, losing the
+  // horizontal offset in silence.
+  if (/^-?[\d.]+(px|pt|in|cm|mm)( -?[\d.]+(px|pt|in|cm|mm)?)?$/u.test(raw)) return raw;
   return parseBackgroundFocus(value);
 }
 
@@ -2508,7 +2514,12 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     recordUnsupported(ctx, domNode, 'objectFit', style.objectFit,
       'Unknown object-fit value: the picture is cropped to cover the box instead');
   }
-    node.focus = descriptionFocus(style.objectPosition);
+    // A keyword or percentage position is read here; a length position needs the source
+    // size and the drawn box, so the raw string travels to the fit resolver, which has both.
+    const positionFocus = descriptionFocus(style.objectPosition);
+    node.focus = positionFocus !== undefined
+      ? positionFocus
+      : (String(style.objectPosition || '').trim() || undefined);
     checkCornerMix(domNode, style, ctx);
     node.radius = radiusOf(style);
     if ((ellipseOf(style) || {}).percent >= 50) node.ellipse = true;
