@@ -6465,3 +6465,46 @@ test('an unknown chart attribute is named, not dropped', () => {
   assert.deepEqual(clean.report.unsupportedDetails.map((entry) => entry.property), []);
 });
 
+
+test('the table border draws its perimeter', () => {
+  // CSS `table { border: 2px solid }` is the outline a browser draws in
+  // border-collapse mode. It used to vanish: cells read only their own style. Perimeter
+  // cells now take the table's edge where the cell is silent.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  table { width: 400px; border: 2px solid #10303A; border-collapse: collapse; font-size: 13px; }',
+    '  th,td { padding: 6px; }',
+    '</style></head><body><main class="slide">',
+    '<table><tr><th>H1</th><th>H2</th></tr><tr><td>a</td><td>b</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const table = result.deck.slides[0].elements.find((element) => element.rows);
+  table.rows.forEach((row) => row.forEach((cell) => {
+    const sides = Array.isArray(cell.options.border) ? cell.options.border
+      : [cell.options.border, cell.options.border, cell.options.border, cell.options.border];
+    // Every side draws the table's colour.
+    sides.forEach((side) => {
+      assert.equal(side.type, 'solid');
+      assert.equal(side.color, '10303A');
+    });
+    // The table's 2px (1.5pt) edge lands on the perimeter sides.
+    assert.ok(sides.some((side) => side.pt >= 1.4), 'the perimeter edge draws: ' + JSON.stringify(sides));
+  }));
+  // A cell that declares its own edge keeps it.
+  const own = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  table { width: 400px; border: 2px solid #10303A; border-collapse: collapse; font-size: 13px; }',
+    '  th,td { padding: 6px; }',
+    '  td.special { border-bottom: 4px solid #D98A4B; }',
+    '</style></head><body><main class="slide">',
+    '<table><tr><th>H1</th><th>H2</th></tr><tr><td class="special">a</td><td>b</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const ownTable = own.deck.slides[0].elements.find((element) => element.rows);
+  const special = ownTable.rows[1][0].options.border;
+  const borders = Array.isArray(special) ? special : [special, special, special, special];
+  assert.equal(borders[2].color, 'D98A4B', 'the cell keeps its own bottom edge');
+});
+

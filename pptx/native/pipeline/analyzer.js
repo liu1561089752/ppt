@@ -4031,6 +4031,7 @@ function readTableCell(cell, ctx, rowBackground) {
   if (rowspan > 1) options.rowspan = rowspan;
   return {
     node: cell,
+    style,
     text,
     options,
     colspan,
@@ -4188,6 +4189,41 @@ function readTable(domNode, ctx, contentWidth) {
     return placed;
   });
   columns = Math.max(columns, ...occupied.map((marks) => marks.length));
+
+  // The table's own CSS border is the perimeter a browser draws in border-collapse
+  // mode. A perimeter cell that does not declare that edge itself takes the table's,
+  // wider of the two winning as CSS says - so the outline is not silently lost.
+  const tableBorderStyle = ctx.styles.computed(domNode);
+  const tableBorderEdges = BORDER_SIDES.map((side) => {
+    const declaration = borderSideDeclaration(tableBorderStyle, side);
+    return Object.keys(declaration).length ? parseBorder(declaration) : null;
+  });
+  const anyTableEdge = tableBorderEdges.some((edge) => edge);
+  if (anyTableEdge) {
+    grid.forEach((placed, rowIndex) => {
+      placed.forEach((cell) => {
+        const cellStyle = cell.style || {};
+        // Compose the effective style: the cell's own declarations win, and the
+        // table's perimeter edges fill only the sides the cell left silent.
+        const composed = Object.assign({}, tableBorderStyle, cellStyle);
+        const onTop = rowIndex === 0;
+        const onBottom = rowIndex === grid.length - 1;
+        const onLeft = cell.column === 0;
+        const onRight = cell.column + cell.colspan === columns;
+        const perimeter = { borderTop: onTop, borderRight: onRight, borderBottom: onBottom, borderLeft: onLeft };
+        BORDER_SIDES.forEach((side, index) => {
+          const longhand = ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'][index];
+          if (!perimeter[longhand]) return;
+          const own = borderSideDeclaration(cellStyle, side);
+          if (Object.keys(own).length) return;
+          const edge = tableBorderEdges[index];
+          if (!edge) return;
+          composed[longhand] = edge.width + 'px ' + edge.style + ' #' + edge.color;
+        });
+        cell.options.border = cellBorderOptions(composed);
+      });
+    });
+  }
 
   // Phase 3: emit the rows. A slot the HTML leaves unused is an empty cell in a browser,
   // so it is emitted as one instead of letting PowerPoint close the gap.
