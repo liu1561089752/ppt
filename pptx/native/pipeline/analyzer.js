@@ -723,9 +723,13 @@ function checkUnsupported(ctx, domNode, style) {
   }
   // A picture is drawn once, fitted to its box, which is `no-repeat`. Tiling asks
   // for something a fitted picture cannot do, so those values are named.
-  const repeat = String(style.backgroundRepeat || '').trim().toLowerCase();
+  // The `background` shorthand can carry the repeat keyword too (`url(x) round`),
+  // and the longhand read above would miss it.
+  const shorthandRepeat = String(style.background || '').replace(/url\([^)]*\)/iu, ' ')
+    .split(/\s+/u).find((token) => /^(no-repeat|repeat|repeat-x|repeat-y|round|space)$/iu.test(token));
+  const repeat = String(style.backgroundRepeat !== undefined ? style.backgroundRepeat : (shorthandRepeat || '')).trim().toLowerCase();
   if (repeat && repeat !== 'no-repeat' && repeat !== 'inherit' && repeat !== 'initial') {
-    recordUnsupported(ctx, domNode, 'backgroundRepeat', style.backgroundRepeat,
+    recordUnsupported(ctx, domNode, 'backgroundRepeat', repeat,
       'The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled');
   }
   if (style.display === 'inline' || style.display === 'inline-block') {

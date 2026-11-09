@@ -6667,6 +6667,28 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('a repeat keyword inside the background shorthand is named', () => {
+  // `background: url(x) round` carried its tiling request inside the shorthand,
+  // which the longhand read missed - the pattern drew as one fitted image silently.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '  .b { width: 200px; height: 100px; background: url(../examples/asset-x.png) round; }',
+    '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+  ].join('\n'));
+  const report = result.report.unsupportedDetails.find((entry) => entry.property === 'backgroundRepeat');
+  assert.ok(report, 'the tiling request is named');
+  assert.equal(report.value, 'round');
+  // A no-repeat in the shorthand still means exactly what the native side draws.
+  const silent = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '  .b { width: 200px; height: 100px; background: url(../examples/asset-x.png) center/cover no-repeat; }',
+    '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+  ].join('\n'));
+  assert.ok(!silent.report.unsupportedDetails.some((entry) => entry.property === 'backgroundRepeat'), 'no-repeat stays silent');
+});
+
 test('transform-origin reports once, through the parser that knows the shift', () => {
   // The generic sweep listed transformOrigin AND the transform parser named the
   // same origin again - one honest line beats two.
