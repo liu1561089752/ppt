@@ -708,6 +708,46 @@ function expandBoxShorthand(value) {
 }
 
 /**
+ * `font: 700 24px/1.4 "Microsoft YaHei"` as the longhands it sets. The grammar is
+ * `[<style> || <variant> || <weight>]? <size>[/<line-height>]? <family>`; the size and
+ * family are mandatory, everything else is optional. A declaration that does not parse
+ * stays whole and the subset report names it - a half-expanded font is worse than a
+ * named refusal.
+ */
+function expandFontShorthand(value) {
+  const text = String(value || '').trim();
+  if (!text || /^(?:caption|icon|menu|message-box|small-caption|status-bar)$/iu.test(text)) return null;
+  // Font grammar: [style || variant || weight]? <size>[/<line-height>]? <family>.
+  // The size is therefore the FIRST unit-bearing token, the family is everything
+  // after it (a quoted face or a comma stack stays one string), and every keyword
+  // sits before the size.
+  const tokens = text.match(/("[^"]*"|'[^']*'|\.?\d+(?:\.\d+)?(?:px|pt|em|rem|%)?|[\w-]+|\/)/gu) || [];
+  let sizeIndex = -1;
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (/^\.?\d+(?:\.\d+)?(px|pt|em|rem|%)$/iu.test(tokens[index])) { sizeIndex = index; break; }
+  }
+  if (sizeIndex < 0 || sizeIndex === tokens.length - 1) return null;
+  const size = tokens[sizeIndex];
+  // The family is the raw remainder - a quoted face with spaces or a comma stack
+  // must survive verbatim, and re-joining tokens would eat the comma.
+  const sizeText = tokens[sizeIndex];
+  let consumed = text.indexOf(sizeText) + sizeText.length;
+  const afterSize = text.slice(consumed);
+  const lineHeightMatch = /^\s*\/\s*(\.?\d+(?:\.\d+)?)\s*/u.exec(afterSize);
+  const lineHeight = lineHeightMatch ? lineHeightMatch[1] : '';
+  const family = (lineHeightMatch ? afterSize.slice(lineHeightMatch[0].length) : afterSize).trim();
+  if (!family) return null;
+  const out = { fontSize: sizeText, fontFamily: family };
+  if (lineHeight) out.lineHeight = lineHeight;
+  const front = tokens.slice(0, sizeIndex).join(' ');
+  const weight = /(?:\b|^)(100|200|300|400|500|600|700|800|900|bold|bolder|lighter)(?:\b|$)/iu.exec(front);
+  if (weight) out.fontWeight = weight[1];
+  const styleWord = /(?:\b|^)(italic|oblique)(?:\b|$)/iu.exec(front);
+  if (styleWord) out.fontStyle = styleWord[1];
+  if (/\bsmall-caps\b/iu.test(front)) out.fontVariant = 'small-caps';
+  return out;
+}
+/**
  * Which properties a style object has already taken from an `!important` declaration.
  * Kept beside the style instead of on it: the resolver hands plain objects to the rest of
  * the pipeline, and a bookkeeping key inside one would leak into the cascade.
@@ -760,6 +800,12 @@ function applyDeclarations(style, declarations, variables) {
       set(suffix + 'Right', right);
       set(suffix + 'Bottom', bottom);
       set(suffix + 'Left', left);
+      return;
+    }
+    if (property === 'font') {
+      const expanded = expandFontShorthand(resolvedValue);
+      if (!expanded) { set('font', resolvedValue); return; }
+      Object.entries(expanded).forEach(([name, next]) => set(name, next));
       return;
     }
     if (property === 'border-radius') {

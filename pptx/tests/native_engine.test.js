@@ -5525,3 +5525,34 @@ test('clip-path circle and ellipse that cut the inscribed shape become the geome
   assert.deepEqual(moved.report.unsupportedDetails.map((entry) => entry.property), ['clipPath']);
 });
 
+
+test('the font shorthand expands into the longhands it sets', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><p class="b">hello</p></main></body></html>'
+  ].join('\n'));
+  const face = (result) => {
+    const element = result.deck.slides[0].elements[0];
+    const run = Array.isArray(element.text) ? element.text[0] : {};
+    return { h: +(element.h * 96).toFixed(1), bold: element.bold || run.options && run.options.bold,
+      face: element.fontFace || (run.options && run.options.fontFace) };
+  };
+
+  // Shorthand and longhand land on the same box, the same weight and the same face.
+  const short = build('.b { font: 700 24px/1.4 "Microsoft YaHei"; }');
+  const long = build('.b { font-size: 24px; font-weight: 700; line-height: 1.4; font-family: "Microsoft YaHei"; }');
+  assert.deepEqual(face(short), face(long), 'the shorthand is the longhand');
+  assert.deepEqual(short.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  // A comma stack survives verbatim, and the keywords before the size all land.
+  const stacked = build('.b { font: small-caps 500 18pt/1.2 "Segoe UI", sans-serif; }');
+  assert.equal(face(stacked).face, 'Segoe UI');
+  assert.equal(stacked.deck.slides[0].elements[0].smallCaps, true, 'small-caps travels');
+
+  // A system-font keyword form has no face to name, so it stays reported whole.
+  const system = build('.b { font: caption; }');
+  assert.deepEqual(system.report.unsupportedDetails.map((entry) => entry.property), ['font']);
+});
+
