@@ -69,6 +69,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | white-space | `pre-line` is the behaviour (silent); `pre`/`pre-wrap` name that space runs collapse. `word-spacing: normal` is silent; a declared value names the per-character-only channel |
 | table-layout | `fixed` is the implemented model (declared or equal columns; content wraps) and is silent; the browser`s `auto` content-stretching is not modelled - stated by the column-width rule |
 | clip-path rounds | `circle(50%)` on a square and `ellipse(50% 50%)` anywhere are the inscribed shape and become the native ellipse preset; non-inscribed radii, `at` centres and `inset()`/`path()` stay reported |
+| radial/conic/repeating | Refused per family with its own truth: no radial mode, no angular mode, one ramp instead of a repeating pattern; the box stays unpainted either way |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
 

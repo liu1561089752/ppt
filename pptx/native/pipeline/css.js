@@ -1157,6 +1157,10 @@ function parseLinearGradient(value) {
   for (let index = 0; index < stopParts.length; index += 1) {
     const chunk = stopParts[index].trim();
     if (!chunk) continue;
+    // A repeating gradient usually writes pixel stops (`#ddd 0 10px`). A px stop is a
+    // position along the gradient axis, but the axis length lives with the box, which
+    // the parser does not see - and a wrong basis bakes a wrong pattern in. Pixel
+    // stops therefore keep the declaration unsupported instead of guessing.
     const explicit = /^(.*?)\s+(-?[\d.]+)%\s*$/u.exec(chunk);
     const colorText = explicit ? explicit[1].trim() : chunk;
     const color = parseColor(colorText);

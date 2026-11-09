@@ -1623,8 +1623,17 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       + ' keep only the first value');
   }
   if (unsupportedGradient) {
+    // Each family fails for its own reason: a radial has no native fill at all, a
+    // conic neither, and a repeating linear would need the reader to cycle a ramp
+    // the fill model cannot. The box is left unpainted in every case - that part
+    // is the same and is what the design needs to know.
+    const why = unsupportedGradient === 'radial-gradient'
+      ? 'a native fill has no radial mode'
+      : unsupportedGradient === 'conic-gradient'
+        ? 'a native fill has no angular mode'
+        : 'a native fill draws one ramp, not a pattern that repeats it';
     recordUnsupported(ctx, domNode, 'backgroundImage', style.backgroundImage || style.background,
-      'PowerPoint fills are linear only: ' + unsupportedGradient + ' cannot be translated, so the box keeps its geometry and is left unpainted');
+      unsupportedGradient + ' cannot be translated (' + why + '), so the box keeps its geometry and is left unpainted');
   }
   const node = {
     id: ctx.nextId++,
