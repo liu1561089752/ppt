@@ -593,6 +593,9 @@ function checkUnsupported(ctx, domNode, style) {
     // report would name a gap that does not exist.
     // `normal` is the initial value; the declared spelling changes nothing.
     if (property === 'overflowWrap') return;
+    // Counter state is consumed by the list branch (reset, increment, print); the
+    // properties say nothing the list output does not already carry.
+    if (property === 'counterReset' || property === 'counterIncrement') return;
     // `text-emphasis` is consumed at the run level; values without a shape keyword
     // (colour-only or a `none`) fall through to the generic report.
     if (property === 'textEmphasis' && /\b(dot|circle|filled|open|double-circle|triangle|sesame)\b/iu.test(String(style[property]))) return;
@@ -1794,12 +1797,76 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       // A `::before { content: counter(...) }` on the items is a design that numbers
       // rows itself. The list path reads DOM text only, so the counter silently
       // vanished - name it instead.
+      // Counters: a reset on the list or any ancestor opens the state, an increment
+      // on each item advances it, and a counter() in the before-content prints the
+      // value. This covers the numbered-rows design the list spellings serve.
+      const counters = {};
+      const resetOn = (node) => {
+        const style = ctx.styles.computed(node);
+        const reset = String(style.counterReset || '').trim();
+        if (reset && reset !== 'none') {
+          reset.split(/\s*,\s*/u).forEach((entry) => {
+            const [name, start] = entry.split(/\s+/u);
+            counters[name.trim()] = start === undefined ? 0 : (Number(start) || 0);
+          });
+        }
+      };
+      for (let ancestor = domNode; ancestor; ancestor = ancestor.parent) resetOn(ancestor);
+      // The evaluated content is decoded here rather than handed back to the literal
+      // walk: a number followed by quoted strings fails the bare-token walk, and the
+      // quotes themselves must not print.
+      const decodeCounted = (content) => {
+        let rest = String(content || '');
+        const parts = [];
+        while (rest.length) {
+          const quote = rest[0];
+          if (quote === '"' || quote === "'") {
+            let cursor = 1;
+            let body = '';
+            while (cursor < rest.length && rest[cursor] !== quote) {
+              if (rest[cursor] === '\\' && cursor + 1 < rest.length) {
+                body += rest[cursor] + rest[cursor + 1];
+                cursor += 2;
+                continue;
+              }
+              body += rest[cursor];
+              cursor += 1;
+            }
+            parts.push(decodeCssContent(quote + body + quote));
+            rest = rest.slice(cursor + 1);
+            continue;
+          }
+          const bare = /^\s+|[A-Za-z0-9.-]+|\s+/u.exec(rest);
+          if (!bare) { rest = rest.slice(1); continue; }
+          if (/^\s+$/u.test(bare[0])) { parts.push(' '); rest = rest.slice(bare[0].length); continue; }
+          parts.push(bare[0]);
+          rest = rest.slice(bare[0].length);
+        }
+        return parts.join('');
+      };
+      const evaluate = (content) => decodeCounted(String(content || '').replace(/counter\(([A-Za-z-]+)\)/giu, (whole, name) => String(counters[name] ?? '')));
       const generated = [];
       items.forEach((item) => {
+        const itemStyle = ctx.styles.computed(item.node);
+        const increment = String(itemStyle.counterIncrement || '').trim();
+        if (increment && increment !== 'none') {
+          increment.split(/\s*,\s*/u).forEach((entry) => {
+            const [name, step] = entry.split(/\s+/u);
+            const key = name.trim();
+            counters[key] = (counters[key] || 0) + (step === undefined ? 1 : (Number(step) || 0));
+          });
+        }
         ['before', 'after'].forEach((pseudo) => {
           const declaration = ctx.styles.decoration(item.node, pseudo);
           if (!declaration) return;
-          const resolved = inlinePseudoText(declaration, item.node);
+          const raw = String(declaration.content || '');
+          // A counter() call is resolved against the state before the literal walk:
+          // the call is replaced by its number, and the remaining quoted strings take
+          // the normal decoding path.
+          const hasCounter = /\bcounter\(/iu.test(raw);
+          const resolved = hasCounter
+            ? { text: evaluate(raw) }
+            : inlinePseudoText(declaration, item.node);
           if (resolved.unsupported) {
             if (!generated.includes(resolved.unsupported)) generated.push(resolved.unsupported);
             return;

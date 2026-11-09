@@ -6005,40 +6005,47 @@ test('preference media queries report why they cannot match', () => {
 });
 
 
-test('a counter in list pseudo content is named, not dropped', () => {
-  // The regression: the list path reads DOM text only, so a li::before with
-  // counter(item) lost the numbers silently - the exact failure class the report exists
-  // for.
-  const result = pipeline.convertHtml([
+test('counters number the rows, literals join them', () => {
+  // counter-reset/increment print through the list branch: the state is opened by
+  // the reset, advanced by each item, and counter() in the content prints the value.
+  const build = (cssRules, markup) => pipeline.convertHtml([
     '<html><head><style>',
     '  .slide { width: 1280px; height: 720px; padding: 40px; }',
-    '  body { counter-reset: item; }',
-    '  .b li { counter-increment: item; font-size: 16px; }',
-    '  .b li::before { content: counter(item) ". "; }',
+    cssRules,
     '</style></head><body><main class="slide">',
-    '<ul class="b" style="margin: 0; padding: 0; list-style: none;"><li>甲</li><li>乙</li><li>丙</li></ul>',
+    markup,
     '</main></body></html>'
   ].join('\n'));
-  const report = result.report.unsupportedDetails.find((entry) => entry.property === '::before');
-  assert.ok(report, 'the counter is named');
-  assert.ok(report.value.includes('counter(item)'), 'the value names the counter call');
-  assert.ok(report.reason.includes('Generated content'), 'the reason says what cannot be computed');
-  // One report for the whole list, not one per item.
-  assert.equal(result.report.unsupportedDetails.filter((entry) => entry.property === '::before').length, 1);
+  const textOf = (result) => {
+    const element = result.deck.slides[0].elements[0];
+    return typeof element.text === 'string' ? element.text : element.text.map((run) => run.text).join('');
+  };
 
-  // A literal-string pseudo still joins the line silently.
-  const literal = pipeline.convertHtml([
-    '<html><head><style>',
-    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
-    '  .b li { font-size: 16px; }',
-    '  .b li::before { content: "→ "; }',
-    '</style></head><body><main class="slide">',
-    '<ul class="b" style="margin: 0; padding: 0; list-style: none;"><li>甲</li></ul>',
-    '</main></body></html>'
-  ].join('\n'));
+  const numbered = build(
+    ['  ol.b { counter-reset: n; list-style: none; margin: 0; padding: 0; }',
+     '  ol.b li { counter-increment: n; font-size: 16px; }',
+     '  ol.b li::before { content: counter(n) ". "; }'].join('\n'),
+    '<ol class="b"><li>first</li><li>second</li><li>third</li></ol>'
+  );
+  assert.equal(textOf(numbered), '1 . first\n2 . second\n3 . third');
+  assert.deepEqual(numbered.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  // Reset start and increment step are honoured.
+  const stepped = build(
+    ['  ol.b { counter-reset: n 5; list-style: none; margin: 0; padding: 0; }',
+     '  ol.b li { counter-increment: n 2; font-size: 16px; }',
+     '  ol.b li::before { content: counter(n) ". "; }'].join('\n'),
+    '<ol class="b"><li>one</li><li>two</li></ol>'
+  );
+  assert.equal(textOf(stepped), '7 . one\n9 . two');
+
+  // A literal prefix still joins the line, and the arrow arrives before the words.
+  const literal = build(
+    ['  .b li { font-size: 16px; }',
+     '  .b li::before { content: "\u2192 "; }'].join('\n'),
+    '<ul class="b" style="margin: 0; padding: 0; list-style: none;"><li>\u7532</li></ul>'
+  );
   assert.deepEqual(literal.report.unsupportedDetails.map((entry) => entry.property), []);
-  const element = literal.deck.slides[0].elements[0];
-  const text = typeof element.text === 'string' ? element.text : element.text.map((run) => run.text).join('');
-  assert.ok(text.includes('→'), 'the arrow joined the line');
+  assert.ok(textOf(literal).includes('\u2192'), 'the arrow joined the line');
 });
 
