@@ -6667,6 +6667,20 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('quotes: none keeps the q bare', () => {
+  // The browser suppresses the synthesized quotes when quotes: none is declared;
+  // we drew them anyway.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '  q { quotes: none; }',
+    '</style></head><body><main class="slide"><p><q>测试引用</q></p></main></body></html>'
+  ].join('\n'));
+  const element = result.deck.slides[0].elements[0];
+  const text = Array.isArray(element.text) ? element.text.map((run) => run.text).join('') : element.text;
+  assert.ok(!text.includes('\u201C'), 'no synthesized quote, got ' + text);
+});
+
 test('an in-page anchor is named; external and mailto links ride', () => {
   // A #fragment anchor jumps within the HTML page; in the deck the link draws but
   // leads nowhere, and the design learns that instead of finding a dead link.

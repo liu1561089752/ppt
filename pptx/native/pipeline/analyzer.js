@@ -1123,7 +1123,8 @@ function buildRuns(domNode, baseStyle, ctx) {
     // `<q>` is the browser quoting its content: open-quote before, close-quote
     // after. The quotes are painted glyphs in the mock, so they join the line
     // unless the design declares its own pseudos for the element.
-    if (node.tag === 'q' && !inlinePseudoRuns.before && !inlinePseudoRuns.after) {
+    if (node.tag === 'q' && !inlinePseudoRuns.before && !inlinePseudoRuns.after
+      && !/^none$/iu.test(String(style.quotes || '').trim())) {
       inlinePseudoRuns.before = '\u201C';
       inlinePseudoRuns.after = '\u201D';
     }
