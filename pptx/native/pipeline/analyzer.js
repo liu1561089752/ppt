@@ -3851,7 +3851,7 @@ function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSize
   return widths.map((width) => (width === null ? remainder : width));
 }
 
-const CHART_TYPES = new Set(['bar', 'line', 'pie', 'doughnut', 'area', 'radar', 'scatter']);
+const CHART_TYPES = new Set(['bar', 'line', 'pie', 'doughnut', 'area', 'radar', 'scatter', 'bubble']);
 
 // The names a designer reaches for. `column` is the same drawing as `bar` with the
 // bars standing up, `hbar` the same one lying down, `donut` the doughnut - spelling
@@ -3867,7 +3867,8 @@ const CHART_ALIASES = {
   ring: { type: 'doughnut' },
   spider: { type: 'radar' },
   xy: { type: 'scatter' },
-  dot: { type: 'scatter' }
+  dot: { type: 'scatter' },
+  bubbles: { type: 'bubble' }
 };
 
 /** The first table inside a node, so data-chart works on a wrapper too. */
@@ -4002,6 +4003,38 @@ function readChart(domNode, ctx) {
           labels: body.map((row) => row[0] || ''),
           values: body.map((row) => numericOrZero(row[series + 1]))
         });
+      }
+      if (resolved === 'bubble') {
+        // Three numbers per point: x, y and how big the dot is. A fourth and fifth column
+        // pair up as another series, so an even count cannot be read.
+        const xs = body.map((row) => String(row[0] === undefined ? '' : row[0]).trim());
+        const notNumbers = xs.filter((value) => !/^[-+]?\d*\.?\d+$/u.test(value));
+        if (seriesCount < 2) {
+          recordUnsupported(ctx, domNode, 'data-chart', requested,
+            'A bubble needs three numbers per point: an x column, a y column and a size column');
+          data = null;
+        } else if (seriesCount % 2 === 1) {
+          recordUnsupported(ctx, domNode, 'data-chart', requested,
+            'A bubble reads the columns after x in pairs (y, size); ' + seriesCount
+              + ' leaves one of them unpaired');
+          data = null;
+        } else if (notNumbers.length) {
+          recordUnsupported(ctx, domNode, 'data-chart', requested,
+            'The first column of a bubble is the x axis, so it has to hold numbers (' + notNumbers[0] + ' is not one)');
+          data = null;
+        } else {
+          const series = [];
+          for (let column = 1; column + 1 <= seriesCount; column += 2) {
+            const name = (header[column] || 'Series ' + ((column + 1) / 2)).trim();
+            series.push({
+              name,
+              labels: xs.slice(),
+              values: body.map((row) => numericOrZero(row[column])),
+              sizes: body.map((row) => numericOrZero(row[column + 1]))
+            });
+          }
+          data = [{ name: (header[1] || 'x').trim(), labels: xs.slice(), values: xs.map(Number) }].concat(series);
+        }
       }
       if (resolved === 'scatter') {
         // A scatter plots pairs, so the first column is the x axis and the numbers after

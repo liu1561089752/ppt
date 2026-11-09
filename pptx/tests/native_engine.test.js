@@ -7020,6 +7020,65 @@ test('a data label position the writer cannot spell is named', () => {
   assert.equal(chartOf(friendly).options.dataLabelPosition, 'ctr');
 });
 
+test('a bubble reads x, y and size, and says which columns it cannot pair', async () => {
+  // A bubble needs three numbers per point: x, a y value and the size of the dot. The
+  // numbers after x pair up as (y, size), so an even count of them leaves one unpaired -
+  // which is named rather than read as a silently wrong series.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const build = (rows) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 900px; }',
+    '</style></head><body><main class="slide">',
+    '<table data-chart="bubble">' + rows + '</table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const xmlOf = async (rows) => {
+    const result = build(rows);
+    const output = path.join(os.tmpdir(), 'native-bubble-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const entry = Object.keys(zip.files).find((name) => /^ppt\/charts\/chart\d+\.xml$/u.test(name));
+    const xml = entry ? await zip.file(entry).async('string') : '';
+    fs.rmSync(output, { force: true });
+    return { xml, report: result.report };
+  };
+
+  const one = await xmlOf('<tr><th>面积</th><th>单价</th><th>套数</th></tr>'
+    + '<tr><td>60</td><td>3.2</td><td>18</td></tr>'
+    + '<tr><td>90</td><td>2.8</td><td>42</td></tr>');
+  assert.deepEqual(one.report.unsupportedDetails.map((entry) => entry.property), [], 'three columns read cleanly');
+  assert.match(one.xml, /<c:bubbleChart>/u, 'it is a native bubble chart');
+  assert.equal((one.xml.match(/<c:ser>/gu) || []).length, 1, 'one bubble series');
+  assert.equal((one.xml.match(/<c:bubbleSize>/gu) || []).length, 1, 'with a size per point');
+  const sizes = [...(/<c:bubbleSize>[\s\S]*?<\/c:bubbleSize>/u.exec(one.xml) || [''])[0]
+    .matchAll(/<c:v>([\d.]+)<\/c:v>/gu)].map((match) => match[1]);
+  assert.deepEqual(sizes, ['18', '42'], 'the third column is the size: ' + sizes.join(','));
+
+  const two = await xmlOf('<tr><th>面积</th><th>单价</th><th>套数</th><th>租金</th><th>在租</th></tr>'
+    + '<tr><td>60</td><td>3.2</td><td>18</td><td>80</td><td>5</td></tr>'
+    + '<tr><td>90</td><td>2.8</td><td>42</td><td>95</td><td>9</td></tr>');
+  assert.equal((two.xml.match(/<c:ser>/gu) || []).length, 2, 'five columns are two bubble series');
+
+  const thin = await xmlOf('<tr><th>面积</th><th>单价</th></tr><tr><td>60</td><td>3.2</td></tr>');
+  assert.ok(thin.report.unsupportedDetails.some((entry) => entry.property === 'data-chart'
+    && /three numbers per point/u.test(entry.reason)), 'two columns cannot hold a size');
+
+  const unpaired = await xmlOf('<tr><th>面积</th><th>单价</th><th>套数</th><th>租金</th></tr>'
+    + '<tr><td>60</td><td>3.2</td><td>18</td><td>80</td></tr>');
+  assert.ok(unpaired.report.unsupportedDetails.some((entry) => /pairs/u.test(entry.reason)),
+    'an unpaired column is named');
+
+  const categorical = await xmlOf('<tr><th>城市</th><th>单价</th><th>套数</th></tr>'
+    + '<tr><td>上海</td><td>3.2</td><td>18</td></tr>');
+  assert.ok(categorical.report.unsupportedDetails.some((entry) => /x axis/u.test(entry.reason)),
+    'a category in the x column is named');
+});
+
 test('a scatter reads its first column as the x axis and draws markers', async () => {
   // A scatter plots pairs. The table's first column is therefore the x axis, the numbers
   // after it are y series, and a category in that column is a report rather than a

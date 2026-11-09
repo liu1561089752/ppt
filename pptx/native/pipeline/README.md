@@ -158,6 +158,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | font-weight < 400 | named - draws at regular weight, no light axis in the format |
 | stress archetypes | 9 shapes including a nested merged-table card and a ten-row dense table |
 | two-reader gate | `npm run verify:readers` - LO vs WPS renders judged on dilated ink IoU (0.81-0.99 agree, 0.43 displaced) |
+| bubble charts | `data-chart="bubble"` - first column x, then (y, size) pairs; unpaired columns are named |
 | reader-flowed text | multi-column pages are counted skipped, never passed |
 | 120-page run | `npm run gate:big` - converts in ~2.2s, OOXML audit clean |
 | typography read-back | letter-spacing/small-caps/justify/strike/uppercase/pre land in the XML; the rest are named |

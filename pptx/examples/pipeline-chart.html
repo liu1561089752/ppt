@@ -47,6 +47,7 @@
   .row { position: absolute; left: 64px; top: 288px; width: 1152px; display: flex; gap: 24px; }
   .row .card { position: static; flex: 1; height: 300px; }
   .row .card .chart { width: 100%; height: 190px; }
+  .row .card table.chart { width: 100%; height: 190px; }
   .note { position: absolute; left: 64px; bottom: 44px; font-size: 11px; color: var(--color-muted); }
   /* A rotated watermark: transform: rotate() becomes native shape rotation. */
   .watermark {
@@ -113,6 +114,51 @@
   </div>
 
   <p class="note">三张图都写进了 pptx/charts —— 它们是活的图表部件，不是位图。</p>
+</main>
+
+<main class="slide">
+  <div class="kicker">native chart / x, y and size</div>
+  <h1 class="title">第三个数字决定气泡大小</h1>
+  <p class="lead">表格第一列是 x 轴，其后每两个数字配成一条气泡系列（y 与大小）；换成雷达图只是改一个词。</p>
+  <div class="rule"></div>
+
+  <div class="row">
+    <div class="card">
+      <h3>面积、单价与在售套数</h3>
+      <p>三个数字一个点：位置由前两个决定，气泡大小由第三个决定。</p>
+      <table class="chart" data-chart="bubble" data-chart-title="面积与单价" data-chart-colors="#F2A24C"
+             data-chart-legend="none" data-chart-grid="false" data-chart-axis-titles="面积|单价"
+             data-chart-y-min="2" data-chart-y-max="5"
+             data-chart-text-color="#3F5450">
+        <thead><tr><th>面积</th><th>单价</th><th>在售</th></tr></thead>
+        <tbody>
+          <tr><td>45</td><td>4.6</td><td>12</td></tr>
+          <tr><td>60</td><td>4.1</td><td>26</td></tr>
+          <tr><td>75</td><td>3.6</td><td>44</td></tr>
+          <tr><td>90</td><td>3.2</td><td>61</td></tr>
+          <tr><td>110</td><td>2.9</td><td>38</td></tr>
+          <tr><td>135</td><td>2.5</td><td>17</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>五个维度的达成率</h3>
+      <p>雷达图的每一列是一条系列，每个维度占一行。</p>
+      <table class="chart" data-chart="radar" data-chart-title="能力评估" data-chart-colors="#4FB3A8,#F2A24C"
+             data-chart-legend="bottom" data-chart-text-color="#3F5450">
+        <thead><tr><th>维度</th><th>去年</th><th>今年</th></tr></thead>
+        <tbody>
+          <tr><td>表达</td><td>62</td><td>78</td></tr>
+          <tr><td>结构</td><td>70</td><td>81</td></tr>
+          <tr><td>数据</td><td>55</td><td>74</td></tr>
+          <tr><td>节奏</td><td>66</td><td>70</td></tr>
+          <tr><td>视觉</td><td>58</td><td>83</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note">气泡的大小写进 c:bubbleSize，雷达图的每个维度占一列；两者都是可以在 PowerPoint 里改数的原生图表。</p>
 </main>
 
 </body>
