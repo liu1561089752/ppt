@@ -966,6 +966,13 @@ function buildRuns(domNode, baseStyle, ctx) {
     if (!declaration) return;
     if (String(declaration.position || '').toLowerCase() === 'absolute') return; // a placed overlay
     const resolved = inlinePseudoText(declaration, domNode);
+    if (resolved.unsupported) {
+      // A counter() or open-quote in the content is a generated value the DOM does
+      // not carry; dropping it silently loses the numbers a design counts on.
+      recordUnsupported(ctx, domNode, '::' + pseudo, resolved.unsupported,
+        'Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute');
+      return;
+    }
     if (!resolved.text) return;
     pushText(resolved.text, declaration, null);
   };
@@ -1784,6 +1791,26 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     Object.assign(node, measured);
     if (kind === 'list') {
       const items = readListItems(domNode);
+      // A `::before { content: counter(...) }` on the items is a design that numbers
+      // rows itself. The list path reads DOM text only, so the counter silently
+      // vanished - name it instead.
+      const generated = [];
+      items.forEach((item) => {
+        ['before', 'after'].forEach((pseudo) => {
+          const declaration = ctx.styles.decoration(item.node, pseudo);
+          if (!declaration) return;
+          const resolved = inlinePseudoText(declaration, item.node);
+          if (resolved.unsupported) {
+            if (!generated.includes(resolved.unsupported)) generated.push(resolved.unsupported);
+            return;
+          }
+          // A literal prefix joins the item the way an inline pseudo joins any line.
+          if (pseudo === 'before' && resolved.text) item.text = resolved.text + item.text;
+          else if (pseudo === 'after' && resolved.text) item.text = item.text + resolved.text;
+        });
+      });
+      generated.forEach((value) => recordUnsupported(ctx, domNode, '::before', value,
+        'Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute'));
       // `list-style: none` is the design asking for no marker at all - a checklist row,
       // a custom-drawn marker - and the native bullet has an `off` switch.
       const listStyle = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();

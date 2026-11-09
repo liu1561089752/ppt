@@ -6004,3 +6004,41 @@ test('preference media queries report why they cannot match', () => {
     'the size query keeps the viewport reason');
 });
 
+
+test('a counter in list pseudo content is named, not dropped', () => {
+  // The regression: the list path reads DOM text only, so a li::before with
+  // counter(item) lost the numbers silently - the exact failure class the report exists
+  // for.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  body { counter-reset: item; }',
+    '  .b li { counter-increment: item; font-size: 16px; }',
+    '  .b li::before { content: counter(item) ". "; }',
+    '</style></head><body><main class="slide">',
+    '<ul class="b" style="margin: 0; padding: 0; list-style: none;"><li>甲</li><li>乙</li><li>丙</li></ul>',
+    '</main></body></html>'
+  ].join('\n'));
+  const report = result.report.unsupportedDetails.find((entry) => entry.property === '::before');
+  assert.ok(report, 'the counter is named');
+  assert.ok(report.value.includes('counter(item)'), 'the value names the counter call');
+  assert.ok(report.reason.includes('Generated content'), 'the reason says what cannot be computed');
+  // One report for the whole list, not one per item.
+  assert.equal(result.report.unsupportedDetails.filter((entry) => entry.property === '::before').length, 1);
+
+  // A literal-string pseudo still joins the line silently.
+  const literal = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b li { font-size: 16px; }',
+    '  .b li::before { content: "→ "; }',
+    '</style></head><body><main class="slide">',
+    '<ul class="b" style="margin: 0; padding: 0; list-style: none;"><li>甲</li></ul>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(literal.report.unsupportedDetails.map((entry) => entry.property), []);
+  const element = literal.deck.slides[0].elements[0];
+  const text = typeof element.text === 'string' ? element.text : element.text.map((run) => run.text).join('');
+  assert.ok(text.includes('→'), 'the arrow joined the line');
+});
+
