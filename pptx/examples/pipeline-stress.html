@@ -197,4 +197,24 @@
       </div>
     </div>
   </main>
+<main class="slide">
+  <div class="kicker" style="color:#4FB3A8">08 · 组合</div>
+  <h2 class="title">网格、合并单元格与垫底图同页</h2>
+  <div style="display: grid; grid-template-columns: 380px 1fr; gap: 24px;">
+    <div style="background: url(&quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==&quot;) no-repeat center; padding: 16px; border-radius: 8px;">
+      <p style="font-size: 13px; line-height: 150%; color: #FFFFFF;">垫底图上的文字：背景图片由图片元素先画、文字后画，两者都可编辑。行距按字号的一倍半结算。</p>
+    </div>
+    <div>
+      <table style="width: 100%; font-size: 13px;" data-chart="bar" data-chart-title="组合页图表" data-chart-gap-width="40" data-chart-colors="#F2A24C,#4FB3A8">
+        <tr><th>季度</th><th>销售额</th><th>毛利</th></tr>
+        <tr><td>Q1</td><td>120</td><td>45</td></tr>
+        <tr><td>Q2</td><td>150</td><td>58</td></tr>
+      </table>
+      <table style="width: 100%; font-size: 12px; margin-top: 16px;">
+        <tr><td rowspan="2" style="background:#17332F; color:#FFFFFF;">合并行</td><td>甲</td><td>乙</td></tr>
+        <tr><td>丙</td><td>丁</td></tr>
+      </table>
+    </div>
+  </div>
+</main>
 </body>
