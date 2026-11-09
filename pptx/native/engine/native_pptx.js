@@ -556,6 +556,9 @@ function applyTextColumns(xml, count, gapIn) {
  * relative to the border box, and `a:path` scales that space onto the shape's extents.
  */
 function clipGeometryXml(clip) {
+  // An inscribed circle/ellipse clip is the native ellipse preset, not a polygon:
+  // the geometry lands as prstGeom and needs no patch at all.
+  if (clip && clip.ellipse) return null;
   const points = (clip && Array.isArray(clip.points) ? clip.points : [])
     .filter((point) => Array.isArray(point) && point.length === 2)
     .map((point) => '<a:pt x="' + Math.round(point[0]) + '" y="' + Math.round(point[1]) + '"/>');

@@ -4968,10 +4968,14 @@ test('clip-path: polygon becomes a native custom geometry', () => {
   assert.ok((withKids.report.unsupportedDetails || []).some((entry) => entry.property === 'clipPath'),
     'a clipped box with children is reported');
 
-  // Only a polygon is a path here, and only a declared height can carry one.
+  // An inscribed circle is the native ellipse preset now, not a report; only a
+  // non-inscribed circle or a moved centre stays named.
   const circle = build('.dot { width: 120px; height: 120px; background: #123; clip-path: circle(50%); }',
     '<div class="dot"></div>');
-  assert.ok((circle.report.unsupportedDetails || []).some((entry) => entry.property === 'clipPath'));
+  assert.equal(circle.deck.slides[0].elements[0].shape, 'ellipse');
+  const offCircle = build('.dot { width: 200px; height: 100px; background: #123; clip-path: circle(50%); }',
+    '<div class="dot"></div>');
+  assert.ok((offCircle.report.unsupportedDetails || []).some((entry) => entry.property === 'clipPath'));
   const autoHeight = build('.p { width: 300px; background: #123; clip-path: polygon(0 0, 100% 0, 0 100%); }',
     '<div class="p">auto height text</div>');
   assert.ok((autoHeight.report.unsupportedDetails || []).some((entry) => entry.property === 'clipPath'));
@@ -5483,5 +5487,41 @@ test('list-style: none switches the bullet off, and repeat values are named per 
   const tiled = buildDiv('.b { width: 100px; height: 50px; background: url(x.png); background-repeat: repeat; }');
   const tiledNote = tiled.report.unsupportedDetails.find((entry) => entry.property === 'backgroundRepeat');
   assert.ok(tiledNote.reason.includes('drawn once'), 'the reason says what the reader sees');
+});
+
+
+test('clip-path circle and ellipse that cut the inscribed shape become the geometry', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+  ].join('\n'));
+  const element = (result) => result.deck.slides[0].elements[0];
+
+  // A circle avatar on a square box and an ellipse pill on any box are the native
+  // ellipse preset, not a polygon patch.
+  const dot = build('.b { width: 120px; height: 120px; background: #17332F; clip-path: circle(50%); }');
+  assert.equal(element(dot).shape, 'ellipse');
+  assert.equal(element(dot).clip, undefined);
+  assert.deepEqual(dot.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const pill = build('.b { width: 300px; height: 120px; background: #C05B3E; clip-path: ellipse(50% 50%); }');
+  assert.equal(element(pill).shape, 'ellipse');
+  assert.deepEqual(pill.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  // A circle on a non-square box is bigger than the inscribed one (the CSS reference is
+  // the half-diagonal), so it is not the box geometry and stays reported.
+  const wide = build('.b { width: 200px; height: 100px; background: #17332F; clip-path: circle(50%); }');
+  assert.equal(element(wide).shape, undefined);
+  assert.deepEqual(wide.report.unsupportedDetails.map((entry) => entry.property), ['clipPath']);
+
+  // A smaller radius leaves paint in the corners, which a filled geometry cannot keep.
+  const small = build('.b { width: 120px; height: 120px; background: #17332F; clip-path: circle(40%); }');
+  assert.deepEqual(small.report.unsupportedDetails.map((entry) => entry.property), ['clipPath']);
+
+  // A moved centre has no native spelling.
+  const moved = build('.b { width: 120px; height: 120px; background: #17332F; clip-path: circle(50%) at 50% 50%; }');
+  assert.deepEqual(moved.report.unsupportedDetails.map((entry) => entry.property), ['clipPath']);
 });
 

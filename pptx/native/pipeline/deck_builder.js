@@ -262,7 +262,11 @@ function surfaceElementFromNode(node, resolvedTheme) {
   // with a large corner radius, which would draw a stadium on a non-square box.
   if (node.ellipse) element.shape = 'ellipse';
   else if (radius) element.radius = radius;
-  if (node.clip) element.clip = node.clip;
+  // An inscribed circle/ellipse clip *is* the shape: the paint fills the box, and the
+  // round geometry cuts exactly where the native ellipse does, so the clip travels as
+  // the shape itself rather than a polygon patch.
+  if (node.clip && node.clip.ellipse) element.shape = 'ellipse';
+  else if (node.clip) element.clip = node.clip;
   if (border) {
     element.lineColor = border.color;
     element.lineWidth = border.width;

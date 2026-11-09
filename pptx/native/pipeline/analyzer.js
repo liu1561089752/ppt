@@ -3911,6 +3911,45 @@ function polygonLength(token, extentIn) {
 }
 
 /**
+ * `circle()`/`ellipse()` when they cut the inscribed round shape, as native ellipse
+ * geometry. A percentage radius on `circle()` resolves against the box's half-diagonal
+ * (the CSS reference extent), so only a square box makes `circle(50%)` inscribed;
+ * `ellipse(50% 50%)` is inscribed on every box. An `at <position>` centre and any
+ * non-inscribed radius cannot become the box's own geometry.
+ */
+function inscribedRoundOf(value, widthIn, heightIn) {
+  const circle = /^circle\s*\(\s*([^)]+?)\s*\)$/iu.exec(value);
+  const ellipse = /^ellipse\s*\(\s*([^)]+?)\s*\)$/iu.exec(value);
+  if (!circle && !ellipse) return null;
+  const args = ((circle ? circle[1] : ellipse[1]) || '').trim();
+  if (/\bat\b/iu.test(args)) return null;
+  const radiusOf = (argument, basis) => {
+    const trimmed = String(argument || '').trim();
+    const percent = /^([\d.]+)%$/u.exec(trimmed);
+    if (percent) return (Number(percent[1]) / 100) * basis;
+    const length = parseLength(trimmed);
+    if (!length || length.unit === '%') return null;
+    return toInches(length, {});
+  };
+  if (circle) {
+    // A bare `circle()` defaults to closest-side, which is the inscribed radius.
+    const reference = /^\s*$/u.test(args)
+      ? Math.min(widthIn, heightIn) / 2
+      : radiusOf(args, Math.sqrt(widthIn * widthIn + heightIn * heightIn) / Math.SQRT2);
+    if (reference === null || !Number.isFinite(reference)) return null;
+    if (Math.abs(reference * 2 - widthIn) > 0.004 || Math.abs(reference * 2 - heightIn) > 0.004) return null;
+    return { ellipse: true, width: Number((widthIn * 96).toFixed(2)), height: Number((heightIn * 96).toFixed(2)) };
+  }
+  const radii = args.split(/\s+/u).filter(Boolean);
+  if (radii.length !== 2) return null;
+  const rx = radiusOf(radii[0], widthIn);
+  const ry = radiusOf(radii[1], heightIn);
+  if (rx === null || ry === null || !Number.isFinite(rx) || !Number.isFinite(ry)) return null;
+  if (Math.abs(rx * 2 - widthIn) > 0.004 || Math.abs(ry * 2 - heightIn) > 0.004) return null;
+  return { ellipse: true, width: Number((widthIn * 96).toFixed(2)), height: Number((heightIn * 96).toFixed(2)) };
+}
+
+/**
  * `clip-path: polygon(...)` as a DrawingML custom geometry.
  *
  * PowerPoint has no CSS clip: the shape itself is the clip, so a polygon becomes a
@@ -3922,6 +3961,8 @@ function clipPolygonOf(style, widthIn, heightIn) {
   if (!raw) return null;
   const value = String(raw).trim();
   if (!value || value === 'none') return null;
+  const round = inscribedRoundOf(value, widthIn, heightIn);
+  if (round) return round;
   const match = /^polygon\s*\(([\s\S]*)\)$/iu.exec(value);
   if (!match) return { unsupported: value };
   const parts = match[1].split(',').map((part) => part.trim()).filter(Boolean);
