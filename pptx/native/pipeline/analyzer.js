@@ -1830,8 +1830,13 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     const top = inchesOf(style.top, 'y', { parentWidth: absoluteParentWidth, parentHeight: parentBox.h, fontSizePx });
     const bottom = inchesOf(style.bottom, 'y', { parentWidth: absoluteParentWidth, parentHeight: parentBox.h, fontSizePx });
     // A pinned box with no width hugs its content, so a footer at `left: 56px` does not
-    // become a 13in box that hangs off the page.
-    if (styleWidth === null) {
+    // become a 13in box that hangs off the page. But when BOTH left and right pin the
+    // box, CSS resolves the width as the span between the insets - an `inset:` box
+    // stretches, it does not hug.
+    if (styleWidth === null && left !== null && right !== null) {
+      width = Math.max(0, parentBox.w - left - right);
+    }
+    if (styleWidth === null && !(left !== null && right !== null)) {
       const shrink = shrinkToFitWidth(domNode, style, {
         fontSizePx,
         letterSpacingPt: letterSpacingPtOf(style),

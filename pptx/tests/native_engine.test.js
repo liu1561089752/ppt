@@ -6667,6 +6667,30 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('an absolutely positioned box pinned on both sides stretches', () => {
+  // CSS resolves the width as the span between the insets when left and right both
+  // pin the box; the solver hugged the content instead - an inset box came out
+  // stamp-sized.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; position: relative; }',
+    '  .b { position: absolute; left: 50px; right: 30px; top: 20px; bottom: 40px; background: #C05B3E; }',
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  const element = result.deck.slides[0].elements[0];
+  // The containing block is the slide's padding box (1280px); width = 1280 - 50 - 30.
+  assert.ok(Math.abs(element.w - 1200 / 96) < 0.01, 'the box spans between the insets, got ' + element.w);
+  assert.ok(Math.abs(element.x - 50 / 96) < 0.01, 'and starts at the left inset');
+  // A one-sided pin still hugs its content.
+  const hug = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; position: relative; }',
+    '  .b { position: absolute; left: 56px; bottom: 20px; background: #C05B3E; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">页脚</div></main></body></html>'
+  ].join('\n')).deck.slides[0].elements[0];
+  assert.ok(hug.w < 2, 'a one-sided pin keeps its shrink-to-fit width, got ' + hug.w);
+});
+
 test('quotes: none keeps the q bare', () => {
   // The browser suppresses the synthesized quotes when quotes: none is declared;
   // we drew them anyway.
