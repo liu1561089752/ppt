@@ -395,18 +395,16 @@ function ellipseOf(style) {
 
 /** Radius or ellipse, plus the report a shape that can hold neither deserves. */
 function applyRadius(node, domNode, style, ctx) {
-  // A native roundRect rounds all four corners alike; a mix of corner values would
-  // silently round every corner at the top-left's size, so a mixed set stays named.
-  const corners = ['borderTopLeftRadius', 'borderTopRightRadius',
-    'borderBottomRightRadius', 'borderBottomLeftRadius'].map((name) => style[name]);
-  // An undeclared corner is CSS 0, so a single-corner declaration is already a mix.
-  const declared = corners.filter((value) => value !== undefined && value !== null);
-  if (declared.length >= 1) {
-    const distinct = new Set(corners.map((value) => (value === undefined || value === null) ? '0' : String(value).trim()));
-    if (distinct.size > 1) {
-      recordUnsupported(ctx, domNode, 'borderRadius', declared.join(' '),
-        'The corners round by different amounts; a native roundRect rounds all four alike, so the box is drawn at the top-left radius');
-    }
+  // Corner mixes are judged by the box branch's radiusCorners check; this fn adds
+  // what that one misses: the elliptical percentage corner no native geometry spells.
+  // A corner can also carry two lengths (`border-top-left-radius: 50% 30%`): an
+  // rx/ry pair, elliptical whenever they differ. ellipseOf reads the slash form
+  // only, so this one reached here with rx alone and no trace of the ry.
+  const cornerRaw = String(style.borderTopLeftRadius || style.borderRadius || '').trim();
+  if (/\S+\s+\S+/u.test(cornerRaw)) {
+    recordUnsupported(ctx, domNode, 'borderRadius', cornerRaw,
+      'A corner with a horizontal and a vertical radius is an elliptical corner, which no native geometry spells: the box is drawn square');
+    return;
   }
   const radius = radiusOf(style);
   if (radius) {
@@ -1905,6 +1903,9 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     border: ring,
     children: []
   };
+  // The radius family (mixed corners, elliptical percentages) is judged here for
+  // every box; pictures judge their own later with their own wording.
+  if (kind !== 'image') applyRadius(node, domNode, style, ctx);
   // CSS fades the whole subtree; a PowerPoint shape can only fade its own paint, so a
   // box with content reports the gap instead of pretending the fade reached its children.
   const opacityValue = Number(style.opacity);

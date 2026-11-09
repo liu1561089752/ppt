@@ -6667,6 +6667,31 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('an elliptical corner is named instead of silently half-drawn', () => {
+  // `border-radius: 50% / 30%` carries a horizontal and a vertical radius. The slash
+  // used to be fed to the box expansion, which split it as tokens: the vertical half
+  // vanished, each corner kept its horizontal radius alone, and the box drew an
+  // ordinary circle-corner with no trace of the ry the design asked for.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { position: absolute; left: 100px; top: 100px; width: 100px; height: 50px; background: #C05B3E; border-radius: 50% / 30%; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  const reports = result.report.unsupportedDetails.filter((entry) => entry.property === 'borderRadius');
+  assert.equal(reports.length, 1, 'the elliptical corner is named once, got ' + reports.length);
+  assert.ok(reports[0].value.includes('50%') && reports[0].value.includes('30%'),
+    'both radii ride the report: ' + reports[0].value);
+  // A plain uniform radius still draws without a report.
+  const round = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { width: 100px; height: 50px; background: #C05B3E; border-radius: 12px; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(round.report.unsupportedDetails.map((entry) => entry.property), [], 'a plain radius stays silent');
+});
+
 test('an ordered list numbers natively and honors start', async () => {
   // A UA-default <ol> drew a round bullet: the marker lookup keyed off the computed
   // list-style-type, which the browser defaults to decimal without spelling it. The

@@ -903,7 +903,18 @@ function applyDeclarations(style, declarations, variables) {
       return;
     }
     if (property === 'border-radius') {
-      const [topLeft, topRight, bottomRight, bottomLeft] = expandBoxShorthand(resolvedValue);
+      // `border-radius: 50% / 30%` carries a horizontal and a vertical radius per
+      // corner. The slash was previously fed to the box expansion, which split it
+      // as tokens and dropped the vertical half; each corner keeps its pair now,
+      // so the elliptical form is visible downstream instead of silently halved.
+      const [horizontalPart, verticalPart] = resolvedValue.split('/');
+      const horizontal = expandBoxShorthand(horizontalPart.trim());
+      const vertical = verticalPart === undefined ? horizontal : expandBoxShorthand(verticalPart.trim());
+      const pair = (index) => horizontal[index] === vertical[index] ? horizontal[index] : horizontal[index] + ' ' + vertical[index];
+      const topLeft = pair(0);
+      const topRight = pair(1);
+      const bottomRight = pair(2);
+      const bottomLeft = pair(3);
       set('borderTopLeftRadius', topLeft);
       set('borderTopRightRadius', topRight);
       set('borderBottomRightRadius', bottomRight);
