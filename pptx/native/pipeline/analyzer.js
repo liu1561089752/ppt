@@ -3991,7 +3991,13 @@ function headerSeriesColours(domNode, ctx) {
   return elementChildren(headerRow)
     .filter((cell) => cell.tag === 'th' || cell.tag === 'td')
     .map((cell) => {
-      const colour = parseColor(ctx.styles.computed(cell).color);
+      // Only a colour the cell itself declares is a statement about that series. A header
+      // that merely inherits the table's body colour would otherwise paint the series in
+      // the page's neutral text grey - which is what one card did once charts took their
+      // typography from the element around them.
+      const declaredColour = (ctx.styles.declared(cell) || {}).color;
+      if (declaredColour === undefined) return null;
+      const colour = parseColor(declaredColour);
       return colour && colour.hex ? colour.hex : null;
     });
 }
@@ -4413,6 +4419,60 @@ function applyChartStyling(attrs, options, domNode, ctx, chartType) {
       recordUnsupported(ctx, domNode, 'data-chart-text-color', String(textColor),
         'Chart text colour must be a #rrggbb value');
     }
+  }
+
+  // The chart takes its typography from the element that declares it: a card that sets
+  // `font-size: 12px; color: #5A6A66` drew its chart in the writer's own 18pt black, a
+  // difference the eye reads as "this chart does not belong to the page". A caption on the
+  // data table is the title's own style, so the caption sets the title and the table sets
+  // the labels. Declared `data-chart-*` attributes still win.
+  const hostStyle = ctx.styles.computed(domNode);
+  const captionStyle = (domNode.children || [])
+    .filter((child) => child && child.type === 'element' && child.tag === 'caption')
+    .map((child) => ctx.styles.computed(child))[0] || null;
+  const chartPointsOf = (style) => {
+    const length = style ? parseLength(style.fontSize) : null;
+    if (!length) return null;
+    const points = toInches(length, {}) * 72;
+    return Number.isFinite(points) && points > 0 ? Number(points.toFixed(1)) : null;
+  };
+  const chartFaceOf = (style) => {
+    const first = String((style && style.fontFamily) || '').split(',')[0].trim()
+      .replace(/^['"]|['"]$/gu, '');
+    if (!first) return null;
+    const generic = ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+      '-apple-system', 'inherit', 'initial', 'unset'];
+    return generic.includes(first.toLowerCase()) ? null : first;
+  };
+  const hostPoints = chartPointsOf(hostStyle);
+  const captionPoints = chartPointsOf(captionStyle);
+  const hostFace = chartFaceOf(hostStyle);
+  const captionFace = chartFaceOf(captionStyle);
+  if (hostPoints) {
+    options.catAxisLabelFontSize = options.catAxisLabelFontSize || hostPoints;
+    options.valAxisLabelFontSize = options.valAxisLabelFontSize || hostPoints;
+    if (options.legendFontSize === undefined) options.legendFontSize = hostPoints;
+    if (options.dataLabelFontSize === undefined) options.dataLabelFontSize = hostPoints;
+  }
+  if (captionPoints && options.titleFontSize === undefined) options.titleFontSize = captionPoints;
+  else if (hostPoints && options.titleFontSize === undefined) options.titleFontSize = hostPoints;
+  if (hostFace) {
+    options.catAxisLabelFontFace = options.catAxisLabelFontFace || hostFace;
+    options.valAxisLabelFontFace = options.valAxisLabelFontFace || hostFace;
+    if (!options.legendFontFace) options.legendFontFace = hostFace;
+    if (!options.dataLabelFontFace) options.dataLabelFontFace = hostFace;
+  }
+  const titleFace = captionFace || hostFace;
+  if (titleFace && !options.titleFontFace) options.titleFontFace = titleFace;
+  // A colour declared on the chart itself outranks the inherited one; without either, the
+  // writer's default is black, which a dark panel cannot show.
+  const hostColour = parseColor(hostStyle && hostStyle.color);
+  if (hostColour && hostColour.hex && textColor === undefined) {
+    options.titleColor = options.titleColor || hostColour.hex;
+    options.catAxisLabelColor = options.catAxisLabelColor || hostColour.hex;
+    options.valAxisLabelColor = options.valAxisLabelColor || hostColour.hex;
+    options.legendColor = options.legendColor || hostColour.hex;
+    options.dataLabelColor = options.dataLabelColor || hostColour.hex;
   }
 
   // The writer deletes a label position it cannot spell for this chart shape; name it

@@ -7121,6 +7121,60 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
+test('a chart wears the typography of the element around it', () => {
+  // A card that sets `font-size: 12px; color: #5A6A66` used to get a chart drawn in the
+  // writer's own 18pt black: legible, but not part of the page. The chart now takes the
+  // face, size and colour of the element that declares it, and a <caption> on the data
+  // table is the title's own style.
+  const build = (style, attrs) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    style,
+    '</style></head><body><main class="slide">',
+    '<table data-chart="bar" data-chart-title="t"' + (attrs || '') + '>',
+    '<caption>标题</caption>',
+    '<tr><th>季度</th><th>收入</th></tr><tr><td>Q1</td><td>120</td></tr>',
+    '</table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const chartOf = (result) => result.deck.slides[0].elements.filter((entry) => entry.type === 'chart')[0]
+    || result.deck.slides[0].elements
+      .flatMap((entry) => entry.children || [])
+      .filter((entry) => entry.type === 'chart')[0];
+
+  const plain = chartOf(build('  table { font-size: 12px; }'));
+  assert.equal(plain.options.titleFontSize, 9, '12px is 9pt');
+  assert.equal(plain.options.catAxisLabelFontSize, 9);
+  assert.equal(plain.options.titleFontColor, undefined, 'no colour declared, none invented');
+
+  const card = chartOf(build('  .card table { font-size: 12px; color: #5A6A66; font-family: Georgia, serif; }'
+    .replace('.card ', '')));
+  assert.equal(card.options.titleFontFace, 'Georgia');
+  assert.equal(card.options.catAxisLabelFontFace, 'Georgia');
+  assert.equal(card.options.legendFontFace, 'Georgia');
+  assert.equal(card.options.titleColor, '5A6A66');
+  assert.equal(card.options.valAxisLabelColor, '5A6A66');
+  assert.equal(card.options.legendColor, '5A6A66');
+  assert.equal(card.options.chartColors, undefined,
+    'an inherited neutral text colour is not a series colour');
+
+  // The caption is the title's own style, the table is the label style.
+  const withCaption = chartOf(build(
+    '  table { font-size: 12px; color: #5A6A66; } caption { font-size: 15px; color: #1D6F42; }'));
+  assert.equal(withCaption.options.titleFontSize, 11.3, '15px is 11.3pt');
+  assert.equal(withCaption.options.catAxisLabelFontSize, 9, 'the labels keep the table size');
+
+  // A generic family is not a face: it must not be written as a typeface.
+  const generic = chartOf(build('  table { font-family: sans-serif; }'));
+  assert.equal(generic.options.titleFontFace, undefined);
+
+  // And a declared attribute still wins over the inherited style.
+  const declared = chartOf(build('  table { color: #5A6A66; }',
+    ' data-chart-text-color="#123456" data-chart-legend-font-size="12"'));
+  assert.equal(declared.options.titleColor, '123456');
+  assert.equal(declared.options.legendFontSize, 12, 'the explicit size is kept');
+});
+
 test('the static gate sees code, and only code', () => {
   // A rule that is not itself checked drifts. The stripper has to blank strings, comments,
   // regexes and templates while losing no line, or a violation is reported at the wrong line

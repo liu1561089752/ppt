@@ -142,6 +142,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `background-size: auto` | drawn at its own pixels; the box clips it (a source-rectangle crop) |
 | fixture with no baseline | a golden-gate problem until `--update` blesses it |
 | `npm run lint` | static gate, no dependency: syntax, house style, no stdout in library code |
+| chart typography | face, size (px→pt) and colour inherited from the element that declares the chart; `<caption>` styles the title |
+| chart series colour | only a colour the header cell *declares* names a series; an inherited body grey does not |
 | `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |
 | cell text-transform | applied to the characters before measuring |
 | cell small-caps / word-spacing / text-shadow / text-indent | named once per table |
