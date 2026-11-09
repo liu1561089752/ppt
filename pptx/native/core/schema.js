@@ -322,7 +322,9 @@ function validateElement(p, element, errors) {
       if (element.type === 'text' && typeof element.text !== 'string' && !Array.isArray(element.text)) {
         errors.push(p + '.text must be a string or rich-text run array');
       }
-      if (element.type === 'text' && Array.isArray(element.text) && element.text.some((run) => typeof run !== 'string' && (!run || typeof run !== 'object' || Array.isArray(run) || typeof run.text !== 'string'))) {
+      const badRun = (run) => typeof run !== 'string'
+        && (!run || typeof run !== 'object' || Array.isArray(run) || typeof run.text !== 'string');
+      if (element.type === 'text' && Array.isArray(element.text) && element.text.some(badRun)) {
         errors.push(p + '.text rich-text runs must be strings or objects with a text field');
       }
       if (element.type === 'text' && Array.isArray(element.text)) {
@@ -426,7 +428,10 @@ function validateElement(p, element, errors) {
         else stops.forEach((stop, stopIndex) => {
           if (!stop || typeof stop.color !== 'string' || !/^#?[0-9a-f]{6}$/iu.test(stop.color)) errors.push(p + '.gradient.stops[' + stopIndex + '].color must be a six-digit hex color');
           if (!Number.isFinite(stop.position) || stop.position < 0 || stop.position > 1) errors.push(p + '.gradient.stops[' + stopIndex + '].position must be between 0 and 1');
-          if (stop.transparency !== undefined && (!Number.isFinite(stop.transparency) || stop.transparency < 0 || stop.transparency > 100)) errors.push(p + '.gradient.stops[' + stopIndex + '].transparency must be between 0 and 100');
+          if (stop.transparency !== undefined
+            && (!Number.isFinite(stop.transparency) || stop.transparency < 0 || stop.transparency > 100)) {
+            errors.push(p + '.gradient.stops[' + stopIndex + '].transparency must be between 0 and 100');
+          }
         });
         if (element.gradient && element.gradient.angle !== undefined && !Number.isFinite(element.gradient.angle)) errors.push(p + '.gradient.angle must be finite');
       }

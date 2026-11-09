@@ -12,7 +12,10 @@ function title(text, options = {}) {
     h: options.h === undefined ? 0.62 : options.h,
     fontFace: options.fontFace || theme.fonts.heading,
     fontSize: options.fontSize || theme.sizes.title,
-    bold: options.bold === undefined ? ['bold', 'bolder', '600', '700', '800', '900'].includes(String(theme.typography.titleWeight).toLowerCase()) || Number(theme.typography.titleWeight) >= 600 : options.bold,
+    bold: options.bold === undefined
+      ? ['bold', 'bolder', '600', '700', '800', '900'].includes(String(theme.typography.titleWeight).toLowerCase())
+        || Number(theme.typography.titleWeight) >= 600
+      : options.bold,
     italic: !!options.italic,
     underline: !!options.underline,
     strike: !!options.strike,

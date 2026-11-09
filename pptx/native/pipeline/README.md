@@ -139,6 +139,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `background-size: <length>` / `<percent>` / `auto` | a drawn size per axis; bigger than the box becomes a source-rectangle crop |
 | background picture paint order | held back until its box is emitted: above the fill, below the children |
 | background picture on a container child | the group falls back to absolute placement, named as a container fallback |
+| `background-size: auto` | drawn at its own pixels; the box clips it (a source-rectangle crop) |
+| fixture with no baseline | a golden-gate problem until `--update` blesses it |
+| `npm run lint` | static gate, no dependency: syntax, house style, no stdout in library code |
 | `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |
 | cell text-transform | applied to the characters before measuring |
 | cell small-caps / word-spacing / text-shadow / text-indent | named once per table |
@@ -487,8 +490,11 @@ with Office installed.
   divs; use `data-chart` on the data table or on a wrapper element. The output is
   a live chart part (editable data in PowerPoint), never a picture.
 - **CSS background images** become real native pictures, so they keep an
-  editable crop rectangle. Explicit pixel or percentage sizes other than
-  `cover`/`contain`/`100% 100%` are approximated as `contain`.
+  editable crop rectangle. `cover`, `contain`, `auto`, `100% 100%`, a length and a
+  percentage are each honoured: the declared size is resolved per axis and a picture
+  bigger than its box is expressed as a source rectangle, which is what the browser's
+  clipping shows. A picture on a child of a container makes that group fall back to
+  absolute placement - named as a container fallback, never silent.
 - **No automatic fallback to images.** If a element cannot be expressed natively,
   it is reported so a human can translate that detail into a native shape or a
   targeted vector asset. Whole-slide rasterization is never produced.

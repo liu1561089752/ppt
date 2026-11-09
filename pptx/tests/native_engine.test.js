@@ -7121,6 +7121,54 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
+test('the static gate sees code, and only code', () => {
+  // A rule that is not itself checked drifts. The stripper has to blank strings, comments,
+  // regexes and templates while losing no line, or a violation is reported at the wrong line
+  // - or not at all.
+  const { lintFile, stripStringsAndComments } = require('../native/scripts/lint_static');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const lintText = (text, name) => {
+    const file = path.join(os.tmpdir(), 'lint-' + process.pid + '-' + (name || 'case') + '.js');
+    fs.writeFileSync(file, text);
+    try {
+      return lintFile(file);
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
+  };
+  const rules = (text) => lintText(text).map((problem) => problem.rule + '@' + problem.line).join(',');
+
+  assert.equal(rules("'use strict';\nconst a = 1;\nif (a === 1) {}\n"), '', 'clean code is clean');
+  assert.equal(rules("const a = 1;\nif (a == 1) {}\n"), 'double-equals@2', 'a loose comparison is caught');
+  assert.equal(rules("var a = 1;\n"), 'var@1', 'var is caught');
+  assert.equal(rules("debugger;\n"), 'debugger@1', 'a debugger statement is caught');
+  assert.equal(rules("const t = 'a == b';\n"), '', 'but not inside a string');
+  assert.equal(rules("// a == b\nconst t = 1;\n"), '', 'nor inside a comment');
+  assert.equal(rules("const pattern = /a == b/u;\n"), '', 'nor inside a regular expression');
+  assert.equal(rules("const t = `x ${ 1 == 1 } y`;\n"), 'double-equals@1', 'an interpolation is code again');
+  assert.equal(rules("const t = 1;\n"), '', 'and a string after it does not swallow the rest');
+  assert.equal(rules('const t = "a ` b";\n'), '', 'a backtick inside a string is not a template');
+  assert.equal(rules("const value = 1;  \n"), 'trailing-space@1', 'trailing whitespace is caught');
+  assert.equal(rules('const value = 1;'), 'final-newline@1', 'a missing final newline is caught');
+  assert.equal(rules("const value = 1;\n\tif (value) {}\n"), 'tabs@2', 'tabs are caught');
+
+  // A file that does not compile is reported once, not a hundred times.
+  assert.equal(rules("const = ;\n"), 'syntax@1');
+
+  // And the stripper keeps the line count, which is what makes the line numbers true.
+  const sample = [
+    'const a = `one',
+    "two ${ 'x' }`;",
+    '/* three',
+    'four */',
+    'const b = /re[/]x/u;',
+    ''
+  ].join('\n');
+  assert.equal(stripStringsAndComments(sample).split('\n').length, sample.split('\n').length);
+});
+
 test('a background picture survives its container and paints above its own fill', async () => {
   // Two silent losses, found by rendering a card with a background picture - the slide looked
   // like plain coloured boxes. (1) `background-image` paints *above* `background-color`; the

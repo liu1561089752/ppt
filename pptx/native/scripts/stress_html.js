@@ -337,7 +337,9 @@ const STYLE = `
 
   .board { display: flex; flex-direction: column; flex-wrap: wrap; gap: 12px; width: 1168px; height: 240px; align-content: space-between; }
   .note { width: 560px; padding: 14px 16px; background: #FFFFFF; border-radius: 10px; border: 1px solid #E6E0D6; display: flex; flex-direction: row; align-items: center; gap: 12px; }
-  .note .no { flex: 0 0 30px; height: 30px; border-radius: 15px; background: #D98A4B; display: flex; align-items: center; justify-content: center; color: #FFFFFF; font-size: 12px; line-height: 1.2; font-weight: 600; }
+  .note .no { flex: 0 0 30px; height: 30px; border-radius: 15px; background: #D98A4B;
+    display: flex; align-items: center; justify-content: center;
+    color: #FFFFFF; font-size: 12px; line-height: 1.2; font-weight: 600; }
   .note .label { font-size: 13px; line-height: 1.6; color: #1D2A2E; }
 
   .nest { display: flex; flex-direction: row; gap: 18px; width: 1168px; }
