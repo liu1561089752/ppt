@@ -596,6 +596,8 @@ function checkUnsupported(ctx, domNode, style) {
     // Counter state is consumed by the list branch (reset, increment, print); the
     // properties say nothing the list output does not already carry.
     if (property === 'counterReset' || property === 'counterIncrement') return;
+    // `quotes` feeds open-quote/close-quote resolution; the pair itself never draws.
+    if (property === 'quotes') return;
     // `text-emphasis` is consumed at the run level; values without a shape keyword
     // (colour-only or a `none`) fall through to the generic report.
     if (property === 'textEmphasis' && /\b(dot|circle|filled|open|double-circle|triangle|sesame)\b/iu.test(String(style[property]))) return;
@@ -800,6 +802,33 @@ function baseRunFlags(baseStyle) {
  * holds, so they are concatenated. `counter()` and the quote keywords depend on state the DOM
  * does not carry, so the whole declaration is named instead of half-guessed.
  */
+/** UA default quote pair; `quotes` on the element overrides it. */
+function quotePairOf(style) {
+  const pairs = String((style && style.quotes) || '').trim();
+  if (!pairs || pairs === 'none') return null;
+  const tokens = [];
+  let rest = pairs;
+  while (rest.length) {
+    if (/^\s/u.test(rest)) { rest = rest.slice(1); continue; }
+    const quote = rest[0];
+    if (quote !== '"' && quote !== "'") return null;
+    let cursor = 1;
+    let body = '';
+    while (cursor < rest.length && rest[cursor] !== quote) {
+      if (rest[cursor] === '\\' && cursor + 1 < rest.length) {
+        body += rest[cursor] + rest[cursor + 1];
+        cursor += 2;
+        continue;
+      }
+      body += rest[cursor];
+      cursor += 1;
+    }
+    tokens.push(decodeCssContent(quote + body + quote));
+    rest = rest.slice(cursor + 1);
+  }
+  return tokens.length >= 2 ? { open: tokens[0], close: tokens[1] } : null;
+}
+
 function inlinePseudoText(declaration, domNode) {
   const content = declaration ? declaration.content : undefined;
   if (content === undefined) return { text: '' };
@@ -840,7 +869,7 @@ function inlinePseudoText(declaration, domNode) {
     }
     const word = /^[A-Za-z-]+/u.exec(rest);
     if (word && (word[0] === 'none' || word[0] === 'normal')) { index += word[0].length; continue; }
-    return { text: '', unsupported: value };
+    return { text: '', unsupported: value, word: word ? word[0] : null };
   }
   // A browser collapses runs of spaces in a normal white-space context, so the words a
   // pseudo box contributes are collapsed the way the DOM text around them already was.
@@ -953,12 +982,41 @@ function buildRuns(domNode, baseStyle, ctx) {
           'An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped');
       }
     }
+    // A `::before`/`::after` on the inline element itself (q::before with
+    // open-quote) resolves here: the quote keywords take the element's `quotes`,
+    // everything literal joins the line as a run - before first, then the words,
+    // then after, in source order.
+    const inlinePseudoRuns = { before: '', after: '' };
+    ['before', 'after'].forEach((pseudo) => {
+      if (node.tag === 'li') return; // the list branch owns the item's pseudos
+      const declaration = ctx.styles.decoration(node, pseudo);
+      if (!declaration) return;
+      const resolved = inlinePseudoText(declaration, node);
+      if (resolved.unsupported && resolved.word
+        && (resolved.word === 'open-quote' || resolved.word === 'close-quote'
+          || resolved.word === 'no-open-quote' || resolved.word === 'no-close-quote')) {
+        const pair = quotePairOf(style);
+        const suppress = resolved.word.startsWith('no-');
+        resolved.text = suppress ? '' : (resolved.word === 'open-quote'
+          ? (pair ? pair.open : '\u201C') : (pair ? pair.close : '\u201D'));
+        delete resolved.unsupported;
+      }
+      if (resolved.unsupported) {
+        recordUnsupported(ctx, node, '::' + pseudo, resolved.unsupported,
+          'Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute');
+        return;
+      }
+      inlinePseudoRuns[pseudo] = resolved.text;
+    });
+    if (inlinePseudoRuns.before) pushText(inlinePseudoRuns.before, null, inline);
     const merged = Object.assign({}, inheritedStyle || baseStyle, style);
     if (!node.children.length) {
       pushText(normalizedText(node), merged, inline);
+      if (inlinePseudoRuns.after) pushText(inlinePseudoRuns.after, null, inline);
       return;
     }
     node.children.forEach((child) => visit(child, merged, inline));
+    if (inlinePseudoRuns.after) pushText(inlinePseudoRuns.after, null, inline);
   };
 
   // A `::before`/`::after` box that is not absolutely positioned is an inline box in the
@@ -968,10 +1026,19 @@ function buildRuns(domNode, baseStyle, ctx) {
     const declaration = ctx.styles.decoration(domNode, pseudo);
     if (!declaration) return;
     if (String(declaration.position || '').toLowerCase() === 'absolute') return; // a placed overlay
-    const resolved = inlinePseudoText(declaration, domNode);
-    if (resolved.unsupported) {
-      // A counter() or open-quote in the content is a generated value the DOM does
-      // not carry; dropping it silently loses the numbers a design counts on.
+    let resolved = inlinePseudoText(declaration, domNode);
+    if (resolved.unsupported && resolved.word
+      && (resolved.word === 'open-quote' || resolved.word === 'close-quote'
+        || resolved.word === 'no-open-quote' || resolved.word === 'no-close-quote')) {
+      // The quote keywords resolve against the element's `quotes` (the UA default
+      // pair otherwise); the no- forms suppress, the open/close forms print.
+      const pair = quotePairOf(domNode.computedStyle || ctx.styles.computed(domNode));
+      const suppress = resolved.word.startsWith('no-');
+      resolved = { text: suppress ? '' : (resolved.word === 'open-quote'
+        ? (pair ? pair.open : '\u201C') : (pair ? pair.close : '\u201D')) };
+    } else if (resolved.unsupported) {
+      // A counter() in the content is a generated value the DOM does not carry;
+      // dropping it silently loses the numbers a design counts on.
       recordUnsupported(ctx, domNode, '::' + pseudo, resolved.unsupported,
         'Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute');
       return;

@@ -6049,3 +6049,40 @@ test('counters number the rows, literals join them', () => {
   assert.ok(textOf(literal).includes('\u2192'), 'the arrow joined the line');
 });
 
+
+test('open-quote and close-quote print the element quotes', () => {
+  // The quote keywords resolve against the inherited `quotes` pair (the UA default
+  // otherwise); they used to vanish silently.
+  const build = (cssRules, markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    cssRules,
+    '</style></head><body><main class="slide">', markup, '</main></body></html>'
+  ].join('\n'));
+  const textOf = (result) => {
+    const element = result.deck.slides[0].elements[0];
+    return typeof element.text === 'string' ? element.text : element.text.map((run) => run.text).join('');
+  };
+  const propertySet = (result) => result.report.unsupportedDetails.map((entry) => entry.property);
+
+  const custom = build(
+    '  .b { quotes: "\u300A" "\u300B"; font-size: 16px; }\n'
+    + '  .b q::before { content: open-quote; }\n'
+    + '  .b q::after { content: close-quote; }',
+    '<blockquote class="b"><q>\u5F15\u7528</q></blockquote>');
+  assert.equal(textOf(custom), '\u300A\u5F15\u7528\u300B', 'the declared pair prints');
+  assert.deepEqual(propertySet(custom), []);
+
+  const defaults = build(
+    '  .b { font-size: 16px; }\n'
+    + '  .b q::before { content: open-quote; }\n'
+    + '  .b q::after { content: close-quote; }',
+    '<blockquote class="b"><q>\u5F15\u7528</q></blockquote>');
+  assert.equal(textOf(defaults), '\u201C\u5F15\u7528\u201D', 'the UA default pair prints');
+
+  // A literal pseudo on any inline still joins in source order.
+  const arrow = build(
+    '  .b { font-size: 16px; }\n  .b em::before { content: "\u2192"; }',
+    '<p class="b">\u524D <em>\u5F3A\u8C03</em> \u540E</p>');
+  assert.equal(textOf(arrow), '\u524D \u2192\u5F3A\u8C03 \u540E');
+});
