@@ -6667,6 +6667,30 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('checkbox and radio draw their state glyphs, optgroup keeps its options', () => {
+  // A checked checkbox drew nothing at all, and a select whose selected option sat
+  // inside an <optgroup> lost its words - both silent losses of visible mock parts.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<input type="checkbox" checked>',
+    '<input type="radio">',
+    '<select><optgroup label="组一"><option selected>甲</option></optgroup></select>',
+    '</main></body></html>'
+  ].join('\n'));
+  const texts = [];
+  const walk = (element) => {
+    if (element.text) texts.push(String(Array.isArray(element.text) ? element.text.map((run) => run.text).join('') : element.text));
+    (element.children || []).forEach(walk);
+  };
+  result.deck.slides[0].elements.forEach(walk);
+  const joined = texts.join('');
+  assert.ok(joined.includes('\u2611'), 'checked box shows its mark, got ' + joined);
+  assert.ok(joined.includes('\u25CB'), 'unchecked radio shows its circle');
+  assert.ok(joined.includes('甲'), 'the optgroup option text survives');
+});
+
 test('a repeat keyword inside the background shorthand is named', () => {
   // `background: url(x) round` carried its tiling request inside the shorthand,
   // which the longhand read missed - the pattern drew as one fitted image silently.

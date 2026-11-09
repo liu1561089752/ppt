@@ -186,9 +186,24 @@ function textContent(node) {
   // Form controls show text a static mock also shows: the placeholder and the
   // option labels. Without this they drew as empty boxes with the visible words
   // silently gone.
-  if (node.tag === 'input') return String(node.attrs && node.attrs.placeholder || '');
+  if (node.tag === 'input') {
+    // A checkbox or radio draws its state glyph: the browser paints the box and the
+    // mark, and the mock shows them. The glyphs are font characters, so the deck
+    // draws them natively as text.
+    const inputType = String(node.attrs && node.attrs.type || '').toLowerCase();
+    const checked = node.attrs && node.attrs.checked !== undefined;
+    if (inputType === 'checkbox') return checked ? '\u2611' : '\u2610';
+    if (inputType === 'radio') return checked ? '\u25C9' : '\u25CB';
+    return String(node.attrs && node.attrs.placeholder || '');
+  }
   if (node.tag === 'select') {
-    const options = (node.children || []).filter((child) => child.type === 'element' && child.tag === 'option');
+    // Options can sit inside an `<optgroup>`; the grouping must not hide them.
+    const options = (node.children || []).flatMap((child) => {
+      if (child.type !== 'element') return [];
+      if (child.tag === 'option') return [child];
+      if (child.tag === 'optgroup') return (child.children || []).filter((inner) => inner.type === 'element' && inner.tag === 'option');
+      return [];
+    });
     const chosen = options.find((option) => option.attrs && option.attrs.selected !== undefined) || options[0];
     if (chosen) shownOptions.add(chosen);
     return chosen ? textContent(chosen) : '';
