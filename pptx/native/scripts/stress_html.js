@@ -17,7 +17,7 @@
  * reproducible from the numbers in the message.
  */
 
-const ARCHETYPES = ['cover', 'cards', 'steps', 'grid', 'data', 'columns', 'metrics'];
+const ARCHETYPES = ['cover', 'cards', 'steps', 'grid', 'data', 'columns', 'metrics', 'nested', 'dense'];
 
 /** A tiny deterministic PRNG (numerical recipes LCG) - no randomness across runs. */
 function makeRandom(seed) {
@@ -214,6 +214,73 @@ function metricsSlide(index, total, random) {
   ].join('\n');
 }
 
+/** The stress deck's own picture: 24x16 swatch, so `object-fit` has a real aspect to crop. */
+const SWATCH = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAYAAAATu1kYAAAAJUlEQVR42u3NMQEAAAgDoC251a3gLzSgknB3VwEBAQEBAQEBAQEBAQEBAQHA1wABl6y0GQAAAABJRU5ErkJggg==';
+
+/** Depth: a card holding a merged-cell table, a rotated badge, a clamped line and a cropped picture. */
+function nestedSlide(index, total, random) {
+  const rows = [1, 2, 3].map((step) => [sentences(random, 3)[step - 1][0],
+    String(20 + Math.round(random() * 60))]);
+  return [
+    '<main class="slide">',
+    '  <div class="badge">旋 转<br>12°</div>',
+    '  <div class="kicker accent">' + String(index + 1).padStart(2, '0') + ' · 深层嵌套</div>',
+    '  <h2 class="title">卡片里套表格，表格里有合并格</h2>',
+    '  <p class="sub">一层卡片、一层表格、一层合并单元格，旁边还有旋转徽标与被截断的一行字。</p>',
+    '  <div class="nest">',
+    '    <div class="box">',
+    '      <h3>原生表格</h3>',
+    '      <table class="plain">',
+    '        <thead><tr><th>环节</th><th>耗时</th></tr></thead>',
+    '        <tbody>',
+    '          <tr><td rowspan="2">解析</td><td>' + rows[0][1] + ' ms</td></tr>',
+    '          <tr><td>' + rows[1][1] + ' ms</td></tr>',
+    '          <tr><td colspan="2">两行合并成一格：' + rows[2][0].slice(0, 18) + '</td></tr>',
+    '        </tbody>',
+    '      </table>',
+    '      <p class="clamp">这一行永远不会换行，超长时以省略号结尾：' + sentences(random, 1)[0][1] + '</p>',
+    '    </div>',
+    '    <div class="box">',
+    '      <h3>被裁切的图片</h3>',
+    '      <img src="' + SWATCH + '" alt="色块">',
+    '      <p class="clamp">object-fit 让色块按框裁切，而不是被拉伸变形。</p>',
+    '    </div>',
+    '  </div>',
+    '  <p class="foot">第 ' + (index + 1) + ' 页 · 嵌套层级不改写祖先的盒子，合并格按 gridSpan 输出。</p>',
+    '</main>'
+  ].join('\n');
+}
+
+/** Density: ten rows, five columns, a striped body and a merged total row. */
+function denseSlide(index, total, random) {
+  const rows = Array.from({ length: 10 }, (_, row) => {
+    const cells = [
+      'R' + String(row + 1).padStart(2, '0'),
+      sentences(random, 3)[row % 3][0],
+      String(120 + Math.round(random() * 780)),
+      String(40 + Math.round(random() * 240)),
+      (1 + random() * 12).toFixed(1) + '%'
+    ];
+    return '      <tr><td>' + cells[0] + '</td><td>' + cells[1] + '</td><td class="num">' + cells[2]
+      + '</td><td class="num">' + cells[3] + '</td><td class="num">' + cells[4] + '</td></tr>';
+  });
+  return [
+    '<main class="slide">',
+    '  <div class="kicker accent">' + String(index + 1).padStart(2, '0') + ' · 密集表格</div>',
+    '  <h2 class="title">十行五列，斑马纹与合计行</h2>',
+    '  <p class="sub">列宽由内容决定，数字列右对齐，偶数行带底色，最后一行跨五列。</p>',
+    '  <table class="dense">',
+    '    <thead><tr><th>编号</th><th>项目</th><th>金额</th><th>数量</th><th>占比</th></tr></thead>',
+    '    <tbody>',
+    ...rows,
+    '    </tbody>',
+    '    <tfoot><tr><td colspan="5">合计：本页 ' + rows.length + ' 行，取前三列的合计值。</td></tr></tfoot>',
+    '  </table>',
+    '  <p class="foot">第 ' + (index + 1) + ' 页 · 斑马纹来自 :nth-child(even)，是每条边的填充而不是图片。</p>',
+    '</main>'
+  ].join('\n');
+}
+
 const RENDERERS = {
   cover: coverSlide,
   cards: cardsSlide,
@@ -221,7 +288,9 @@ const RENDERERS = {
   grid: gridSlide,
   data: dataSlide,
   columns: columnsSlide,
-  metrics: metricsSlide
+  metrics: metricsSlide,
+  nested: nestedSlide,
+  dense: denseSlide
 };
 
 const STYLE = `
@@ -270,6 +339,23 @@ const STYLE = `
   .note { width: 560px; padding: 14px 16px; background: #FFFFFF; border-radius: 10px; border: 1px solid #E6E0D6; display: flex; flex-direction: row; align-items: center; gap: 12px; }
   .note .no { flex: 0 0 30px; height: 30px; border-radius: 15px; background: #D98A4B; display: flex; align-items: center; justify-content: center; color: #FFFFFF; font-size: 12px; line-height: 1.2; font-weight: 600; }
   .note .label { font-size: 13px; line-height: 1.6; color: #1D2A2E; }
+
+  .nest { display: flex; flex-direction: row; gap: 18px; width: 1168px; }
+  .nest .box { flex: 1; padding: 14px 16px; background: #FFFFFF; border-radius: 12px; }
+  .nest .box h3 { margin: 0 0 8px; font-size: 15px; color: #1D2A2E; }
+  .slide > .badge { position: absolute; right: 56px; top: 40px; width: 104px; height: 104px; border-radius: 52px;
+    background: #D98A4B; color: #FFFFFF; font-size: 12px; line-height: 1.3; text-align: center;
+    display: flex; align-items: center; justify-content: center; transform: rotate(-12deg); }
+  .nest .clamp { width: 520px; margin: 12px 0 0; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; font-size: 12px; color: #566; }
+  .nest img { width: 100%; height: 110px; border-radius: 8px; object-fit: cover; }
+
+  table.dense { width: 1168px; border-collapse: collapse; font-size: 12px; }
+  table.dense th { text-align: left; padding: 7px 8px; color: #566; border-bottom: 1px solid #DCD7CE; }
+  table.dense td { padding: 6px 8px; border-bottom: 1px solid #ECE7DF; color: #2B3B3F; }
+  table.dense td.num { text-align: right; }
+  table.dense tbody tr:nth-child(even) { background: #EFEBE3; }
+  table.dense tfoot td { font-weight: 600; color: #1D2A2E; background: #E7EFEC; }
 
   .metrics { display: flex; flex-direction: row; gap: 18px; width: 1168px; }
   .metric { flex: 1; padding: 18px; background: #FFFFFF; border-radius: 12px; }

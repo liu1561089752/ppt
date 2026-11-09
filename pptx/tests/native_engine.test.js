@@ -4094,9 +4094,21 @@ test('a generated multi-page deck keeps every layout invariant', () => {
   const problems = stress.checkDeck(result, { slides: 9 });
   assert.deepEqual(problems, [], 'generated deck problems: ' + JSON.stringify(problems, null, 1));
   assert.equal(result.deck.slides.length, 9);
-  // Seven archetypes cycle, so a nine-page deck has to exercise most of them.
+  // Nine archetypes cycle, so a nine-page deck exercises all of them - including the two
+  // hard ones: a card holding a merged-cell table with a rotated badge and a cropped
+  // picture, and a ten-row table with a striped body.
   const kinds = new Set(result.deck.slides.map((slide) => (slide.elements || []).length));
   assert.ok(kinds.size > 1, 'the pages are not identical');
+  const walk = (elements) => (elements || []).flatMap((element) => [element].concat(walk(element.children)));
+  const shapes = result.deck.slides.flatMap((slide) => walk(slide.elements));
+  assert.ok(shapes.some((shape) => Number(shape.rotate) !== 0 && Number.isFinite(Number(shape.rotate))),
+    'the rotated badge reaches the deck');
+  const tables = shapes.filter((shape) => shape.type === 'table');
+  assert.ok(tables.some((table) => table.rows.length >= 10), 'the dense table is there');
+  assert.ok(tables.some((table) => table.rows.some((row) => row.some((cell) => cell.options && cell.options.rowspan))),
+    'and the merged cell too');
+  assert.ok(shapes.some((shape) => shape.type === 'image' && shape.fit === 'cover'),
+    'the cropped picture is a native cover crop');
   assert.ok(result.report.unsupportedDetails.length === 0, 'the generated CSS stays inside the supported subset');
   assert.ok(result.report.declarativeContainers > 20, 'containers stayed declarative: ' + result.report.declarativeContainers);
   assert.ok(elapsed < 20000, 'nine pages should convert in well under 20s, took ' + elapsed + 'ms');
