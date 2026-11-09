@@ -100,7 +100,9 @@ function shapeStyle(el, theme) {
         color: cleanColor(el.lineColor, theme.colors.border),
         width: el.lineWidth === undefined ? 0.8 : el.lineWidth,
         transparency: el.lineTransparency === undefined ? 0 : el.lineTransparency,
-        dash: el.lineDash || el.dash
+        // pptxgenjs spells the line dash as `dashType`; a bare `dash` is ignored and
+        // every styled border drew solid.
+        dashType: el.lineDash || el.dash
       };
   const options = {
     x: el.x, y: el.y, w: el.w, h: el.h,

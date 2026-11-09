@@ -230,7 +230,7 @@ test('native shape styles preserve transparency, rotation, line dash, and shadow
   }, { colors: { surface: 'FFFFFF', border: 'CCCCCC' } });
   assert.equal(style.fill.transparency, 22);
   assert.equal(style.line.transparency, 35);
-  assert.equal(style.line.dash, 'dash');
+  assert.equal(style.line.dashType, 'dash');
   assert.equal(style.transparency, 12);
   assert.equal(style.rotate, 8);
   assert.equal(style.shadow.opacity, 0.24);
@@ -6666,6 +6666,33 @@ test('column-span: all is named where it changes the design', () => {
     'outside multicol the declaration does nothing, so it stays silent');
 });
 
+
+test('dashed and dotted borders spell their dash', async () => {
+  // The writer sent `dash` where pptxgenjs reads `dashType`, so every dashed, dotted
+  // or otherwise styled border drew solid.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { border: 2px dashed #C05B3E; width: 100px; height: 50px; font-size: 14px; }',
+    '  .c { border: 2px dotted #17332F; width: 100px; height: 50px; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">x</div><div class="c">y</div></main></body></html>'
+  ].join('\n'));
+  const output = path.join(os.tmpdir(), 'native-dash-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(/prstDash val="dash"/.test(xml), 'dashed spells dash');
+    assert.ok(/prstDash val="sysDot"/.test(xml), 'dotted spells sysDot');
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
 
 test('ol type and li value ride the native numbering', () => {
   // type="A" drew arabic digits and value="7" started at 1: both attributes name
