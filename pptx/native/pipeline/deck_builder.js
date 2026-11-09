@@ -363,6 +363,7 @@ function imageElementFromNode(node) {
     element.lineColor = node.border.color;
     element.lineWidth = node.border.width;
   }
+  if (node.transparency !== undefined) element.transparency = node.transparency;
   return element;
 }
 

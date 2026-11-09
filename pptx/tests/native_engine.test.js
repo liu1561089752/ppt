@@ -6121,6 +6121,67 @@ test('open-quote and close-quote print the element quotes', () => {
 
 
 
+test('flex order and the justify grow shrink answers are native', async () => {
+  // `order` reorders the runs, space-between spreads the boxes, grow divides the
+  // free space - all read back from the written shapes.
+  const build = (css, markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    css,
+    '</style></head><body><main class="slide">', markup, '</main></body></html>'
+  ].join('\n'));
+  const childOf = (result, text) => {
+    const element = result.deck.slides[0].elements.find((item) => item.children
+      && item.children.some((child) => String(child.text) === text));
+    return element.children.find((item) => String(item.text) === text);
+  };
+
+  const ordered = build(
+    ['  .row { display: flex; width: 600px; }',
+     '  .row .a { order: 2; width: 100px; height: 40px; font-size: 14px; }',
+     '  .row .b { order: 1; width: 100px; height: 40px; font-size: 14px; }'].join('\n'),
+    '<div class="row"><div class="a">first-dom</div><div class="b">second-dom</div></div>'
+  );
+  const texts = ordered.deck.slides[0].elements[0].children.map((child) => child.text);
+  assert.deepEqual(texts, ['second-dom', 'first-dom'], 'order reorders the children');
+
+  // Positions resolve at serialization, so the spread reads back from the XML.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const offsets = async (css, markup) => {
+    const result = build(css, markup);
+    const output = path.join(os.tmpdir(), 'native-flex-' + process.pid + '.pptx');
+    try {
+      await generatePptx(result.deck, output);
+      const zip = await JSZip.loadAsync(fs.readFileSync(output));
+      const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+      const pattern = /<a:off x="(\d+)"/gu;
+      const xs = [];
+      let match;
+      while ((match = pattern.exec(xml))) xs.push(Number(match[1]) / 914400 * 96);
+      return xs;
+    } finally {
+      if (fs.existsSync(output)) fs.unlinkSync(output);
+    }
+  };
+
+  const spreadXs = await offsets(
+    '  .row { display: flex; justify-content: space-between; width: 600px; }\n'
+    + '  .row div { width: 100px; height: 40px; font-size: 14px; }',
+    '<div class="row"><div>left</div><div>right</div></div>'
+  );
+  assert.equal(Number((spreadXs[2] - spreadXs[1]).toFixed(1)), 500, 'the boxes spread over the main axis');
+
+  const grownXs = await offsets(
+    '  .row { display: flex; width: 600px; }\n'
+    + '  .row div { flex-grow: 1; height: 40px; font-size: 14px; }',
+    '<div class="row"><div>a</div><div>b</div></div>'
+  );
+  assert.equal(Number((grownXs[2] - grownXs[1]).toFixed(1)), 300, 'the free space divides evenly');
+});
 test('z-index decides the paint order of overlapping absolutes', () => {
   // Higher z paints on top regardless of DOM order - the same stacking CSS gives. Each
   // absolute becomes a container whose background is the surface shape with a hex fill.
@@ -6193,5 +6254,33 @@ test('eight-digit hex carries its alpha', () => {
   assert.ok(shape, 'the gradient overlay is a shape');
   assert.deepEqual(shape.gradient.stops.map((stop) => stop.transparency), [60, 80]);
   assert.deepEqual(overlay.report.unsupportedDetails.map((entry) => entry.property), []);
+});
+
+
+test('picture opacity lands as alphaModFix', async () => {
+  // CSS opacity on a picture is the native alphaModFix; it used to be dropped silently.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { width: 100px; height: 80px; opacity: 0.5; }',
+    '</style></head><body><main class="slide">',
+    '<img class="b" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==">',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), []);
+  const output = path.join(os.tmpdir(), 'native-imgop-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(/alphaModFix amt="50000"/u.test(xml), '50% opacity = 50000 alpha');
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
 });
 

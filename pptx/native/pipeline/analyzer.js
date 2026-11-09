@@ -2217,6 +2217,9 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.src = domNode.attrs.src || null;
     node.alt = domNode.attrs.alt || '';
     node.objectFit = (style.objectFit || 'cover').toLowerCase();
+    // CSS opacity on a picture is the native alphaModFix: 40% opacity = 60% transparency.
+    const imgOpacity = Number(style.opacity);
+    if (Number.isFinite(imgOpacity) && imgOpacity >= 0 && imgOpacity < 1) node.transparency = Number(((1 - imgOpacity) * 100).toFixed(1));
   // `none` shows the picture at its own size and `scale-down` at the smaller of that and the
   // box; both are approximated as `contain`, which scales. Naming it beats scaling quietly.
   if (node.objectFit === 'none' || node.objectFit === 'scale-down') {
