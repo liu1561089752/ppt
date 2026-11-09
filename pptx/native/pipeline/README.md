@@ -77,6 +77,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | grid/flex parity | Chrome-measured allocation (1fr 2fr -> 396.7/793.3; flex-basis 30% -> 360/360) pinned in the suite |
 | outline | Uniform ring becomes the shape line (colour + dash), no layout space; border wins when both are declared |
 | logical properties | Aliased to physical sides at declaration time (one writing mode modelled); inset uses the box-shorthand expansion, ltr left-wins Chrome-verified |
+| relative/sticky shift | Applied at every level incl. top-level containers and text; the flow hole stays at the static position; regression test reads a:off from the written file |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
 

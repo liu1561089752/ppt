@@ -5770,3 +5770,38 @@ test('logical properties alias their physical sides in ltr', () => {
   assert.equal(element.edge && element.edge.side, 'top');
 });
 
+
+test('a relative offset reaches the final PPTX coordinates', async () => {
+  const fs = require('node:fs');
+  // The regression: layoutSlide applied relativeShift on the element paths but not on
+  // the top-level container and text paths, so a shifted box painted at its static spot.
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .a { position: relative; top: 20px; left: 30px; width: 140px; height: 60px; background: #C05B3E; }',
+    '  .b { position: sticky; top: 10px; width: 140px; height: 60px; background: #17332F; margin-top: 10px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="a">rel</div><div class="b">sticky</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const output = path.join(os.tmpdir(), 'native-relative-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(require('node:fs').readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const offs = [];
+    const pattern = /<a:off x="(\d+)" y="(\d+)"/gu;
+    let match;
+    while ((match = pattern.exec(xml))) offs.push([Math.round(match[1] / 9525), Math.round(match[2] / 9525)]);
+    // rel: 40 + 30 = 70, 40 + 20 = 60. sticky: x 40, y 110 + 10 = 120.
+    assert.deepEqual(offs.slice(1, 2), [[70, 60]], 'the relative box moved');
+    assert.deepEqual(offs.slice(3, 4), [[40, 120]], 'the sticky box moved');
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
+

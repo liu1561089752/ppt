@@ -684,18 +684,25 @@ function layoutSlide(slide, pageSize, theme = {}, options = {}) {
 
   (slide.elements || []).forEach((source) => {
     if (isContainer(source)) {
-      const x = source.x === undefined ? margin : source.x;
-      const y = source.y === undefined ? cursorY : source.y;
+      // A relative shift moves the box but leaves the flow hole where it was, so the
+      // cursor still reads the static position.
+      const shift = source.relativeShift;
+      const staticX = source.x === undefined ? margin : source.x;
+      const staticY = source.y === undefined ? cursorY : source.y;
       const w = source.w === undefined ? contentWidth : source.w;
-      const { elements, height } = layoutContainer(source, { x, y, w, h: source.h }, theme, options);
+      const { elements, height } = layoutContainer(source,
+        { x: staticX + (shift ? shift.dx || 0 : 0), y: staticY + (shift ? shift.dy || 0 : 0), w, h: source.h },
+        theme, options);
       elements.forEach((element) => resolved.push(element));
-      if (source.y === undefined) cursorY = Math.max(cursorY, y + height + gap);
+      if (source.y === undefined) cursorY = Math.max(cursorY, staticY + height + gap);
       return;
     }
     const { element, explicitPosition } = prepareElement(source, contentWidth, theme, options);
+    const topShift = source.relativeShift;
     element.x = element.x === undefined ? margin : element.x;
     element.y = element.y === undefined ? cursorY : element.y;
-    if (!explicitPosition) cursorY = Math.max(cursorY, element.y + element.h + gap);
+    if (topShift) { element.x += topShift.dx || 0; element.y += topShift.dy || 0; }
+    if (!explicitPosition) cursorY = Math.max(cursorY, element.y - (topShift ? topShift.dy || 0 : 0) + element.h + gap);
     resolved.push(element);
   });
 
