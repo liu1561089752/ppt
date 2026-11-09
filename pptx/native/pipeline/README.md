@@ -148,6 +148,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | child order | checked - spPr/rPr/pPr/bodyPr/tcPr/ln are schema sequences, `--self-test` proves the check fires |
 | table grid | every row fills the grid exactly once (hMerge placeholders fill a slot, they do not add one) |
 | order coverage | spPr, rPr, pPr, bodyPr, tcPr, ln, txBody, tbl, tr, tc, gradFill, gsLst, effectLst - 16 self-test controls |
+| browser geometry | pipeline-grid.html top-level boxes match Chrome within 0-2px (recorded oracle) |
+| `line-height: normal` | per-face metrics via fontkit; generic fallback keeps 1.25 where Chrome measures 1.45 - documented boundary |
 | outline alone | native - the shape line, dash included |
 | text-emphasis | named - DrawingML has no emphasis mark (a render proved the old markup drew nothing) |
 | table-layout: fixed | native - colW plus the fixed flag |

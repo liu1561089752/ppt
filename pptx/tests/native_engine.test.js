@@ -6753,6 +6753,42 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('the top-level boxes land where Chrome put them', () => {
+  // Recorded from a real browser: pipeline-grid.html opened in Chrome 156 and read with
+  // getBoundingClientRect(), each slide's children in document order, in CSS px relative
+  // to the slide's own corner. The engine never sees these numbers; it has to arrive at
+  // them from the CSS alone. Two pixels of slack covers a wrapped line that the estimate
+  // rounds differently - anything more is a box in the wrong place.
+  const recorded = [
+    [{ x: 64, y: 56, w: 1152, h: 16 }, { x: 64, y: 94, w: 1152, h: 43 },
+     { x: 64, y: 159, w: 900, h: 24 }, { x: 64, y: 205, w: 1152, h: 428 }],
+    [{ x: 64, y: 56, w: 1152, h: 16 }, { x: 64, y: 94, w: 1152, h: 43 },
+     { x: 64, y: 159, w: 900, h: 49 }, { x: 64, y: 230, w: 1152, h: 386 }],
+    [{ x: 64, y: 56, w: 1152, h: 16 }, { x: 64, y: 94, w: 1152, h: 43 },
+     { x: 64, y: 159, w: 900, h: 50 }, { x: 64, y: 231, w: 1152, h: 322 }]
+  ];
+  const html = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'examples', 'pipeline-grid.html'), 'utf8');
+  const deck = pipeline.convertHtml(html).deck;
+  assert.equal(deck.slides.length, recorded.length, 'the fixture still has its pages');
+  deck.slides.forEach((slide, page) => {
+    assert.equal(slide.elements.length, recorded[page].length,
+      'page ' + (page + 1) + ' still has its blocks');
+    slide.elements.forEach((element, position) => {
+      const expected = recorded[page][position];
+      const engine = {
+        x: Math.round(element.x * 96), y: Math.round(element.y * 96),
+        w: Math.round(element.w * 96), h: Math.round(element.h * 96)
+      };
+      ['x', 'y', 'w', 'h'].forEach((side) => {
+        const delta = engine[side] - expected[side];
+        assert.ok(Math.abs(delta) <= 2, 'page ' + (page + 1) + ' block ' + (position + 1)
+          + ' ' + side + ' is ' + engine[side] + 'px where Chrome put ' + expected[side] + 'px');
+      });
+    });
+  });
+});
+
 test('shape ids stay unique on a slide that mixes text, pictures and tables', () => {
   // Shape ids are one namespace per slide, and the writer numbers a table from its
   // own counter - a table landing on a number a text box already took makes
