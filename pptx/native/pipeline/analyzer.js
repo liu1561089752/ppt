@@ -1523,7 +1523,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   if (style.display === 'none') return null;
   // `visibility: hidden` keeps the box in the layout - siblings must not move up -
   // but paints nothing. The flag survives to the builder, which skips the emission.
-  const hidden = String(style.visibility || '').toLowerCase() === 'hidden';
+  // `collapse` hides outside the table layout it belongs to; on ordinary boxes CSS
+  // defines it as `hidden`, so it takes the same keep-the-hole path.
+  const visibilityValue = String(style.visibility || '').toLowerCase();
+  const hidden = visibilityValue === 'hidden' || visibilityValue === 'collapse';
   checkUnsupported(ctx, domNode, style);
 
   const fontSizePx = fontPxOf(style, inherited.fontPx);

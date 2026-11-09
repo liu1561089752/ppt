@@ -5964,3 +5964,27 @@ test('writing-mode vertical spellings land as native vert attributes', () => {
   assert.deepEqual(lr.report.unsupportedDetails.map((entry) => entry.property), ['writingMode']);
 });
 
+
+test('visibility: collapse hides an ordinary box exactly like hidden', () => {
+  // CSS defines collapse as hidden outside the table layout; the silent draw was a bug.
+  const build = (visibility) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { visibility: ' + visibility + '; width: 100px; height: 50px; background: #C05B3E; }',
+    '</style></head><body><main class="slide">',
+    '<div class="b">gone</div><p class="k" style="font-size: 16px;">after</p>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const collapse = build('collapse');
+  const hidden = build('hidden');
+  const afterOf = (result) => {
+    const element = result.deck.slides[0].elements.find((item) => typeof item.text === 'string' && item.text.includes('after'));
+    return { y: +(element.y * 96).toFixed(1) };
+  };
+  // The hole is kept: the after paragraph sits at the same y whether the box is
+  // collapse, hidden, or not styled at all (40 + 50 = 90 + margins).
+  assert.equal(afterOf(collapse).y, afterOf(hidden).y, 'collapse keeps the same hole as hidden');
+  assert.deepEqual(collapse.report.unsupportedDetails.map((entry) => entry.property), []);
+});
+
