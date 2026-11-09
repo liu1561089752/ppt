@@ -470,12 +470,17 @@ function createContext(html, options = {}) {
     }));
   const mediaQueries = stylesheet.mediaQueries || [];
   mediaQueries.filter((entry) => !entry.matched).forEach((entry) => {
+    // A preference query does not match for a different reason than a size query:
+    // the slide has no user preference to read, where a size simply compares.
+    const preference = /prefers-[a-z-]+/iu.test(entry.query);
     unsupported.push({
       tag: null,
       classes: [],
       property: '@media',
       value: entry.query,
-      reason: 'Media query does not match the slide viewport; its rules were not applied'
+      reason: preference
+        ? 'The query reads a browser preference (colour scheme, reduced motion); a slide render has none, so its rules were not applied'
+        : 'Media query does not match the slide viewport; its rules were not applied'
     });
   });
   const notes = [];

@@ -5988,3 +5988,19 @@ test('visibility: collapse hides an ordinary box exactly like hidden', () => {
   assert.deepEqual(collapse.report.unsupportedDetails.map((entry) => entry.property), []);
 });
 
+
+test('preference media queries report why they cannot match', () => {
+  const build = (media) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + media,
+    '</style></head><body><main class="slide"><p class="b">x</p></main></body></html>'
+  ].join('\n'));
+  const reason = (result) => result.report.unsupportedDetails.find((entry) => entry.property === '@media').reason;
+
+  assert.ok(reason(build('@media (prefers-color-scheme: dark) { .b { color: red; } }')).includes('preference'),
+    'the preference query names what it reads');
+  assert.ok(reason(build('@media (min-width: 5000px) { .b { color: red; } }')).includes('viewport'),
+    'the size query keeps the viewport reason');
+});
+
