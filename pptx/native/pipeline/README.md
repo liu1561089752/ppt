@@ -159,6 +159,10 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | stress archetypes | 9 shapes including a nested merged-table card and a ten-row dense table |
 | two-reader gate | `npm run verify:readers` - LO vs WPS renders judged on dilated ink IoU (0.81-0.99 agree, 0.43 displaced) |
 | bubble charts | `data-chart="bubble"` - first column x, then (y, size) pairs; unpaired columns are named |
+| nested list markers | disc / circle / square by depth, as the browser's own stylesheet says |
+| list-style shorthand | expanded, so `none` on a nested list switches its marker off |
+| `li value="7"` | carried to `buAutoNum startAt` even in a plain list |
+| marker-off indent | `marL = 27pt x (level + 1)`, so the line stays under its parent |
 | reader-flowed text | multi-column pages are counted skipped, never passed |
 | 120-page run | `npm run gate:big` - converts in ~2.2s, OOXML audit clean |
 | typography read-back | letter-spacing/small-caps/justify/strike/uppercase/pre land in the XML; the rest are named |

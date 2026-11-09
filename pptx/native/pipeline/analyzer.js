@@ -648,7 +648,8 @@ function checkUnsupported(ctx, domNode, style) {
     // List markers and picture tiling are judged per value below: the generic
     // subset report would call `no-repeat` and `none` unsupported when they ask
     // for exactly what the native side does.
-    if (property === 'listStyle' || property === 'listStyleType' || property === 'backgroundRepeat') return;
+    if (property === 'listStyle' || property === 'listStyleType' || property === 'listStyleImage'
+      || property === 'backgroundRepeat') return;
     // `table-layout: fixed` is the model this solver implements (declared or equal
     // columns, content wraps rather than stretches), so it says nothing.
     if (property === 'tableLayout') return;
@@ -2071,6 +2072,20 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     Object.assign(node, measured);
     if (kind === 'list') {
       const items = readListItems(domNode);
+      {
+        // A marker drawn from an image cannot be spelled, and the round bullet is what a
+        // reader gets instead - so it is named here, once, whether the list is simple or
+        // rich, and for a nested list's own element too.
+        const listElements = [domNode].concat(items.map((item) => item.list).filter(Boolean));
+        listElements.forEach((element) => {
+          const own = ctx.styles.declared(element) || {};
+          const image = String(own.listStyleImage || '').trim();
+          if (!image || image === 'none' || ctx.listImageNamed) return;
+          ctx.listImageNamed = true;
+          recordUnsupported(ctx, element, 'listStyleImage', image,
+            'A marker drawn from an image has no native spelling: the round bullet is used instead');
+        });
+      }
       // A `::before { content: counter(...) }` on the items is a design that numbers
       // rows itself. The list path reads DOM text only, so the counter silently
       // vanished - name it instead.
@@ -2260,9 +2275,27 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
             !(child.type === 'element' && (child.tag === 'ul' || child.tag === 'ol')))
         };
         const built = buildRuns(shallow, style, ctx);
-        return { level: item.level, text: item.text, ordered: item.ordered, runs: built.hasFormatting ? built.runs : null };
+        // The list element and the <li> travel with the runs: the marker comes from the
+        // list the item sits in, and `value="7"` from the item itself.
+        return {
+          level: item.level, text: item.text, ordered: item.ordered,
+          node: item.node, list: item.list,
+          runs: built.hasFormatting ? built.runs : null
+        };
       });
-      const rich = itemRuns.some((item) => item.runs) || itemRuns.some((item) => item.level > 0);
+      // An item that starts its own count (`value="7"`) or draws a different marker than
+      // its container needs its own paragraph properties, so the flat-string path is not
+      // enough - without this the value was read and then lost.
+      const perItemProperties = itemRuns.some((item) => {
+        if (item.node && item.node.attrs && item.node.attrs.value !== undefined) return true;
+        const el = item.list || domNode;
+        if (el === domNode) return false;
+        const own = ctx.styles.declared(el) || {};
+        const marker = String(own.listStyleType || own.listStyle || '').trim().toLowerCase();
+        return marker !== '' && marker !== listStyle;
+      });
+      const rich = itemRuns.some((item) => item.runs) || itemRuns.some((item) => item.level > 0)
+        || perItemProperties;
       // A nested list is a bullet level, not more words on the parent line: each item is
       // its own paragraph, and the levels PowerPoint already knows carry the indent.
       if (rich) {
@@ -2284,11 +2317,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
             // A nested list keeps its own marker language: an ol inside counts, a ul
             // inside rounds - the browser switches markers per level, so the deck does
             // too instead of the outer list's marker on every line.
-            const itemMarker = itemOrdered === orderedTag
-              ? (markerOption || true)
-              : (itemOrdered
-                  ? { type: 'number', style: 'arabicPeriod' }
-                  : { code: '2022' });
+            const listElement = item.list || domNode;
+            const listDeclared = ctx.styles.declared(listElement) || {};
+            const declaredMarker = String(listDeclared.listStyleType || listDeclared.listStyle || '').trim().toLowerCase();
+            const itemMarker = markerForItem(declaredMarker, item.level, itemOrdered, markerOption);
             options.bullet = itemMarker;
             // `value="7"` starts that item's count at 7; the reader spells it as
             // the paragraph's own buAutoNum startAt.
@@ -4583,6 +4615,29 @@ function readTableCell(cell, ctx, rowBackground) {
   };
 }
 
+// A list item's marker comes from the list it sits in: the author's declaration there if
+// there is one, otherwise the browser's own nesting rule (a ul inside a list draws a
+// hollow circle, two deep a square, an ol keeps counting) which the cascade already seeds.
+// A marker the format cannot spell falls back to the round bullet rather than dropping it.
+const LIST_MARKER_CHARS = { disc: '2022', circle: '25CB', square: '25AA' };
+const LIST_MARKER_NUMBERS = {
+  decimal: 'arabicPeriod',
+  'lower-alpha': 'alphaLcPeriod', 'lower-latin': 'alphaLcPeriod',
+  'upper-alpha': 'alphaUcPeriod', 'upper-latin': 'alphaUcPeriod',
+  'lower-roman': 'romanLcPeriod', 'upper-roman': 'romanUcPeriod'
+};
+
+function markerForItem(declaredMarker, level, ordered, containerMarker) {
+  // `false` is the writer's off switch: a paragraph with a falsy bullet gets `buNone`.
+  // Null would reach pptxgenjs as an object and crash it reading `.type`.
+  if (declaredMarker === 'none') return false;
+  if (LIST_MARKER_CHARS[declaredMarker]) return { code: LIST_MARKER_CHARS[declaredMarker] };
+  if (LIST_MARKER_NUMBERS[declaredMarker]) return { type: 'number', style: LIST_MARKER_NUMBERS[declaredMarker] };
+  if (level === 0) return containerMarker || true;
+  if (ordered) return { type: 'number', style: 'arabicPeriod' };
+  return { code: ['2022', '25CB', '25AA'][Math.min(level, 2)] };
+}
+
 /** One bullet level of indent, matching what PowerPoint gives `indentLevel`. */
 const LIST_INDENT_IN = 0.25;
 
@@ -4605,7 +4660,7 @@ function readListItems(domNode, level = 0, out = [], parentOrdered = null) {
   const ordered = String(domNode.tag || '').toLowerCase() === 'ol';
   elementChildren(domNode).filter((child) => child.tag === 'li').forEach((item) => {
     const own = ownListItemText(item);
-    if (own) out.push({ node: item, text: own, level, ordered });
+    if (own) out.push({ node: item, text: own, level, ordered, list: domNode });
     elementChildren(item).filter((child) => child.tag === 'ul' || child.tag === 'ol')
       .forEach((nested) => readListItems(nested, level + 1, out, ordered));
   });

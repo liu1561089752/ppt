@@ -6937,6 +6937,79 @@ test('a list nested without an li still renders its items', () => {
   assert.equal(nested.options.bullet.type, 'number', 'and counts like its ol');
 });
 
+test('nested lists draw the markers the browser draws, level by level', async () => {
+  // The browser's own stylesheet nests markers: a ul inside a list is a hollow circle,
+  // two deep a square, an ol keeps counting - and a marker declared on a list wins over
+  // that default, including `list-style: none`, which switches the marker off. Chrome was
+  // asked for each of these and answered; the deck now writes the same shapes.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const build = (body) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  li { font-size: 18px; }',
+    '</style></head><body><main class="slide">' + body + '</main></body></html>'
+  ].join('\n'));
+  const marks = async (body) => {
+    const result = build(body);
+    const output = path.join(os.tmpdir(), 'native-markers-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    const found = [...xml.matchAll(/<a:(buChar|buAutoNum|buNone)([^>]*)>/gu)].map((match) => {
+      const char = /char="&#x([0-9A-F]+);"/u.exec(match[2]);
+      if (char) return String.fromCodePoint(parseInt(char[1], 16));
+      if (match[1] === 'buNone') return 'none';
+      const start = /startAt="(\d+)"/u.exec(match[2]);
+      return 'number' + (start ? ':' + start[1] : '');
+    });
+    return { found, report: result.report };
+  };
+
+  const depths = await marks('<ul><li>一<ul><li>二<ul><li>三<ul><li>四</li></ul></li></ul></li></ul></li></ul>');
+  assert.deepEqual(depths.found, ['\u2022', '\u25CB', '\u25AA', '\u25AA'],
+    'solid, hollow, square, square: ' + depths.found.join(' '));
+  assert.deepEqual(depths.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const declaredOuter = await marks('<ul style="list-style-type: square"><li>一<ul><li>二</li></ul></li></ul>');
+  assert.deepEqual(declaredOuter.found, ['\u25AA', '\u25CB'],
+    'the outer marker is declared; the nested list takes the browser default');
+
+  const declaredInner = await marks('<ul><li>一<ul style="list-style-type: square"><li>二</li></ul></li></ul>');
+  assert.deepEqual(declaredInner.found, ['\u2022', '\u25AA'], 'a marker declared on the nested list wins');
+
+  const switchedOff = await marks('<ul><li>一<ul style="list-style: none"><li>二</li></ul></li></ul>');
+  assert.deepEqual(switchedOff.found, ['\u2022', 'none'],
+    'the shorthand switches the nested marker off instead of letting the default win');
+  // A paragraph with no marker still sits at its level: the writer zeroes marL when the
+  // bullet is off, which parked the words at the left edge while the browser keeps them
+  // under their parent. The patch puts the writer's own 27pt level margin back.
+  const levelOff = (await (async () => {
+    const result = build('<ul><li>一<ul style="list-style: none"><li>二</li></ul></li></ul>');
+    const output = path.join(os.tmpdir(), 'native-level-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    return /<a:pPr[^>]*lvl="1"[^>]*marL="(\d+)"/u.exec(xml);
+  })());
+  assert.ok(levelOff, 'the marker-off paragraph carries its level');
+  // The writer's own bulleted paragraph uses `27pt + 27pt * level`, so level 1 sits one full
+  // margin past the level-0 text rather than at it.
+  assert.equal(levelOff[1], '685800', 'and two 27pt margins below the box: ' + (levelOff && levelOff[1]));
+
+  const counted = await marks('<ol><li>一</li><li value="7">七</li></ol>');
+  assert.deepEqual(counted.found, ['number:1', 'number:7'], 'value="7" starts that item at seven');
+
+  const picture = await marks('<ul style="list-style: url(a.png) disc"><li>一</li></ul>');
+  assert.ok(picture.report.unsupportedDetails.some((entry) => entry.property === 'listStyleImage'),
+    'a marker drawn from an image is named');
+});
+
 test('a nested list keeps its own marker language', () => {
   // The browser switches markers per level: an ol inside a ul counts, a ul inside
   // an ol rounds. The deck stamped the outer marker on every line.
@@ -6951,7 +7024,10 @@ test('a nested list keeps its own marker language', () => {
   const nested = element.text.find((run) => run.text === '内一');
   assert.ok(nested, 'the nested item is its own paragraph');
   assert.equal(nested.options.indentLevel, 1, 'one level in');
-  assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
+  // Chrome was asked what a ul nested in a list draws: a hollow circle at the first
+  // level and a square below that (u1 disc, u2 circle, u3 square, u4 square). The deck
+  // used to stamp the solid round bullet on every depth.
+  assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
 test('a picture with no object-fit is named where that box crops it', () => {

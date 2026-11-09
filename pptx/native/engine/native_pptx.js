@@ -764,6 +764,44 @@ async function patchMarkerColours(outputPath, deck, laidOut) {
   return touched > 0;
 }
 
+/**
+ * A level-indented paragraph whose marker is switched off still sits at its level: the
+ * writer zeroes `marL` when there is no bullet, which parks the words at the left edge
+ * while the browser keeps them under their parent. The level margin is the writer's own
+ * 27pt per level (342900 EMU), the same number it writes for a bulleted paragraph.
+ */
+const LEVEL_INDENT_EMU = 342900;
+
+async function patchLevelIndents(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const needed = supplied(laidOut, slides).some((elements) => elements.some((element) =>
+    element.type === 'text' && Array.isArray(element.text) && element.text.some((run) =>
+      run && run.options && run.options.bullet === false && Number(run.options.indentLevel) > 0)));
+  if (!needed) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    const next = xml.replace(/<a:pPr([^>]*)>/gu, (whole, attributes) => {
+      if (!/\blvl="[1-9]\d*"/u.test(attributes) || !/\bmarL="0"/u.test(attributes)) return whole;
+      const level = Number(/\blvl="(\d+)"/u.exec(attributes)[1]);
+      touched += 1;
+      // The writer's bulleted paragraph uses `bulletMarL + bulletMarL * level`: level 1 sits
+      // one full margin past the level-0 text, not at it.
+      const margin = LEVEL_INDENT_EMU * (level + 1);
+      return '<a:pPr' + attributes.replace(/\bmarL="0"/u, 'marL="' + margin + '"') + '>';
+    });
+    if (next !== xml) zip.file(name, next);
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 async function patchTextIndents(outputPath, deck, laidOut) {
   const slides = (deck && deck.slides) || [];
   const needed = supplied(laidOut, slides).some((elements) => elements
@@ -871,6 +909,7 @@ async function generatePptx(deck, outputPath, options = {}) {
     await patchGradientFills(outputPath, deck, result.laidOut);
   }
   await patchTextIndents(outputPath, deck, result.laidOut);
+  await patchLevelIndents(outputPath, deck, result.laidOut);
   await patchMarkerColours(outputPath, deck, result.laidOut);
   await patchTextColumns(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);

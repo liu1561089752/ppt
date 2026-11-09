@@ -752,6 +752,52 @@ function expandBoxShorthand(value) {
  * stays whole and the subset report names it - a half-expanded font is worse than a
  * named refusal.
  */
+/**
+ * `list-style` spelled as one property: the position, the image and the marker, in any
+ * order. It is expanded here rather than read later, because a design that writes
+ * `list-style: none` on a nested list means the marker is off - and a UA default sitting
+ * in `listStyleType` would otherwise win over the shorthand that switched it off.
+ */
+function expandListStyleShorthand(value) {
+  const tokens = [];
+  const text = String(value || '');
+  let cursor = 0;
+  while (cursor < text.length) {
+    while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+    if (cursor >= text.length) break;
+    const start = cursor;
+    let depth = 0;
+    let quote = null;
+    while (cursor < text.length) {
+      const ch = text[cursor];
+      if (quote) {
+        if (ch === String.fromCharCode(92)) cursor += 1;
+        else if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === '(') depth += 1;
+      else if (ch === ')') depth = Math.max(0, depth - 1);
+      else if (/\s/u.test(ch) && depth === 0) break;
+      cursor += 1;
+    }
+    tokens.push(text.slice(start, cursor));
+  }
+  const result = {};
+  let sawNone = false;
+  let sawImage = false;
+  tokens.forEach((token) => {
+    const lower = token.toLowerCase();
+    if (lower === 'inside' || lower === 'outside') result.listStylePosition = lower;
+    else if (lower.indexOf('url(') === 0) { result.listStyleImage = token; sawImage = true; }
+    else if (lower === 'none') sawNone = true;
+    else result.listStyleType = lower;
+  });
+  if (sawNone) {
+    if (!result.listStyleType) result.listStyleType = 'none';
+    if (!sawImage) result.listStyleImage = 'none';
+  }
+  return result;
+}
+
 function expandFontShorthand(value) {
   const text = String(value || '').trim();
   if (!text || /^(?:caption|icon|menu|message-box|small-caption|status-bar)$/iu.test(text)) return null;
@@ -896,6 +942,11 @@ function applyDeclarations(style, declarations, variables) {
       });
       return;
     }
+    if (property === 'list-style') {
+      const parts = expandListStyleShorthand(resolvedValue);
+      Object.entries(parts).forEach(([name, next]) => set(name, next));
+      return;
+    }
     if (property === 'font') {
       const expanded = expandFontShorthand(resolvedValue);
       if (!expanded) { set('font', resolvedValue); return; }
@@ -943,6 +994,21 @@ function createStyleResolver(stylesheet) {
     // them those words come out plain: the tag itself is not a styling hint.
     const defaults = UA_TAG_STYLES[node.tag];
     if (defaults) Object.assign(style, defaults);
+    // The browser's own stylesheet nests list markers: a ul inside a list draws a hollow
+    // circle and two lists deep a square (Chrome, asked directly: u1 disc, u2 circle, u3
+    // square, u4 square; an ol keeps counting at every depth). These are UA declarations,
+    // so an author rule below still wins - exactly as in the browser.
+    if (node.tag === 'ul' || node.tag === 'ol') {
+      let listDepth = 0;
+      for (let ancestor = node.parent; ancestor && ancestor.type === 'element'; ancestor = ancestor.parent) {
+        if (ancestor.tag === 'ul' || ancestor.tag === 'ol') {
+          listDepth += 1;
+          if (listDepth >= 2) break;
+        }
+      }
+      if (node.tag === 'ul' && listDepth === 1) style.listStyleType = 'circle';
+      else if (node.tag === 'ul' && listDepth >= 2) style.listStyleType = 'square';
+    }
     matched.forEach((rule) => applyDeclarations(style, rule.declarations, variables));
     if (node.attrs && node.attrs.style) {
       applyDeclarations(style, parseDeclarations(node.attrs.style.replace(/&quot;/gu, '"')), variables);
