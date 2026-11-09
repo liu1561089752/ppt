@@ -5864,3 +5864,37 @@ test('transition and animation reports name the journey, not the state', () => {
   assert.deepEqual(quiet.report.unsupportedDetails.map((entry) => entry.property), []);
 });
 
+
+test('chart styling reaches the chart part', async () => {
+  // Title, custom colours and the legend position live in ppt/charts/chart1.xml, not
+  // just the spec - a spec-only assertion would pass while the reader lost the styling.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '</style></head><body><main class="slide">',
+    '<div style="width:500px;height:350px" data-chart="pie" data-chart-title="销量表"',
+    '     data-chart-legend="bottom" data-chart-colors="#C05B3E,#17332F">',
+    '<table><tr><th>季度</th><th>销量</th></tr><tr><td>Q1</td><td>100</td></tr><tr><td>Q2</td><td>150</td></tr></table>',
+    '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const output = path.join(os.tmpdir(), 'native-chart-style-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const chartName = Object.keys(zip.files).find((name) => /ppt\/charts\/chart\d+\.xml$/.test(name));
+    const xml = await zip.file(chartName).async('string');
+    assert.ok(xml.includes('C05B3E') && xml.includes('17332F'), 'the custom series colours are in the chart');
+    assert.ok(xml.includes('销量表'), 'the title is in the chart');
+    assert.ok(/legendPos val="b"/.test(xml), 'the legend sits at the bottom');
+    assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), []);
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
+
