@@ -3761,6 +3761,17 @@ const CHART_GROUPINGS = new Set(['clustered', 'stacked', 'percentStacked']);
  * chart colour list is per series, in the order the series appear.
  */
 function applyChartStyling(attrs, options, domNode, ctx) {
+  // An unknown data-chart-* attribute is a typo, and a typo in a styling attribute
+  // is a silently lost style. Name it.
+  const KNOWN_CHART_ATTRS = new Set(['data-chart', 'data-chart-colors', 'data-chart-labels',
+    'data-chart-label-position', 'data-chart-value-format', 'data-chart-axis-titles',
+    'data-chart-legend', 'data-chart-title', 'data-chart-grid', 'data-chart-grouping',
+    'data-chart-dir', 'data-chart-text-color', 'data-values', 'data-labels']);
+  Object.keys(attrs).filter((name) => name.startsWith('data-chart-') && !KNOWN_CHART_ATTRS.has(name))
+    .forEach((name) => {
+      recordUnsupported(ctx, domNode, name, String(attrs[name]),
+        'Unknown chart attribute; the styling it asks for is not applied');
+    });
   const colors = attrs['data-chart-colors'];
   if (colors !== undefined) {
     const list = [];

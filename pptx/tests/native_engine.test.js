@@ -6435,3 +6435,33 @@ test('header cell colours become the series palette', () => {
     'the attribute keeps the final say');
 });
 
+
+test('an unknown chart attribute is named, not dropped', () => {
+  // A typo in a styling attribute (data-chart-value-labels) is a silently lost style;
+  // the sweep names it while every real attribute stays silent.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  .chart { width: 640px; height: 360px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="chart" data-chart="bar" data-chart-legend="bottom" data-chart-value-labels="true">',
+    '  <table><tr><th>Q</th><th>A</th></tr><tr><td>Q1</td><td>128</td></tr></table>',
+    '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const notes = result.report.unsupportedDetails.map((entry) => entry.property);
+  assert.deepEqual(notes, ['data-chart-value-labels'], JSON.stringify(notes));
+  // Known attributes, correctly spelled, stay silent.
+  const clean = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  .chart { width: 640px; height: 360px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="chart" data-chart="bar" data-chart-legend="bottom" data-chart-grid="true" data-chart-text-color="#10303A">',
+    '  <table><tr><th>Q</th><th>A</th></tr><tr><td>Q1</td><td>128</td></tr></table>',
+    '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(clean.report.unsupportedDetails.map((entry) => entry.property), []);
+});
+
