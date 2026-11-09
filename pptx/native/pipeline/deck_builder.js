@@ -49,6 +49,9 @@ const FIT_BY_OBJECT_FIT = {
   cover: 'cover',
   contain: 'contain',
   fill: 'stretch',
+  // `background-size: 100% 100%` arrives as the fit-mode spelling; without this key it fell
+  // through to a cover crop, so a stretched background was cropped in silence.
+  stretch: 'stretch',
   none: 'none',
   'scale-down': 'scale-down',
   crop: 'crop'

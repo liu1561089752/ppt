@@ -1649,7 +1649,13 @@ function backgroundImageOf(style) {
   else if (/^100%\s*(?:100%|auto)?$/u.test(size) || /^auto\s+100%$/u.test(size)) fit = 'stretch';
   else if (size) fit = 'contain';
 
-  return { src, fit, size: size || 'auto', focus: parseBackgroundFocus(rawPosition) };
+  // A length position means "that far from the box's edge", which needs the source size and
+  // the box; `parseBackgroundFocus` reads percentages and keywords, and mixing the two lost
+  // the offset (`20px 0` became `{ x: 0.5, y: 0 }`). The string travels instead.
+  const positionText = String(rawPosition || '').trim().toLowerCase().replace(/\s+/gu, ' ');
+  const lengthPosition = /^-?[\d.]+(px|pt|in|cm|mm)( -?[\d.]+(px|pt|in|cm|mm)?)?$/u.test(positionText);
+  const focus = lengthPosition ? positionText : parseBackgroundFocus(rawPosition);
+  return { src, fit, size: size || 'auto', focus };
 }
 
 module.exports = {

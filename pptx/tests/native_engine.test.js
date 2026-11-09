@@ -7121,6 +7121,56 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '25CB', 'and opens up to a hollow circle');
 });
 
+test('a background picture stretches, crops and is placed like its CSS says', async () => {
+  // A background picture is not an <img>, so it has its own path - and it had its own two
+  // silent drops. `background-size: 100% 100%` arrived as the fit-mode spelling "stretch",
+  // which the object-fit table did not know, so it fell through to a cover crop: a
+  // stretched background was cropped. And a length `background-position` was read by the
+  // percentage parser, which dropped the offset.
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAYAAAATu1kYAAAAJUlEQVR42u3NMQEAAAgDoC251a3gLzSgknB3VwEBAQEBAQEBAQEBAQEBAQHA1wABl6y0GQAAAABJRU5ErkJggg==';
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const background = async (css) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  div.b { width: 240px; height: 120px; background-image: url(' + PNG + '); ' + css + ' }',
+      '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+    ].join('\n'));
+    const output = path.join(os.tmpdir(), 'native-background-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    const picture = xml.slice(xml.indexOf('<p:pic>'), xml.indexOf('</p:pic>'));
+    const offset = /<a:off x="(-?\d+)" y="(-?\d+)"\/>/u.exec(picture);
+    const srcRect = /<a:srcRect([^/>]*)\/?>/u.exec(picture);
+    return {
+      x: offset ? Number(offset[1]) / 914400 : null,
+      crop: srcRect ? srcRect[1].trim() : '',
+      fit: result.deck.slides[0].elements[0].fit
+    };
+  };
+
+  const stretched = await background('background-size: 100% 100%;');
+  assert.equal(stretched.fit, 'stretch', 'a 100% 100% background stretches, not crops');
+  assert.equal(stretched.crop, '', 'and a stretched picture has nothing to crop');
+
+  const centred = await background('background-size: cover;');
+  assert.match(centred.crop, /t="12500"/u, 'cover crops from the middle: ' + centred.crop);
+
+  const down = await background('background-size: cover; background-position: 10px 5px;');
+  assert.match(down.crop, /t="9375"/u, 'a 5px offset moves the crop window: ' + down.crop);
+  const up = await background('background-size: cover; background-position: -10px -5px;');
+  assert.match(up.crop, /t="15625"/u, 'and the sign decides the direction: ' + up.crop);
+
+  const placed = await background('background-size: contain; background-position: 20px 0;');
+  assert.ok(Math.abs(placed.x - (0.4167 + 20 / 96)) < 0.002, 'a contained background is placed at 20px: ' + placed.x);
+});
+
 test('a length object-position crops and places the picture it names', async () => {
   // `object-position` was read as a keyword or a percentage only: a length fell through the
   // background parser as "center" and the picture was cropped from the middle in silence.
