@@ -57,6 +57,15 @@ CHILD_ORDER = {
     "tcPr": [["lnL"], ["lnR"], ["lnT"], ["lnB"], ["lnTlToBr"], ["lnBlToTr"],
               ["cell3D"], ["noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill"],
               ["headers"], ["extLst"]],
+    "txBody": [["bodyPr"], ["lstStyle"], ["p"]],
+    "tbl": [["tblPr"], ["tblGrid"], ["tr"]],
+    "tr": [["tc"], ["extLst"]],
+    "tc": [["txBody"], ["tcPr"], ["extLst"]],
+    "gradFill": [["gsLst"], ["lin", "path"], ["tileRect"]],
+    "gsLst": [["gs"]],
+    # Every effect is one choice slot, so their order among themselves is free.
+    "effectLst": [["blur", "fillOverlay", "glow", "innerShdw", "outerShdw",
+                   "prstShdw", "reflection", "softEdge"]],
     "ln": [["noFill", "solidFill", "gradFill", "pattFill"], ["prstDash", "custDash"],
            ["round", "bevel", "miter"], ["headEnd"], ["tailEnd"], ["extLst"]],
 }
@@ -369,6 +378,14 @@ def self_test() -> int:
         ("a valid anchor", "<a:bodyPr anchor='ctr'/>", False),
         ("an invalid anchor", "<a:bodyPr anchor='middle'/>", True),
         # A table row has to fill its grid exactly once: short is as broken as long.
+        ("a text body in order", "<a:txBody><a:bodyPr/><a:p/></a:txBody>", False),
+        ("a paragraph before its body properties",
+         "<a:txBody><a:p/><a:bodyPr/></a:txBody>", True),
+        ("a gradient in order", "<a:gradFill><a:gsLst><a:gs/></a:gsLst><a:lin/></a:gradFill>", False),
+        ("a gradient ramp after its direction",
+         "<a:gradFill><a:lin/><a:gsLst><a:gs/></a:gsLst></a:gradFill>", True),
+        ("a table row before the grid",
+         "<a:tbl><a:tr><a:tc/></a:tr><a:tblGrid><a:gridCol w='1'/></a:tblGrid></a:tbl>", True),
         ("a table that adds up",
          "<a:tbl><a:tblGrid><a:gridCol w='1'/><a:gridCol w='1'/></a:tblGrid>"
          "<a:tr><a:tc/><a:tc/></a:tr></a:tbl>", False),
