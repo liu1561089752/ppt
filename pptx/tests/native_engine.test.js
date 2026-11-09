@@ -6525,3 +6525,46 @@ test('percentage line-height is a font multiple', () => {
   assert.equal(build('32px').deck.slides[0].elements[0].lineSpacingMultiple, 2);
 });
 
+
+test('margin auto centers a flex item in the line slack', async () => {
+  // `margin: 0 auto` on a flex item absorbs the line slack: both margins split it,
+  // which centers a declared-width item. The row path read auto margins as zero and
+  // drew the item at the line start.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const offsets = async (marginCss) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+      '  .row { display: flex; width: 600px; }',
+      '  .b { ' + marginCss + ' width: 100px; height: 40px; font-size: 14px; }',
+      '</style></head><body><main class="slide">',
+      '<div class="row"><div class="b">c</div></div>',
+      '</main></body></html>'
+    ].join('\n'));
+    const output = path.join(os.tmpdir(), 'native-ma-' + process.pid + '.pptx');
+    try {
+      await generatePptx(result.deck, output);
+      const zip = await JSZip.loadAsync(fs.readFileSync(output));
+      const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+      const pattern = /<a:off x="(-?\d+)"/gu;
+      const xs = [];
+      let match;
+      while ((match = pattern.exec(xml))) xs.push(Number(match[1]) / 914400 * 96);
+      return xs;
+    } finally {
+      if (fs.existsSync(output)) fs.unlinkSync(output);
+    }
+  };
+  // The child's absolute x: 40px slide padding + 250px of slack before it.
+  const centered = await offsets('margin: 0 auto;');
+  assert.equal(Number((centered[centered.length - 1]).toFixed(1)), 290,
+    'the item centers: 40px padding + 250px slack, got ' + centered[centered.length - 1]);
+  const pushed = await offsets('margin-left: auto;');
+  assert.equal(Number((pushed[pushed.length - 1]).toFixed(1)), 540,
+    'a single auto margin takes the whole slack: 40 + 500');
+});
+

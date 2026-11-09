@@ -102,6 +102,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | unknown chart attrs | Mistyped data-chart-* named as a typo (was silently ignored); known set enumerated |
 | table perimeter border | table-level CSS border merges into silent perimeter cell edges (cell-own wins); colgroup + caption probe-verified |
 | percent line-height | 150% → 1.5 multiple of own font (was silently 1.25 default); unitless/px were right |
+| flex margin auto | Auto margins absorb line slack (center a declared-width item); was drawn at line start |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |

@@ -3111,10 +3111,25 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       extraGap = slack / (count + 1);
     }
 
+    // Auto margins absorb the line's slack: count them, each takes an equal share.
+    let autoCount = 0;
+    line.indices.forEach((index) => {
+      const itemStyle = ctx.styles.computed(flow[index]);
+      if (String(itemStyle.marginLeft || '').trim().toLowerCase() === 'auto') autoCount += 1;
+      if (String(itemStyle.marginRight || '').trim().toLowerCase() === 'auto') autoCount += 1;
+    });
+    const autoShare = autoCount ? slack / autoCount : 0;
     let cursor = startX;
     const lineNodes = [];
     line.indices.forEach((index, position) => {
       const child = flow[index];
+      // `margin: auto` on a flex item absorbs line slack before the item: both sides
+      // of one item split it (centering a declared-width item).
+      const itemStyle = ctx.styles.computed(child);
+      const autoLeft = String(itemStyle.marginLeft || '').trim().toLowerCase() === 'auto';
+      const autoRight = String(itemStyle.marginRight || '').trim().toLowerCase() === 'auto';
+      const share = autoLeft ? autoShare : 0;
+      if (autoLeft) cursor += share;
       const node = analyzeNode(child, { x: cursor, y: lineTop, w: widthsInLine[position], h: null }, inherited, ctx);
       if (node) {
         const self = alignSelfOf(ctx.styles.computed(child));
@@ -3131,6 +3146,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
         nodes.push(node);
         lineNodes.push(node);
       }
+      if (autoRight) cursor += autoShare;
       cursor += widthsInLine[position] + gap + extraGap;
     });
     // Each line's cross size is its own tallest item, but a container whose height the
