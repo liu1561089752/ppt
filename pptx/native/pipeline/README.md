@@ -75,6 +75,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | caption-side | `bottom` drops the caption under the grid (grid keeps the node top, caption box at grid bottom minus its height); default top unchanged. Chrome-verified |
 | text-transform full-width | ASCII printables map onto U+FF01-FF5E; uppercase/lowercase/capitalize unchanged |
 | grid/flex parity | Chrome-measured allocation (1fr 2fr -> 396.7/793.3; flex-basis 30% -> 360/360) pinned in the suite |
+| outline | Uniform ring becomes the shape line (colour + dash), no layout space; border wins when both are declared |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
 

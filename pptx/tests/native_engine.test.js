@@ -4643,7 +4643,6 @@ test('every unsupported declaration is reported exactly once, by name', () => {
   // to name the declaration. One case per report, so a regression shows up as a missing name.
   const cases = {
     textShadow: '.box { width: 400px; font-size: 20px; text-shadow: 0 2px 8px #000; }',
-    outline: '.box { width: 400px; height: 80px; background: #EEE; outline: 3px solid #F00; }',
     filter: '.box { width: 400px; height: 80px; background: #EEE; filter: blur(2px); }',
     columns: '.box { width: 600px; columns: 2; font-size: 14px; }',
     wordSpacing: '.box { width: 400px; font-size: 20px; word-spacing: 6px; }',
@@ -5700,5 +5699,41 @@ test('grid fr and flex-basis allocation matches the browser exactly', () => {
 
   const flex = build('.g { display: flex; gap: 10px; } .g div { flex-basis: 30%; height: 50px; background: #E8E1D0; }');
   assert.deepEqual(widths(flex), [360, 360]);
+});
+
+
+test('outline draws a uniform ring without taking layout space', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    '<div class="a">one</div><div class="b">two</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const ringOf = (result) => {
+    const element = result.deck.slides[0].elements[0];
+    const bg = element.background || element.fill;
+    return { colour: bg && bg.lineColor, dash: bg && bg.lineDash };
+  };
+
+  // The outline becomes the shape's line, with its colour and dash.
+  const solid = build('.a { outline: 2px solid #C05B3E; width: 140px; height: 60px; } .b { width: 140px; height: 60px; }');
+  assert.equal(ringOf(solid).colour, 'C05B3E');
+  assert.deepEqual(solid.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const dashed = build('.a { outline: 2px dashed #C05B3E; width: 140px; height: 60px; } .b { width: 140px; height: 60px; }');
+  assert.equal(ringOf(dashed).colour, 'C05B3E');
+  assert.ok(ringOf(dashed).dash, 'the dash survives');
+
+  // A declared border wins the shape line; the outline is a fallback, not an override.
+  const both = build('.a { border: 1px solid #17332F; outline: 2px solid #C05B3E; width: 140px; height: 60px; } .b { width: 140px; height: 60px; }');
+  assert.equal(ringOf(both).colour, '17332F');
+
+  // The ring takes no layout space: the second box does not shift (Chrome puts it at
+  // 40 + 60 + 30 = 130px on the twin fixture - the same number the deck shows).
+  const spaced = build('.a { outline: 4px solid #C05B3E; width: 140px; height: 60px; } .b { margin-top: 30px; width: 140px; height: 60px; }');
+  const second = spaced.deck.slides[0].elements.find((element) => typeof element.text === 'string' && element.text.includes('two'));
+  assert.equal(+(second.y * 96).toFixed(1), 130, 'the outline adds no inset');
 });
 

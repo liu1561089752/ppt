@@ -65,7 +65,7 @@ const SUPPORTED_PROPERTIES = new Set([
   'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'flexDirection',
   'flexWrap', 'flexGrow', 'flexBasis', 'flexShrink', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
   'gridColumn', 'gridRow', 'gridColumnStart', 'gridColumnEnd', 'gridRowStart', 'gridRowEnd',
-  'gridArea', 'captionSide', 'gridTemplateRows', 'gridAutoRows', 'alignItems', 'justifyItems', 'justifySelf',
+  'gridArea', 'captionSide', 'outline', 'gridTemplateRows', 'gridAutoRows', 'alignItems', 'justifyItems', 'justifySelf',
   'alignContent',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
@@ -1498,6 +1498,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
 
   const padding = boxShorthand(style, 'padding');
   const border = parseBorder(style);
+  // `outline` paints a uniform ring without taking layout space. The native line is
+  // centred on the shape edge where CSS hugs the outside, so the ring shifts in by
+  // half a line width - at decoration sizes that is the ring slightly overlapping the
+  // box instead of floating outside it, and it is named, not hidden.
+  const outline = style.outline ? parseBorder({ border: style.outline }) : null;
+  const ring = border || (outline && outline.width > 0 ? outline : null);
   const insetLeft = padding.left + (border ? border.width / 72 : 0);
   const insetTop = padding.top + (border ? border.width / 72 : 0);
   const insetRight = padding.right + (border ? border.width / 72 : 0);
@@ -1657,7 +1663,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     h: explicitHeight,
     contentWidth,
     padding,
-    border,
+    border: ring,
     children: []
   };
   // CSS fades the whole subtree; a PowerPoint shape can only fade its own paint, so a
