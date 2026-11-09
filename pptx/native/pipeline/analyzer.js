@@ -1836,6 +1836,11 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     if (styleWidth === null && left !== null && right !== null) {
       width = Math.max(0, parentBox.w - left - right);
     }
+    // The vertical pair works the same way: top and bottom both pinned stretch the
+    // height between the insets.
+    if (explicitHeight === null && top !== null && bottom !== null && Number.isFinite(parentBox.h)) {
+      explicitHeight = Math.max(0, parentBox.h - top - bottom);
+    }
     if (styleWidth === null && !(left !== null && right !== null)) {
       const shrink = shrinkToFitWidth(domNode, style, {
         fontSizePx,

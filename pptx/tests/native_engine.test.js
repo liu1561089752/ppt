@@ -6681,6 +6681,14 @@ test('an absolutely positioned box pinned on both sides stretches', () => {
   // The containing block is the slide's padding box (1280px); width = 1280 - 50 - 30.
   assert.ok(Math.abs(element.w - 1200 / 96) < 0.01, 'the box spans between the insets, got ' + element.w);
   assert.ok(Math.abs(element.x - 50 / 96) < 0.01, 'and starts at the left inset');
+  // The vertical pair works the same: top and bottom both pinned stretch the height.
+  const vertical = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; position: relative; }',
+    '  .b { position: absolute; left: 50px; top: 20px; bottom: 40px; width: 200px; background: #C05B3E; }',
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n')).deck.slides[0].elements[0];
+  assert.ok(Math.abs(vertical.h - 660 / 96) < 0.01, 'the height spans top to bottom, got ' + vertical.h);
   // A one-sided pin still hugs its content.
   const hug = pipeline.convertHtml([
     '<html><head><style>',
