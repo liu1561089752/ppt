@@ -6583,3 +6583,29 @@ test('a variable weight between 501 and 599 is named', () => {
   assert.deepEqual(build('300').report.unsupportedDetails.map((entry) => entry.property), [], 'light draws as regular, no surprise');
 });
 
+
+test('vertical glyph defaults stay silent, alternatives are named', () => {
+  // `text-orientation: mixed` is the initial value and what eaVert already does (CJK
+  // upright, Latin rotated): an equivalent implementation, so it stays silent. The
+  // alternatives change Latin behaviour and are named. `list-style-position: inside`
+  // has no native spelling either - the bullet always hangs.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    css,
+    '</style></head><body><main class="slide"><p class="b">縦書き Latin</p></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(build('  .b { writing-mode: vertical-rl; text-orientation: mixed; font-size: 16px; height: 200px; }')
+    .report.unsupportedDetails.map((entry) => entry.property), []);
+  const upright = build('  .b { writing-mode: vertical-rl; text-orientation: upright; font-size: 16px; height: 200px; }');
+  assert.equal(upright.report.unsupportedDetails.filter((entry) => entry.property === 'textOrientation').length, 1);
+  const list = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { list-style-position: inside; font-size: 16px; }',
+    '</style></head><body><main class="slide"><ul class="b"><li>项一</li></ul></main></body></html>'
+  ].join('\n'));
+  const note = list.report.unsupportedDetails.find((entry) => entry.property === 'listStylePosition');
+  assert.ok(note.reason.includes('hang'), 'the reason names the real limitation: ' + note.reason);
+});
+

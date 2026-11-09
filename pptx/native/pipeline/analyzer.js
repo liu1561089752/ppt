@@ -83,6 +83,8 @@ const SUPPORTED_PROPERTIES = new Set([
   // `underline`/`line-through` land as run properties via decorationOptions; `overline`
   // and a declared thickness or colour are named separately below.
   'textDecoration', 'textDecorationLine', 'textDecorationColor', 'textDecorationThickness',
+  // `mixed` is the initial value: eaVert already keeps CJK upright, so the default is
+  // an equivalent implementation and not a limitation.
   'fontVariant',
   'writingMode', 'wordBreak', 'float', 'clear', 'aspectRatio',
   // The `-webkit-line-clamp` properties; the clamp itself is applied where the text is
@@ -667,6 +669,23 @@ function checkUnsupported(ctx, domNode, style) {
     if (property === 'animation') {
       recordUnsupported(ctx, domNode, 'animation', style[property],
         'The slide draws the final state; the entrance or motion itself is not drawn');
+      return;
+    }
+    // A per-value truth beats the generic sweep: `inside` puts the marker in the
+    // text's own line box, which no native list spells - the bullet always hangs.
+    // `mixed` is the initial value and what eaVert already draws (CJK upright, Latin
+    // rotated): an equivalent implementation, so it is silent. The alternatives
+    // change Latin behaviour and are named.
+    if (property === 'textOrientation') {
+      if (String(style[property]).trim().toLowerCase() !== 'mixed') {
+        recordUnsupported(ctx, domNode, property, style[property],
+          'Only the default glyph behaviour (mixed) is drawn: eaVert keeps CJK upright and rotates Latin, and no native spelling rotates Latin upright');
+      }
+      return;
+    }
+    if (property === 'listStylePosition' && String(style[property]).trim().toLowerCase() === 'inside') {
+      recordUnsupported(ctx, domNode, property, style[property],
+        'The marker would sit inside the text line: native bullets always hang in the margin');
       return;
     }
     if (UNSUPPORTED_ALWAYS.has(property)) {
