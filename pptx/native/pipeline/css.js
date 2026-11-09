@@ -1150,6 +1150,14 @@ function parseColor(value) {
     const hex = NAMED_COLORS[text];
     return hex === null ? { hex: null, alpha: 0 } : { hex, alpha: 1 };
   }
+  // #RRGGBBAA is standard CSS: the alpha channel becomes transparency, which the
+  // shapes carry and the gradient stops scale into their own alpha field.
+  const hex8Match = /^#([0-9a-f]{8})$/u.exec(text);
+  if (hex8Match) {
+    const digits = hex8Match[1];
+    const alpha = parseInt(digits.slice(6), 16) / 255;
+    return { hex: digits.slice(0, 6).toUpperCase(), alpha: Number(alpha.toFixed(3)) };
+  }
   const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6})$/u.exec(text);
   if (hexMatch) {
     const digits = hexMatch[1];

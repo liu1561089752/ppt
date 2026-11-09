@@ -6162,3 +6162,36 @@ test('mixed corner radii are named, uniform ones draw', () => {
     'four equal longhands draw');
 });
 
+
+test('eight-digit hex carries its alpha', () => {
+  // #RRGGBBAA is standard CSS. The alpha channel becomes transparency on shapes and in
+  // gradient stops; the parser used to reject the whole colour.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    css,
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  const surfaceOf = (result) => {
+    const element = result.deck.slides[0].elements[0];
+    return element.background || element;
+  };
+
+  const solid = surfaceOf(build('  .b { width: 200px; height: 100px; background: #C05B3E66; font-size: 16px; }'));
+  assert.equal(solid.fill, 'C05B3E');
+  assert.equal(solid.fillTransparency, 60, '40% alpha means 60% transparency');
+
+  const overlay = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; position: relative; }',
+    '  .b { position: relative; width: 200px; height: 100px; font-size: 16px; }',
+    '  .b::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;',
+    '    background: linear-gradient(#C05B3E66, #17332F33); }',
+    '</style></head><body><main class="slide"><div class="b">overlay</div></main></body></html>'
+  ].join('\n'));
+  const shape = overlay.deck.slides[0].elements.find((element) => element.gradient);
+  assert.ok(shape, 'the gradient overlay is a shape');
+  assert.deepEqual(shape.gradient.stops.map((stop) => stop.transparency), [60, 80]);
+  assert.deepEqual(overlay.report.unsupportedDetails.map((entry) => entry.property), []);
+});
+

@@ -1573,9 +1573,10 @@ function attachDecorations(domNode, node, ctx) {
     const y = top !== undefined ? top : (bottom !== undefined ? parentHeight - height - bottom : 0);
 
     const background = backgroundOf(declaration);
+    const gradient = gradientOf(declaration);
     const text = content === 'none' || content === 'normal' ? '' : decodeCssContent(content);
     const colour = parseColor(declaration.color);
-    if (!(background && background.hex) && !text) {
+    if (!(background && background.hex) && !gradient && !text) {
       skip(pseudo, 'The decoration paints nothing (no background and no content)', content);
       return;
     }
@@ -1587,6 +1588,7 @@ function attachDecorations(domNode, node, ctx) {
       h: Number(height.toFixed(4))
     };
     if (background && background.hex) overlay.fill = background.hex;
+    if (gradient) overlay.gradient = gradient;
     const radius = parseLength(declaration.borderRadius);
     if (radius && radius.unit !== '%') overlay.radius = Number(toInches(radius, { fontSizePx: 16 }).toFixed(3));
     if (text) {

@@ -760,8 +760,9 @@ function emitLeafOverlays(node, context, shapes) {
       w: Number(Math.max(0.02, overlay.w).toFixed(4)),
       h: Number(Math.max(0.02, overlay.h).toFixed(4))
     };
-    if (overlay.fill) {
-      const shape = Object.assign({ type: 'shape', line: false, fill: overlay.fill }, box);
+    if (overlay.fill || overlay.gradient) {
+      const shape = Object.assign({ type: 'shape', line: false, fill: overlay.fill || (overlay.gradient && overlay.gradient.stops[0].color) }, box);
+      if (overlay.gradient) shape.gradient = nativeGradient(overlay.gradient);
       if (overlay.radius) shape.radius = overlay.radius;
       shapes.push(shape);
       report.shapes += 1;

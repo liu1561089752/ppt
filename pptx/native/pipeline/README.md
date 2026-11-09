@@ -92,6 +92,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | list markers | disc/circle/square spell buChar, ordered forms spell buAutoNum; rare markers still named; builder no longer collapses the option to true |
 | table cells + z-index | rowSpan/vMerge, gridSpan, anchor, zebra fills file-verified; z-index sorts paint order (pin test swaps z values) |
 | corner radii | Mixed sets (incl. one longhand - undeclared corners are 0) report; uniform sets draw; repeat rules only for the shorthand |
+| 8-digit hex | #RRGGBBAA alpha becomes transparency (shapes and gradient stops); empty-content pseudo overlays carry gradients |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
