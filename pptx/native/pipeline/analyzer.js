@@ -4977,6 +4977,51 @@ function findSlideElements(root, options) {
  * Analyze a whole HTML document into slide layout trees.
  * @returns {{pageSize: object, slides: Array, unsupported: Array, notes: Array, stats: object}}
  */
+const INLINE_TEXT_TAGS = new Set(['span', 'strong', 'em', 'b', 'i', 'u', 's', 'ins', 'del',
+  'small', 'code', 'kbd', 'mark', 'sub', 'sup', 'abbr', 'cite', 'q', 'time', 'label', 'a',
+  'br', 'wbr', 'bdi', 'bdo', 'var', 'samp', 'dfn']);
+
+/**
+ * Text that sits directly in the slide root forms an anonymous block box in CSS -
+ * the browser wraps it and lays it out among its siblings. Only elements reached this
+ * walk, so a one-line slide lost its words entirely. The run is wrapped in an element
+ * no selector can match, which keeps the words and inherits the root's typography.
+ */
+function wrapRootText(slideNode, ctx) {
+  const ANONYMOUS = 'anonymous-text';
+  const inline = (child) => child.type === 'element'
+    && (INLINE_TEXT_TAGS.has(child.tag)
+      || /^inline/u.test(String(ctx.styles.computed(child).display || '').toLowerCase()));
+  const kids = slideNode.children || [];
+  const runs = [];
+  let run = null;
+  kids.forEach((child) => {
+    if (child.type === 'text' && child.text.trim()) {
+      if (!run) {
+        run = { type: 'element', tag: ANONYMOUS, attrs: Object.create(null), children: [], parent: slideNode };
+        runs.push(run);
+      }
+      run.children.push(child);
+      return;
+    }
+    if (inline(child) && run) {
+      run.children.push(child);
+      return;
+    }
+    run = null;
+  });
+  const used = runs.filter((candidate) => candidate.children.some((child) => child.type === 'text'));
+  if (!used.length) return false;
+  const rebuilt = [];
+  kids.forEach((child) => {
+    const owner = used.find((candidate) => candidate.children.includes(child));
+    if (!owner) { rebuilt.push(child); return; }
+    if (rebuilt[rebuilt.length - 1] !== owner) rebuilt.push(owner);
+  });
+  slideNode.children = rebuilt;
+  return true;
+}
+
 function analyzeHtml(html, options = {}) {
   const ctx = createContext(html, options);
   const pageSize = pageSizeInches(options);
@@ -4984,6 +5029,8 @@ function analyzeHtml(html, options = {}) {
   const slides = [];
 
   slideElements.forEach((slideNode, index) => {
+    // Run before the style is read: the wrap changes the child list, not the root.
+    wrapRootText(slideNode, ctx);
     const style = ctx.styles.computed(slideNode);
     checkUnsupported(ctx, slideNode, style);
     const padding = boxShorthand(style, 'padding');

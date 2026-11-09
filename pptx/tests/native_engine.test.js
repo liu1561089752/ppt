@@ -6746,6 +6746,37 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('text directly in the slide root keeps its words', () => {
+  // CSS forms an anonymous block box for text sitting directly in a block
+  // container; the walk only reached elements, so a one-line slide lost its words
+  // without a word of report.
+  const textsOf = (body) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  body { margin: 0; }',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+      '</style></head><body><main class="slide">' + body + '</main></body></html>'
+    ].join('\n'));
+    const texts = [];
+    const walk = (element) => {
+      if (element.text !== undefined) texts.push(Array.isArray(element.text)
+        ? element.text.map((run) => run.text).join('') : String(element.text));
+      (element.children || []).forEach(walk);
+    };
+    result.deck.slides[0].elements.forEach(walk);
+    return texts;
+  };
+
+  assert.deepEqual(textsOf('甲'), ['甲'], 'a one-line slide keeps its words');
+  assert.deepEqual(textsOf('甲<div>乙</div>'), ['甲', '乙'],
+    'and text before a block keeps its place in the flow');
+  assert.deepEqual(textsOf('<div>乙</div>甲'), ['乙', '甲'],
+    'as does text after one');
+  // Text and inline elements share one anonymous box, so they share a line box.
+  assert.deepEqual(textsOf('丁<span>戊</span>'), ['丁戊'],
+    'bare text joins the inline run instead of becoming its own box');
+});
+
 test('the chart grid is read per axis', () => {
   // A grid is asked for per axis: y is what the theme already draws, x is the other
   // one, both is both. The single true/false spelling stopped reading the axis
