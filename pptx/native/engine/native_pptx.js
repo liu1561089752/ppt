@@ -130,69 +130,6 @@ function shapeStyle(el, theme) {
   return options;
 }
 
-/**
- * `text-emphasis` becomes `<a:emphasisMark>` on the run properties, before the latin
- * font it decorates. PptxGenJS has no option, so the marks ride the same
- * post-serialization patch the bullet colour and indents ride. `marks` are per run:
- * one entry with a character for each run that asked, aligned with the file's `a:r`
- * order inside the shape.
- */
-function applyEmphasisMarksToShape(xml, marks) {
-  let runIndex = 0;
-  let patched = 0;
-  const next = xml.replace(/<a:r>([\s\S]*?)<\/a:r>/gu, (whole, inner) => {
-    const mark = marks[runIndex++];
-    if (!mark || !mark.character) return whole;
-    if (/<a:emphasisMark>/u.test(inner)) return whole;
-    const fill = '<a:emphasisMark><a:buChar char="' + mark.character + '"/></a:emphasisMark>';
-    const withFill = inner.replace(/(<a:rPr [^>]*>)/u, '$1' + fill);
-    if (withFill !== inner) patched += 1;
-    return '<a:r>' + withFill + '</a:r>';
-  });
-  return { xml: next, patched };
-}
-
-async function patchEmphasisMarks(outputPath, deck, laidOut) {
-  const slides = (deck && deck.slides) || [];
-  const marked = (element) => element.type === 'text' && Array.isArray(element.text)
-    && element.text.some((run) => run.options && run.options.emphasisMark);
-  if (!supplied(laidOut, slides).some((elements) => elements.some(marked))) return false;
-  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
-  let touched = 0;
-  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
-    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
-    if (!shapeElements.some(marked)) continue;
-    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
-    const file = zip.file(name);
-    if (!file) continue;
-    const xml = await file.async('string');
-    let shapeIndex = 0;
-    let patched = 0;
-    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
-      const element = shapeElements[shapeIndex++];
-      if (!element || !marked(element)) return whole;
-      const marks = element.text.map((run) => (run.options && run.options.emphasisMark) || {});
-      const updated = applyEmphasisMarksToShape(inner, marks);
-      patched += updated.patched;
-      return '<p:sp>' + updated.xml + '</p:sp>';
-    });
-    if (shapeIndex !== shapeElements.length) {
-      throw new Error('Emphasis patch alignment mismatch on slide ' + (slideIndex + 1)
-        + ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has ' + shapeIndex + ' p:sp elements');
-    }
-    if (patched) {
-      zip.file(name, next);
-      touched += patched;
-    }
-  }
-  if (touched) {
-    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
-    fs.writeFileSync(outputPath, buffer);
-  }
-  return touched > 0;
-}
-
-
 function addElement(slide, el, theme, pptx, context = {}) {
   if (el.type === 'container') {
     throw new Error('Container elements must be resolved by the layout engine before serialization');
@@ -908,7 +845,6 @@ async function generatePptx(deck, outputPath, options = {}) {
   }
   await patchTextIndents(outputPath, deck, result.laidOut);
   await patchMarkerColours(outputPath, deck, result.laidOut);
-  await patchEmphasisMarks(outputPath, deck, result.laidOut);
   await patchTextColumns(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);

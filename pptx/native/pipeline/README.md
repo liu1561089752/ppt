@@ -146,7 +146,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | shape ids | unique and sequential per slide (a table used to collide with a text box) |
 | package integrity | content types, relationship targets and r:id use checked as a gate |
 | outline alone | native - the shape line, dash included |
-| text-emphasis | native - a:emphasisMark with buChar and its fill |
+| text-emphasis | named - DrawingML has no emphasis mark (a render proved the old markup drew nothing) |
 | table-layout: fixed | native - colW plus the fixed flag |
 | vertical-align / single-side cell borders | native - valign and a four-entry border array |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |

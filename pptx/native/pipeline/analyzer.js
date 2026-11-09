@@ -656,9 +656,16 @@ function checkUnsupported(ctx, domNode, style) {
     if (property === 'counterReset' || property === 'counterIncrement') return;
     // `quotes` feeds open-quote/close-quote resolution; the pair itself never draws.
     if (property === 'quotes') return;
-    // `text-emphasis` is consumed at the run level; values without a shape keyword
-    // (colour-only or a `none`) fall through to the generic report.
-    if (property === 'textEmphasis' && /\b(dot|circle|filled|open|double-circle|triangle|sesame)\b/iu.test(String(style[property]))) return;
+    // Emphasis marks are a Word feature: DrawingML's run properties have neither the
+    // element nor the attribute, so a reader draws the words bare. Named, with the
+    // alternative the reader does support, instead of emitting markup nothing reads.
+    if (property === 'textEmphasis') {
+      // `none` asks for nothing; anything else wants dots no reader draws.
+      if (/^\s*none\s*$/iu.test(String(style[property]))) return;
+      recordUnsupported(ctx, domNode, 'textEmphasis', style[property],
+        'DrawingML has no emphasis mark: the dots above the characters are not drawn - use a bold or coloured run instead');
+      return;
+    }
     // A transition or animation names a journey. The slide draws the END state (the
     // transform and the final values are all applied), so the report says what the
     // reader actually misses: the movement between states.
@@ -997,21 +1004,10 @@ function buildRuns(domNode, baseStyle, ctx) {
     const vertical = String((style && style.verticalAlign) || '').trim().toLowerCase();
     if (tag === 'sup' || vertical === 'super') options.superscript = true;
     else if (tag === 'sub' || vertical === 'sub') options.subscript = true;
-    // `text-emphasis` is the CJK dot above each character: OOXML spells it as
-    // emphasisMark on the run, with its own fill. Shape (dot only) plus colour.
-    const emphasis = style && style.textEmphasis;
-    if (emphasis && String(emphasis).trim()) {
-      const shape = /\b(dot|circle|filled|open|double-circle|triangle|sesame)\b/iu.exec(String(emphasis));
-      if (shape) {
-        options.emphasisMark = {
-          character: shape[1].toLowerCase() === 'sesame' ? '〆' : '•',
-          colour: null
-        };
-        const hexToken = /#[0-9a-fA-F]{3,8}/u.exec(String(emphasis));
-        const emphasisColour = hexToken ? parseColor(hexToken[0]) : null;
-        if (emphasisColour && emphasisColour.hex) options.emphasisMark.colour = emphasisColour.hex;
-      }
-    }
+    // `text-emphasis` - the CJK dot above each character - has no DrawingML spelling:
+    // a:rPr carries no emphasis element and no emphasis attribute (ECMA-376 20.1.2.3.1),
+    // and a reader that met one drew the words plain, which the render confirmed. It is
+    // reported by the sweep below rather than emitted as an element no reader knows.
     return options;
   };
   const pushText = (value, style, inline) => {
