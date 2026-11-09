@@ -128,6 +128,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | transform-origin | named once by the transform parser (the sweep no longer duplicates it) |
 | background shorthand repeat | the tiling keyword is read from the shorthand too (was silently fitted once) |
 | checkbox/radio/optgroup | checkbox and radio draw their state glyphs; optgroup no longer hides the selected option |
+| links | external/mailto ride as run hyperlinks; #fragment anchors are named (no slide to resolve against) |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 

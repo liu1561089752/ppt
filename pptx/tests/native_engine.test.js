@@ -6667,6 +6667,29 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('an in-page anchor is named; external and mailto links ride', () => {
+  // A #fragment anchor jumps within the HTML page; in the deck the link draws but
+  // leads nowhere, and the design learns that instead of finding a dead link.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<p><a href="#section-2">跳到第二节</a></p>',
+    '<p><a href="https://example.com">示例站点</a></p>',
+    '</main></body></html>'
+  ].join('\n'));
+  const anchor = result.report.unsupportedDetails.find((entry) => entry.property === 'href');
+  assert.ok(anchor, 'the anchor is named');
+  assert.equal(anchor.value, '#section-2');
+  let external = null;
+  const walk = (element) => {
+    if (Array.isArray(element.text)) element.text.forEach((run) => { if (run.options && run.options.hyperlink) external = run.options.hyperlink.url; });
+    (element.children || []).forEach(walk);
+  };
+  result.deck.slides[0].elements.forEach(walk);
+  assert.equal(external, 'https://example.com', 'the external link rides natively');
+});
+
 test('checkbox and radio draw their state glyphs, optgroup keeps its options', () => {
   // A checked checkbox drew nothing at all, and a select whose selected option sat
   // inside an <optgroup> lost its words - both silent losses of visible mock parts.

@@ -1047,7 +1047,16 @@ function buildRuns(domNode, baseStyle, ctx) {
     // A background on a plain inline element is a highlighter, which PowerPoint keeps
     // as a run property (`<a:highlight>`), so the words really are marked.
     if (inline && inline.highlight) options.highlight = inline.highlight;
-    if (inline && inline.href) options.hyperlink = { url: inline.href };
+    if (inline && inline.href) {
+      options.hyperlink = { url: inline.href };
+      // A `#fragment` anchor jumps within the HTML page; the deck has no slide
+      // mapping to resolve it against, so the link draws but leads nowhere. Named,
+      // not faked as a jump.
+      if (String(inline.href).startsWith('#')) {
+        recordUnsupported(ctx, domNode, 'href', inline.href,
+          'An in-page anchor has no slide to jump to in the deck; the link draws but does not navigate');
+      }
+    }
     runs.push(Object.keys(options).length ? { text: value, options } : { text: value });
   };
 
