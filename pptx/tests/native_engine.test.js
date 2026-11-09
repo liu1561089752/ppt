@@ -1392,6 +1392,29 @@ test('html pipeline keeps the surface behind text and paints z-index in order', 
     'z-index must decide paint order, not DOM order');
 });
 
+test('the crop focus maps onto the source rectangle on both axes', () => {
+  // object-position has to move the crop window, not just the words around it: the
+  // fraction kept must stay the same wherever the focus sits, and each edge focus
+  // must keep the picture's own edge.
+  const { resolveImageGeometry } = require('../native/engine/image_fit');
+  const natural = { width: 16, height: 8 };
+  const cropFocus = (focus, box) => resolveImageGeometry({ fit: 'cover', focus, x: 0, y: 0, ...box },
+    { natural }).srcRect;
+  const tall = { w: 1, h: 3 };
+  const centre = cropFocus({ x: 0.5, y: 0.5 }, tall);
+  assert.ok(Math.abs(centre.left - centre.right) < 1e-9, 'a centred focus crops evenly');
+  assert.ok(Math.abs(centre.left - 5 / 12) < 1e-9,
+    'and by the overflow only: ' + JSON.stringify(centre));
+  assert.equal(cropFocus({ x: 0, y: 0.5 }, tall).left, 0, 'a left focus keeps the left edge');
+  assert.equal(cropFocus({ x: 1, y: 0.5 }, tall).right, 0, 'a right focus keeps the right edge');
+  const quarter = cropFocus({ x: 0.25, y: 0.5 }, tall);
+  assert.ok(Math.abs((quarter.left + quarter.right) - (centre.left + centre.right)) < 1e-9,
+    'the crop total holds wherever the focus sits: ' + JSON.stringify(quarter));
+  const bottom = cropFocus({ x: 0.5, y: 1 }, { w: 4, h: 1 });
+  assert.equal(bottom.bottom, 0, 'a bottom focus keeps the bottom edge');
+  assert.equal(cropFocus({ x: 0.5, y: 0 }, { w: 4, h: 1 }).top, 0, 'a top focus keeps the top edge');
+});
+
 test('html pipeline maps img object-position onto the native crop focus', () => {
   const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAChd0V1AAAABlBMVEX/AAAAAAAB1Vw7zQAAAAxJREFUCNdjYGBgAAAABQABh6FO1AAAAABJRU5ErkJggm==';
   const html = [

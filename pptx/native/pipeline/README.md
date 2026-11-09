@@ -136,6 +136,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | loose list nesting | a list directly inside another still renders its items (was dropped) |
 | closed details | content stays collapsed (was drawn anyway); open keeps everything |
 | overflow-wrap: normal spill | boundary - PowerPoint always breaks long words, so the word breaks here too (all words kept) |
+| object-position crop focus | native - both axes at 1% granularity, kept fraction constant |
+| object-fit: none / scale-down | named - no native "natural size and clip" switch |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
