@@ -71,6 +71,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | clip-path rounds | `circle(50%)` on a square and `ellipse(50% 50%)` anywhere are the inscribed shape and become the native ellipse preset; non-inscribed radii, `at` centres and `inset()`/`path()` stay reported |
 | radial/conic/repeating | Refused per family with its own truth: no radial mode, no angular mode, one ramp instead of a repeating pattern; the box stays unpainted either way |
 | font shorthand | Expands to the longhands (style/variant/weight, size, line-height, family - the family kept verbatim incl. comma stacks); unparsable forms stay whole and are named |
+| ::marker colour | Read per `li`; one agreed colour becomes `a:buClr` in the patched `a:pPr`; items that disagree are named instead of silently picking one |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
 

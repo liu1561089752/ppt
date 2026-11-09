@@ -1731,6 +1731,22 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       // a custom-drawn marker - and the native bullet has an `off` switch.
       const listStyle = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();
       node.bullet = listStyle !== 'none';
+      // `::marker { color: ... }` styles the bullet itself, which DrawingML spells as
+      // `a:buClr` inside the paragraph properties. The rule targets the `li`, so every
+      // item is asked; one colour across them rides on the element, a disagreement is
+      // named because the element carries one bullet colour.
+      const markerColors = new Set();
+      (domNode.children || []).filter((child) => child.type === 'element').forEach((item) => {
+        const markerStyle = ctx.styles.decoration(item, 'marker');
+        if (!markerStyle) return;
+        const markerColor = parseColor(markerStyle.color);
+        if (markerColor && markerColor.hex) markerColors.add(markerColor.hex);
+      });
+      if (markerColors.size === 1) node.markerColor = markerColors.values().next().value;
+      else if (markerColors.size > 1) {
+        recordUnsupported(ctx, domNode, '::marker', [...markerColors].join(', '),
+          'The items want different marker colours; a text box carries one bullet colour, so none was applied');
+      }
       node.runs = null;
       // An item's own inline content keeps its styling (a `<strong>` in a bullet, a link
       // inside a bullet), so each item is built as runs rather than one flat string.

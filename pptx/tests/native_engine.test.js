@@ -5556,3 +5556,41 @@ test('the font shorthand expands into the longhands it sets', () => {
   assert.deepEqual(system.report.unsupportedDetails.map((entry) => entry.property), ['font']);
 });
 
+
+test('::marker colours the bullet, not the text', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide">',
+    '<ul><li class="cool plain">one</li><li class="cool plain">two</li></ul>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  // A uniform marker colour rides on the element and lands as a:buClr before buChar.
+  const red = build('li.cool::marker { color: #C05B3E; } .plain { font-size: 20px; }');
+  assert.equal(red.deck.slides[0].elements[0].markerColor, 'C05B3E');
+  assert.deepEqual(red.report.unsupportedDetails.map((entry) => entry.property), []);
+  const { applyMarkerColour } = require('../native/engine/native_pptx');
+  const paragraph = '<a:pPr marL="342900" indent="-342900"><a:buSzPct val="100000"/><a:buChar char="•"/></a:pPr>';
+  const coloured = applyMarkerColour(paragraph, 'C05B3E');
+  assert.ok(coloured.indexOf('<a:buClr><a:srgbClr val="C05B3E"/></a:buClr><a:buChar') > 0, 'buClr precedes buChar');
+
+  // The rule targets the li, so the element-level list never sees it on its own.
+  const plain = build('.plain { font-size: 20px; }');
+  assert.equal(plain.deck.slides[0].elements[0].markerColor, undefined);
+
+  // A disagreement across items is named: one text box carries one bullet colour.
+  const mixed = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  li.a::marker { color: #C05B3E; } li.b::marker { color: #17332F; }',
+    '  .plain { font-size: 20px; }',
+    '</style></head><body><main class="slide">',
+    '<ul><li class="a plain">one</li><li class="b plain">two</li></ul>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.equal(mixed.deck.slides[0].elements[0].markerColor, undefined);
+  assert.deepEqual(mixed.report.unsupportedDetails.map((entry) => entry.property), ['::marker']);
+});
+

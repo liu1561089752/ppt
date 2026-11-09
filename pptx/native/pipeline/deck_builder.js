@@ -222,6 +222,9 @@ function textElementFromNode(node, theme, resolvedTheme) {
     }
   }
   if (node.bullet) element.bullet = true;
+  // `::marker` styles the bullet, not the text: the colour rides to the writer as its
+  // own field so a red dot stays a red dot.
+  if (node.markerColor) element.markerColor = node.markerColor;
   // First-line indent travels as a paragraph property; the writer patches
   // `<a:pPr indent="…">` because PptxGenJS has no option for it.
   if (Number.isFinite(node.textIndent) && node.textIndent > 0) {

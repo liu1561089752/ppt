@@ -701,6 +701,64 @@ async function patchTextColumns(outputPath, deck, laidOut) {
   return true;
 }
 
+/**
+ * `::marker { color: ... }` becomes `a:buClr` inside the bulleted paragraph's
+ * `a:pPr`, before the `buChar` it colours. PptxGenJS has no bullet-colour option,
+ * so the marker colour rides the same post-serialization patch as the indents.
+ */
+function applyMarkerColour(xml, colour) {
+  const fill = '<a:buClr><a:srgbClr val="' + colour + '"/></a:buClr>';
+  const paragraph = /<a:pPr[\s\S]*?<\/a:pPr>|<a:pPr[^>]*\/>/gu;
+  if (!paragraph.test(xml)) return xml;
+  return xml.replace(paragraph, (whole) => {
+    if (/a:buClr/u.test(whole)) return whole;
+    if (/<a:buChar|<a:buAutoNum/u.test(whole)) {
+      return whole.replace(/(<a:bu(?:Char|AutoNum)[^>]*\/>)/u, fill + '$1');
+    }
+    // No bullet property yet: the fill goes in ahead of the closing tag.
+    if (whole.endsWith('/>')) return whole;
+    return whole.replace(/<\/a:pPr>$/u, fill + '</a:pPr>');
+  });
+}
+
+async function patchMarkerColours(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const coloured = (element) => element.type === 'text' && element.markerColor;
+  if (!supplied(laidOut, slides).some((elements) => elements.some(coloured))) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
+    if (!shapeElements.some(coloured)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    let shapeIndex = 0;
+    let patched = 0;
+    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapeElements[shapeIndex++];
+      if (!element || !coloured(element)) return whole;
+      const updated = applyMarkerColour(inner, element.markerColor);
+      if (updated !== inner) patched += 1;
+      return '<p:sp>' + updated + '</p:sp>';
+    });
+    if (shapeIndex !== shapeElements.length) {
+      throw new Error('Marker colour patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has ' + shapeIndex + ' p:sp elements');
+    }
+    if (patched) {
+      zip.file(name, next);
+      touched += patched;
+    }
+  }
+  if (touched) {
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    fs.writeFileSync(outputPath, buffer);
+  }
+  return touched > 0;
+}
+
 async function patchTextIndents(outputPath, deck, laidOut) {
   const slides = (deck && deck.slides) || [];
   const needed = supplied(laidOut, slides).some((elements) => elements
@@ -749,6 +807,7 @@ async function generatePptx(deck, outputPath, options = {}) {
     await patchGradientFills(outputPath, deck, result.laidOut);
   }
   await patchTextIndents(outputPath, deck, result.laidOut);
+  await patchMarkerColours(outputPath, deck, result.laidOut);
   await patchTextColumns(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);
@@ -770,5 +829,5 @@ module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
   applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
-  applyTextIndent, patchTextIndents
+  applyTextIndent, patchTextIndents, applyMarkerColour
 };

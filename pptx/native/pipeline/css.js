@@ -206,6 +206,20 @@ function collectRules(css, viewport, state) {
         // ::after keep their declarations so the decoration can be rebuilt as a
         // native shape; every other pseudo is only listed.
         pseudoSelectors.push(rawSelector.trim());
+        if (parsed.pseudoName === 'marker') {
+          // `::marker` styles the bullet itself - its colour and size are native
+          // `a:buClr`/`buSzPct` properties, so the rule is kept for the list node
+          // to read instead of being reported as a box that does not exist.
+          state.decorationRules.push({
+            selectorText: rawSelector.trim(),
+            parts: parsed.parts,
+            links: parsed.links,
+            pseudo: 'marker',
+            declarations,
+            order: state.order++,
+            specificity: parsed.specificity
+          });
+        }
         if (parsed.pseudoName === 'before' || parsed.pseudoName === 'after') {
           state.decorationRules.push({
             selectorText: rawSelector.trim(),
