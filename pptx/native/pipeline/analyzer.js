@@ -583,6 +583,14 @@ function checkUnsupported(ctx, domNode, style) {
     // `table-layout: fixed` is the model this solver implements (declared or equal
     // columns, content wraps rather than stretches), so it says nothing.
     if (property === 'tableLayout') return;
+    // `overflow-wrap: break-word`/`anywhere` ask for the grapheme-level break the
+    // wrap already makes; the values are translated by construction and the generic
+    // report would name a gap that does not exist.
+    // `normal` is the initial value; the declared spelling changes nothing.
+    if (property === 'overflowWrap') return;
+    // `text-emphasis` is consumed at the run level; values without a shape keyword
+    // (colour-only or a `none`) fall through to the generic report.
+    if (property === 'textEmphasis' && /\b(dot|circle|filled|open|double-circle|triangle|sesame)\b/iu.test(String(style[property]))) return;
     // A transition or animation names a journey. The slide draws the END state (the
     // transform and the final values are all applied), so the report says what the
     // reader actually misses: the movement between states.
@@ -851,6 +859,21 @@ function buildRuns(domNode, baseStyle, ctx) {
     const vertical = String((style && style.verticalAlign) || '').trim().toLowerCase();
     if (tag === 'sup' || vertical === 'super') options.superscript = true;
     else if (tag === 'sub' || vertical === 'sub') options.subscript = true;
+    // `text-emphasis` is the CJK dot above each character: OOXML spells it as
+    // emphasisMark on the run, with its own fill. Shape (dot only) plus colour.
+    const emphasis = style && style.textEmphasis;
+    if (emphasis && String(emphasis).trim()) {
+      const shape = /\b(dot|circle|filled|open|double-circle|triangle|sesame)\b/iu.exec(String(emphasis));
+      if (shape) {
+        options.emphasisMark = {
+          character: shape[1].toLowerCase() === 'sesame' ? '〆' : '•',
+          colour: null
+        };
+        const hexToken = /#[0-9a-fA-F]{3,8}/u.exec(String(emphasis));
+        const emphasisColour = hexToken ? parseColor(hexToken[0]) : null;
+        if (emphasisColour && emphasisColour.hex) options.emphasisMark.colour = emphasisColour.hex;
+      }
+    }
     return options;
   };
   const pushText = (value, style, inline) => {

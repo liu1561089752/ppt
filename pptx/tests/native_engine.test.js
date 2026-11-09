@@ -5898,3 +5898,47 @@ test('chart styling reaches the chart part', async () => {
   }
 });
 
+
+test('text-emphasis draws the dot above each character', async () => {
+  // The CJK accent becomes <a:emphasisMark> on the run, valid OOXML that PowerPoint
+  // honours (LibreOffice ignores it, which is why the check is at the file level).
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { text-emphasis: dot #C05B3E; font-size: 22px; }',
+    '  .plain { font-size: 16px; }',
+    '</style></head><body><main class="slide">',
+    '<p class="b">着重号</p>',
+    '</main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), []);
+  const output = path.join(os.tmpdir(), 'native-emphasis-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const marks = (xml.match(/<a:emphasisMark><a:buChar char="•"\/><\/a:emphasisMark>/gu) || []).length;
+    assert.ok(marks >= 1, 'the emphasis mark is on the run');
+    // It sits inside rPr, before the fill it decorates.
+    const position = xml.indexOf('<a:emphasisMark>');
+    const fill = xml.indexOf('<a:solidFill>', position);
+    assert.ok(fill > position && fill < position + 120, 'the mark precedes the run fill');
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+
+  // A value with no shape keyword stays reported.
+  const colourOnly = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { text-emphasis: #C05B3E; font-size: 22px; }',
+    '</style></head><body><main class="slide"><p class="b">着重号</p></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(colourOnly.report.unsupportedDetails.map((entry) => entry.property), ['textEmphasis']);
+});
+
