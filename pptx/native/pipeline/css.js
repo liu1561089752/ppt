@@ -1203,8 +1203,15 @@ function boxShadowNote(value) {
 function parseBoxShadow(value) {
   const text = String(value || '').trim();
   if (!text || text === 'none') return null;
-  if (text.includes('inset') || text.split(/,(?![^(]*\))/u).length > 1) return null;
-  const tokens = text.match(/(rgba?\([^)]*\)|#[0-9a-f]{3,8}|[a-z]+|-?[\d.]+(?:px|em|rem|pt)?)/gu);
+  // A layered declaration translates its first layer - the one that carries most of the
+  // look - and boxShadowNote names the rest. An inset layer is refused whole: an inner
+  // shadow is not what a native outer shadow paints, and halving it would be a wrong one.
+  const body = text.includes('inset') ? null
+    : splitTopLevel(text, ',').filter((layer) => !/\binset\b/iu.test(layer))[0] || null;
+  if (!body) return null;
+  // Hex letters are case-insensitive in CSS: without A-F, `#C05B3E` fragmented into
+  // stray lengths (05, 3), which poisoned the spread and reported a working shadow.
+  const tokens = body.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}|[a-z]+|-?[\d.]+(?:px|em|rem|pt)?)/gu);
   if (!tokens) return null;
   let color = null;
   const lengths = [];

@@ -5416,3 +5416,35 @@ test('text-decoration is a run property, and the values without one are named', 
   assert.deepEqual(tinted.report.unsupportedDetails.map((entry) => entry.property), ['textDecorationColor']);
 });
 
+
+test('a box-shadow parses its hex colour and its first layer', () => {
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+  ].join('\n'));
+
+  // A solid offset shadow in a named hex: the colour used to fragment into stray
+  // lengths, which blackened the shadow and reported a working declaration.
+  const hard = build('.b { width: 200px; height: 80px; background: #fff; box-shadow: 6px 8px 0 #C05B3E; }');
+  const hardShadow = hard.deck.slides[0].elements[0].shadow;
+  assert.equal(hardShadow.color, 'C05B3E', 'the declared colour reaches the shadow');
+  assert.equal(hardShadow.opacity, 1);
+  assert.deepEqual(hard.report.unsupportedDetails.map((entry) => entry.property), [],
+    'a parsed shadow is not reported');
+
+  // A layered declaration keeps its first layer and names the rest.
+  const layered = build('.b { width: 200px; height: 80px; background: #fff;'
+    + ' box-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 8px 20px rgba(0,0,0,0.3); }');
+  assert.ok(layered.deck.slides[0].elements[0].shadow, 'the first layer lands');
+  assert.deepEqual(layered.report.unsupportedDetails.map((entry) => entry.property), ['boxShadow'],
+    'the second layer is named, not dropped in silence');
+
+  // An inset declaration is refused whole: an outer shadow would be the wrong look.
+  const inset = build('.b { width: 200px; height: 80px; background: #fff;'
+    + ' box-shadow: inset 0 2px 6px rgba(0,0,0,0.3); }');
+  assert.equal(inset.deck.slides[0].elements[0].shadow, undefined);
+  assert.deepEqual(inset.report.unsupportedDetails.map((entry) => entry.property), ['boxShadow']);
+});
+
