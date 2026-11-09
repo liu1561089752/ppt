@@ -2433,16 +2433,25 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
         'The deck always draws the src image; the variants srcset offers are not consulted');
     }
     node.objectFit = (style.objectFit || 'cover').toLowerCase();
+    // CSS stretches an undeclared object-fit (`fill`); this deck crops to cover so a
+    // photo is never distorted. That is a different picture, so it is named - but only
+    // where a fixed box makes the crop possible, since an auto-sized box already takes
+    // the picture's own proportions and loses nothing.
+    if (!String(style.objectFit || '').trim()) {
+      const boxWidth = parseLength(style.width);
+      const boxHeight = parseLength(style.height);
+      const fixed = boxWidth && boxHeight && /^(px|)$/u.test(boxWidth.unit || '') && /^(px|)$/u.test(boxHeight.unit || '');
+      if (fixed) {
+        recordUnsupported(ctx, domNode, 'objectFit', '(not declared)',
+          'Without object-fit a picture is cover-cropped here, where CSS would stretch it to the box: write object-fit: fill to stretch, or cover to say the crop is intended');
+      }
+    }
     // CSS opacity on a picture is the native alphaModFix: 40% opacity = 60% transparency.
     const imgOpacity = Number(style.opacity);
     if (Number.isFinite(imgOpacity) && imgOpacity >= 0 && imgOpacity < 1) node.transparency = Number(((1 - imgOpacity) * 100).toFixed(1));
-  // `none` shows the picture at its own size and `scale-down` at the smaller of that and the
-  // box; both are approximated as `contain`, which scales. Naming it beats scaling quietly.
-  if (node.objectFit === 'none' || node.objectFit === 'scale-down') {
-    recordUnsupported(ctx, domNode, 'objectFit', style.objectFit,
-      'This value is approximated as contain: the picture is scaled to the box instead of'
-        + ' keeping its own size');
-  } else if (!['cover', 'contain', 'fill'].includes(node.objectFit)) {
+  // `none` draws the source at its own pixel size and `scale-down` is contain that refuses
+  // to enlarge; both are spelled by the fit geometry, so neither is approximated any more.
+  if (!['cover', 'contain', 'fill', 'none', 'scale-down'].includes(node.objectFit)) {
     recordUnsupported(ctx, domNode, 'objectFit', style.objectFit,
       'Unknown object-fit value: the picture is cropped to cover the box instead');
   }

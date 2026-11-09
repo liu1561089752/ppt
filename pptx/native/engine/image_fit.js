@@ -17,8 +17,9 @@ const fs = require('node:fs');
 
 const EMU_PER_INCH = 914400;
 const EMU_PER_POINT = 12700;
+const PX_PER_INCH = 96;
 
-const FIT_MODES = new Set(['stretch', 'cover', 'contain', 'crop']);
+const FIT_MODES = new Set(['stretch', 'cover', 'contain', 'crop', 'none', 'scale-down']);
 
 const FOCUS_PRESETS = new Map([
   ['center', { x: 0.5, y: 0.5 }],
@@ -45,7 +46,9 @@ function clamp(value, min, max) {
 function normalizeFit(fit) {
   if (fit === undefined || fit === null || fit === '') return 'stretch';
   const value = String(fit).trim().toLowerCase();
-  if (value === 'fill' || value === 'stretch' || value === 'none') return 'stretch';
+  if (value === 'fill' || value === 'stretch') return 'stretch';
+  if (value === 'none') return 'none';
+  if (value === 'scale-down' || value === 'scaledown') return 'scale-down';
   if (!FIT_MODES.has(value)) {
     throw new Error('Unsupported image fit "' + fit + '"; expected cover, contain, crop, or stretch');
   }
@@ -198,6 +201,39 @@ function computeContainBox(natural, box, focus = { x: 0.5, y: 0.5 }) {
 }
 
 /** Rounded-rectangle adjustment value, where 50000 is a full pill on the short side. */
+/**
+ * `object-fit: none` draws the source at its own pixel size and lets the box clip it, and
+ * `scale-down` is contain that refuses to enlarge. Both are expressed with the same two
+ * pieces every other mode uses: a drawn box and a source rectangle.
+ */
+function computeIntrinsicGeometry(natural, box, focus, mayGrow) {
+  const naturalW = natural.width / PX_PER_INCH;
+  const naturalH = natural.height / PX_PER_INCH;
+  let w = naturalW;
+  let h = naturalH;
+  if (mayGrow) {
+    const scale = Math.min(box.w / naturalW, box.h / naturalH, 1);
+    w = naturalW * scale;
+    h = naturalH * scale;
+  }
+  const visibleW = clamp(box.w / w, 1e-6, 1);
+  const visibleH = clamp(box.h / h, 1e-6, 1);
+  if (visibleW >= 1 && visibleH >= 1) {
+    // Smaller than its slot: it keeps its size and sits where the focus says.
+    return {
+      box: { x: box.x + (box.w - w) * focus.x, y: box.y + (box.h - h) * focus.y, w, h },
+      srcRect: null
+    };
+  }
+  // Bigger than its slot: the box clips it, so the overflow becomes a source rectangle.
+  const left = (1 - visibleW) * focus.x;
+  const top = (1 - visibleH) * focus.y;
+  return {
+    box,
+    srcRect: { left, top, right: 1 - visibleW - left, bottom: 1 - visibleH - top }
+  };
+}
+
 function roundRectAdjustment(radiusIn, box) {
   const radius = Number(radiusIn);
   if (!Number.isFinite(radius) || radius <= 0) return null;
@@ -237,6 +273,10 @@ function resolveImageGeometry(element, options = {}) {
   if (fit === 'contain') {
     return { fit, box: computeContainBox(natural, box, focus), srcRect: null, natural };
   }
+  if (fit === 'none' || fit === 'scale-down') {
+    const intrinsic = computeIntrinsicGeometry(natural, box, focus, fit === 'scale-down');
+    return { fit, box: intrinsic.box, srcRect: intrinsic.srcRect, natural };
+  }
   const zoom = normalizeZoom(element.zoom);
   return { fit, box, srcRect: computeCoverCrop(natural, box, focus, zoom), natural };
 }
@@ -251,6 +291,7 @@ function srcRectAttributes(srcRect) {
 module.exports = {
   EMU_PER_INCH,
   EMU_PER_POINT,
+  PX_PER_INCH,
   FIT_MODES,
   FOCUS_PRESETS,
   normalizeFit,
@@ -260,6 +301,7 @@ module.exports = {
   readImageSize,
   computeCoverCrop,
   computeContainBox,
+  computeIntrinsicGeometry,
   roundRectAdjustment,
   resolveImageGeometry,
   srcRectAttributes

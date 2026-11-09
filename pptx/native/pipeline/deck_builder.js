@@ -49,8 +49,8 @@ const FIT_BY_OBJECT_FIT = {
   cover: 'cover',
   contain: 'contain',
   fill: 'stretch',
-  none: 'contain',
-  'scale-down': 'contain',
+  none: 'none',
+  'scale-down': 'scale-down',
   crop: 'crop'
 };
 

@@ -2,7 +2,7 @@
 
 const ELEMENT_TYPES = new Set(['text', 'shape', 'line', 'image', 'table', 'chart', 'container']);
 
-const IMAGE_FITS = new Set(['stretch', 'fill', 'none', 'cover', 'contain', 'crop']);
+const IMAGE_FITS = new Set(['stretch', 'fill', 'none', 'cover', 'contain', 'crop', 'scale-down']);
 const IMAGE_FOCUS_PRESETS = new Set([
   'center', 'centre', 'middle', 'top', 'bottom', 'left', 'right',
   'top left', 'top right', 'bottom left', 'bottom right',

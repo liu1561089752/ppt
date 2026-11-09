@@ -153,6 +153,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | chart types | bar/column, hbar, line, area, pie, doughnut/donut, radar/spider - aliases resolve to the same native chart |
 | scatter | native - first numeric column is x, the rest are y series; scatterStyle corrected to marker |
 | data-chart-secondary-axis | named - the writer emits one value axis only |
+| object-fit: none | native - source pixel size (96 px/in), slot clips the overflow as a source rectangle |
+| object-fit: scale-down | native - contain that never enlarges |
+| object-fit (undeclared) | drawn cover-cropped and named where a fixed box makes the crop possible |
 | data-chart-smooth | named on chart shapes without a line |
 | data-chart-label-position | friendly spellings (outside-end/center/best-fit) + per-shape limits mirrored and named |
 | `line-height: normal` | per-face metrics via fontkit; generic fallback keeps 1.25 where Chrome measures 1.45 - documented boundary |

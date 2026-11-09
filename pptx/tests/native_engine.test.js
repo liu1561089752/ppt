@@ -5148,6 +5148,35 @@ test('justify-content: space-evenly gives every gap the same width', () => {
   assert.ok(evenly[0] > evened[0], 'space-evenly is not space-around in disguise');
 });
 
+test('object-fit none keeps the source size and scale-down refuses to grow', () => {
+  // CSS: `none` draws the source at its own pixel size and lets the slot clip it;
+  // `scale-down` is contain that never enlarges. Both used to be drawn as contain,
+  // which grows an icon to fill the slot it was given.
+  const { resolveImageGeometry, PX_PER_INCH } = require('../native/engine/image_fit');
+  const natural = { width: 8, height: 32 };
+  const box = { x: 0, y: 0, w: 300 / PX_PER_INCH, h: 120 / PX_PER_INCH };
+  const resolve = (fit) => resolveImageGeometry({ type: 'image', fit, x: box.x, y: box.y, w: box.w, h: box.h, naturalSize: natural });
+
+  const none = resolve('none');
+  assert.equal(Math.round(none.box.w * PX_PER_INCH), 8, 'none keeps the source width');
+  assert.equal(Math.round(none.box.h * PX_PER_INCH), 32, 'and its height');
+  assert.equal(none.srcRect, null, 'nothing is cropped: the slot is bigger');
+
+  const scaled = resolve('scale-down');
+  assert.equal(Math.round(scaled.box.w * PX_PER_INCH), 8, 'scale-down stops at the source size');
+
+  const contain = resolve('contain');
+  assert.equal(Math.round(contain.box.w * PX_PER_INCH), 30, 'while contain fills the slot');
+  assert.equal(Math.round(contain.box.h * PX_PER_INCH), 120);
+
+  // A slot smaller than the source: the box clips it, which is a source rectangle.
+  const clipped = resolveImageGeometry({ type: 'image', fit: 'none', x: 0, y: 0,
+    w: 4 / PX_PER_INCH, h: 10 / PX_PER_INCH, naturalSize: natural });
+  assert.ok(clipped.srcRect, 'the overflow becomes a crop');
+  assert.equal(Math.round(clipped.srcRect.left * 100), 25, 'half the width is lost, a quarter each side');
+  assert.equal(Math.round(clipped.srcRect.bottom * 100), 34, 'and the height keeps a third');
+});
+
 test('alignment and fit values that would move a pixel are named', () => {
   const build = (css) => pipeline.convertHtml([
     '<html><head><style>',
@@ -5172,8 +5201,10 @@ test('alignment and fit values that would move a pixel are named', () => {
     '</main></body></html>'
   ].join('\n')).report.unsupportedDetails.map((item) => item.property);
   assert.deepEqual(fit('cover'), [], 'cover is translated exactly');
-  assert.ok(fit('none').includes('objectFit'), 'none is approximated, so it is named');
-  assert.ok(fit('scale-down').includes('objectFit'), 'scale-down is approximated too');
+  // These two used to be approximated as contain and named; the fit geometry now spells
+  // them, so the report goes quiet - the geometry test below pins what they draw.
+  assert.deepEqual(fit('none'), [], 'none is drawn at the source size now');
+  assert.deepEqual(fit('scale-down'), [], 'and so is scale-down');
 });
 
 
@@ -6302,7 +6333,7 @@ test('picture opacity lands as alphaModFix', async () => {
   const result = pipeline.convertHtml([
     '<html><head><style>',
     '  .slide { width: 1280px; height: 720px; padding: 40px; }',
-    '  .b { width: 100px; height: 80px; opacity: 0.5; }',
+    '  .b { width: 100px; height: 80px; opacity: 0.5; object-fit: cover; }',
     '</style></head><body><main class="slide">',
     '<img class="b" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==">',
     '</main></body></html>'
@@ -6751,6 +6782,35 @@ test('a nested list keeps its own marker language', () => {
   assert.ok(nested, 'the nested item is its own paragraph');
   assert.equal(nested.options.indentLevel, 1, 'one level in');
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
+});
+
+test('a picture with no object-fit is named where that box crops it', () => {
+  // CSS stretches an undeclared object-fit; this deck crops to cover so a photo is never
+  // distorted. That is a different picture, so it is named - but only where a fixed box
+  // makes the crop possible, because an auto-sized box already takes the picture's own
+  // proportions and loses nothing.
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAgCAYAAAA1xQ0wAAAAIklEQVR42mNkYPjPQARgZCAGjCocVTiqcFThqMJRhcNKIQBcFwIB/8K7zQAAAABJRU5ErkJggg==';
+  const build = (rule) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  ' + rule,
+    '</style></head><body><main class="slide">',
+    '<img src="' + PNG + '">',
+    '</main></body></html>'
+  ].join('\n'));
+  const fitReports = (rule) => build(rule).report.unsupportedDetails
+    .filter((entry) => entry.property === 'objectFit');
+
+  const cropped = fitReports('img { width: 300px; height: 120px; }');
+  assert.equal(cropped.length, 1, 'an undeclared fit in a fixed box is named');
+  assert.match(cropped[0].reason, /object-fit: fill/u, 'with the way out: ' + cropped[0].reason);
+
+  assert.deepEqual(fitReports('img { width: 300px; height: 120px; object-fit: fill; }'), [],
+    'a declared stretch is what CSS does, so nothing to say');
+  assert.deepEqual(fitReports('img { width: 300px; height: 120px; object-fit: cover; }'), [],
+    'and a declared crop is the design being explicit');
+  assert.deepEqual(fitReports('img { width: 300px; }'), [],
+    'an auto height takes the picture proportions: no crop, no noise');
 });
 
 test('a data label position the writer cannot spell is named', () => {
