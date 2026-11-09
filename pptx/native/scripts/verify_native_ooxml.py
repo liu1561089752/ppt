@@ -27,6 +27,7 @@ ENUM_VALUES = {
     ("barDir", "val"): {"bar", "col"},
     ("grouping", "val"): {"standard", "stacked", "percentStacked", "clustered"},
     ("dLblPos", "val"): {"bestFit", "b", "ctr", "inBase", "inEnd", "l", "outEnd", "r", "t"},
+    ("scatterStyle", "val"): {"lineMarker", "line", "marker", "smooth", "smoothMarker"},
 }
 
 

@@ -3836,7 +3836,7 @@ function resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, fontSize
   return widths.map((width) => (width === null ? remainder : width));
 }
 
-const CHART_TYPES = new Set(['bar', 'line', 'pie', 'doughnut', 'area', 'radar']);
+const CHART_TYPES = new Set(['bar', 'line', 'pie', 'doughnut', 'area', 'radar', 'scatter']);
 
 // The names a designer reaches for. `column` is the same drawing as `bar` with the
 // bars standing up, `hbar` the same one lying down, `donut` the doughnut - spelling
@@ -3850,7 +3850,9 @@ const CHART_ALIASES = {
   horizontalbar: { type: 'bar', barDir: 'bar' },
   donut: { type: 'doughnut' },
   ring: { type: 'doughnut' },
-  spider: { type: 'radar' }
+  spider: { type: 'radar' },
+  xy: { type: 'scatter' },
+  dot: { type: 'scatter' }
 };
 
 /** The first table inside a node, so data-chart works on a wrapper too. */
@@ -3984,6 +3986,27 @@ function readChart(domNode, ctx) {
           labels: body.map((row) => row[0] || ''),
           values: body.map((row) => numericOrZero(row[series + 1]))
         });
+      }
+      if (resolved === 'scatter') {
+        // A scatter plots pairs, so the first column is the x axis and the numbers after
+        // it are the y series - which is also how the writer reads the data. A category
+        // column cannot be an axis of numbers.
+        const xs = body.map((row) => String(row[0] === undefined ? '' : row[0]).trim());
+        const notNumbers = xs.filter((value) => !/^[-+]?\d*\.?\d+$/u.test(value));
+        if (seriesCount < 2) {
+          recordUnsupported(ctx, domNode, 'data-chart', requested,
+            'A scatter needs an x column and at least one y series: two numeric columns');
+          data = null;
+        } else if (notNumbers.length) {
+          recordUnsupported(ctx, domNode, 'data-chart', requested,
+            'The first column of a scatter is the x axis, so it has to hold numbers (' + notNumbers[0] + ' is not one)');
+          data = null;
+        } else {
+          // The labels mirror the values: the spec wants one label per point, and the
+
+          // writer reads the numbers as the x axis either way.
+          data = [{ name: (header[1] || 'x').trim(), labels: xs.slice(), values: xs.map(Number) }].concat(data);
+        }
       }
     }
   }

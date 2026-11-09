@@ -426,7 +426,7 @@ function validateElement(p, element, errors) {
         if (element.gradient && element.gradient.angle !== undefined && !Number.isFinite(element.gradient.angle)) errors.push(p + '.gradient.angle must be finite');
       }
       if (element.type === 'chart') {
-        const chartTypes = new Set(['bar', 'line', 'pie', 'doughnut', 'area', 'radar']);
+        const chartTypes = new Set(['bar', 'line', 'pie', 'doughnut', 'area', 'radar', 'scatter']);
         if (element.chartType !== undefined && !chartTypes.has(element.chartType)) errors.push(p + '.chartType is not supported');
         if (!Array.isArray(element.data) || element.data.length === 0) {
           errors.push(p + '.data must be a non-empty chart series array');

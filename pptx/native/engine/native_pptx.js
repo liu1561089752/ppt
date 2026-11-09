@@ -186,7 +186,8 @@ function addElement(slide, el, theme, pptx, context = {}) {
       pie: pptx.ChartType.pie,
       doughnut: pptx.ChartType.doughnut,
       area: pptx.ChartType.area,
-      radar: pptx.ChartType.radar
+      radar: pptx.ChartType.radar,
+      scatter: pptx.ChartType.scatter
     };
     const chartType = chartTypes[el.chartType || 'bar'];
     if (!chartType) throw new Error('Unsupported chart type: ' + el.chartType);
@@ -836,6 +837,30 @@ async function patchShapeIds(outputPath) {
   return touched > 0;
 }
 
+/**
+ * The writer spells one scatter style: `lineMarker`, which draws a line between points
+ * that a scatter never claimed to connect. `marker` is what the word scatter means -
+ * points on two numeric axes - so the file is corrected after it is written.
+ */
+async function patchScatterStyle(outputPath) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  const names = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/u.test(name));
+  let touched = 0;
+  for (const name of names) {
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    if (!xml.includes('scatterStyle val="lineMarker"')) continue;
+    zip.file(name, xml.replace(/<c:scatterStyle val="lineMarker"\/>/gu, '<c:scatterStyle val="marker"/>'));
+    touched += 1;
+  }
+  if (touched) {
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    fs.writeFileSync(outputPath, buffer);
+  }
+  return touched > 0;
+}
+
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
@@ -850,6 +875,10 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);
   await patchImageEffects(outputPath, result.imagePlans);
+  if (laidOutShapes.some((elements) => elements.some((element) => element.type === 'chart'
+    && element.chartType === 'scatter'))) {
+    await patchScatterStyle(outputPath);
+  }
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
   // Last, after every patch that writes shapes: ids stay unique whatever the writer did.

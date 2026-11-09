@@ -6753,6 +6753,55 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('a scatter reads its first column as the x axis and draws markers', async () => {
+  // A scatter plots pairs. The table's first column is therefore the x axis, the numbers
+  // after it are y series, and a category in that column is a report rather than a
+  // silently mis-plotted chart. The writer spells one style - lineMarker - so the file
+  // is corrected to marker, which is what the word means; PowerPoint honours it.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const build = (rows) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 900px; }',
+    '</style></head><body><main class="slide">',
+    '<table data-chart="scatter">' + rows + '</table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const xmlOf = async (result) => {
+    const output = path.join(os.tmpdir(), 'native-scatter-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const name = Object.keys(zip.files).find((entry) => /^ppt\/charts\/chart\d+\.xml$/u.test(entry));
+    const xml = name ? await zip.file(name).async('string') : '';
+    fs.rmSync(output, { force: true });
+    return xml;
+  };
+
+  const paired = build('<tr><th>楼层</th><th>售价</th><th>租金</th></tr>'
+    + '<tr><td>3</td><td>120</td><td>8</td></tr>'
+    + '<tr><td>6</td><td>210</td><td>13</td></tr>'
+    + '<tr><td>9</td><td>330</td><td>19</td></tr>');
+  assert.deepEqual(paired.report.unsupportedDetails.map((entry) => entry.property), [],
+    'a numeric pair needs no report');
+  const xml = await xmlOf(paired);
+  assert.match(xml, /<c:scatterChart>/u, 'it is a native scatter chart');
+  const xValues = [...(/<c:xVal>[\s\S]*?<\/c:xVal>/u.exec(xml) || [''])[0]
+    .matchAll(/<c:v>([-\d.]+)<\/c:v>/gu)].map((match) => match[1]);
+  assert.deepEqual(xValues, ['3', '6', '9'], 'the first column is the x axis: ' + xValues.join(','));
+  assert.equal((xml.match(/<c:ser>/gu) || []).length, 2, 'both y columns are plotted');
+  assert.match(xml, /<c:scatterStyle val="marker"\/>/u, 'markers, not invented connecting lines');
+  assert.ok(!xml.includes('lineMarker'), 'and not the writer default');
+
+  const categorical = build('<tr><th>月份</th><th>售价</th><th>租金</th></tr>'
+    + '<tr><td>一月</td><td>120</td><td>8</td></tr><tr><td>二月</td><td>210</td><td>13</td></tr>');
+  assert.ok(categorical.report.unsupportedDetails.some((entry) => entry.property === 'data-chart'
+    && /x axis/u.test(entry.reason)), 'a category in the x column is named, not plotted as zero');
+});
+
 test('column, hbar, donut and radar are names for real charts', async () => {
   // A designer writes `column`, `hbar`, `donut` or `radar`; each one is the same
   // DrawingML chart under a different name, and reporting them as unknown types turned
