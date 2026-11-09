@@ -1752,6 +1752,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
 
   const padding = boxShorthand(style, 'padding');
   const border = parseBorder(style);
+  // `double` needs a compound line (cmpd="dbl"); pptxgenjs spells no compound
+  // option, so the border would draw as one solid line. Name it.
+  if (border && /\bdouble\b/iu.test(String(style.border || style.borderStyle || ''))) {
+    recordUnsupported(ctx, domNode, 'borderStyle', style.border || style.borderStyle,
+      'A double border needs a compound line, which the writer cannot spell: it draws as one solid line');
+  }
   // `outline` paints a uniform ring without taking layout space. The native line is
   // centred on the shape edge where CSS hugs the outside, so the ring shifts in by
   // half a line width - at decoration sizes that is the ring slightly overlapping the

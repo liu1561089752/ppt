@@ -6667,6 +6667,20 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('a double border is named as one solid line', () => {
+  // cmpd="dbl" has no pptxgenjs option, so the border would draw as a single
+  // solid line silently.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { border: 4px double #C05B3E; width: 100px; height: 50px; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  const report = result.report.unsupportedDetails.find((entry) => entry.property === 'borderStyle');
+  assert.ok(report, 'the double style is named');
+  assert.ok(report.reason.includes('compound'), 'and explains why: ' + report.reason);
+});
+
 test('dashed and dotted borders spell their dash', async () => {
   // The writer sent `dash` where pptxgenjs reads `dashType`, so every dashed, dotted
   // or otherwise styled border drew solid.

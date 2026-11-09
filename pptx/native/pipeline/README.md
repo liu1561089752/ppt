@@ -124,6 +124,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | q quotes | synthesized “ ” join the content (was bare words); declared pseudos win |
 | ol type/value | type picks alpha/roman markers; first-item value starts the count (was arabic from 1) |
 | border dash | dashType is the option pptxgenjs spells; `dash` was ignored and all styled borders drew solid |
+| double border | named (cmpd has no option; draws one solid line) |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
