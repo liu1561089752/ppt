@@ -1417,7 +1417,10 @@ function aspectRatioOf(style, width) {
 
 function analyzeNodeTree(domNode, slot, inherited, ctx) {
   const style = ctx.styles.computed(domNode);
-  if (style.display === 'none' || style.visibility === 'hidden') return null;
+  if (style.display === 'none') return null;
+  // `visibility: hidden` keeps the box in the layout - siblings must not move up -
+  // but paints nothing. The flag survives to the builder, which skips the emission.
+  const hidden = String(style.visibility || '').toLowerCase() === 'hidden';
   checkUnsupported(ctx, domNode, style);
 
   const fontSizePx = fontPxOf(style, inherited.fontPx);
@@ -1613,6 +1616,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
 
   if (declaresLength(style.height)) node.fixedHeight = true;
   if (declaresLength(style.width)) node.fixedWidth = true;
+  if (hidden) node.hidden = true;
 
   if (kind === 'unsupported') {
     recordUnsupported(ctx, domNode, 'element', domNode.tag, 'Element type has no native translation');
@@ -1986,7 +1990,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
   let cursor = contentBox.y;
   const visible = elementChildren(domNode).filter((child) => {
     const childStyle = ctx.styles.computed(child);
-    return childStyle.display !== 'none' && childStyle.visibility !== 'hidden';
+    return childStyle.display !== 'none';
   });
   // A lone chart child has no content to measure, so a definite parent height is
   // its height; with siblings that would just overlap them.
@@ -2039,7 +2043,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
         const stillInFlow = visible.slice(probe).some((sibling) => {
           const siblingStyle = ctx.styles.computed(sibling);
           return !isAbsolute(siblingStyle)
-            && siblingStyle.display !== 'none' && siblingStyle.visibility !== 'hidden';
+            && siblingStyle.display !== 'none';
         });
         const exact = !stillInFlow || remaining <= FLOAT_BAND_SLACK;
         if (group.length && exact) {
@@ -2503,7 +2507,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
   const gap = flexGap(style, direction);
   const kids = sortByOrder(elementChildren(domNode).filter((child) => {
     const childStyle = ctx.styles.computed(child);
-    return childStyle.display !== 'none' && childStyle.visibility !== 'hidden';
+    return childStyle.display !== 'none';
   }), ctx);
   if (!kids.length) return [];
 
@@ -2967,7 +2971,7 @@ function gridPlacementSpec(style, columnCount, rowCount) {
 function visibleChildren(domNode, ctx) {
   return elementChildren(domNode).filter((child) => {
     const childStyle = ctx.styles.computed(child);
-    return childStyle.display !== 'none' && childStyle.visibility !== 'hidden';
+    return childStyle.display !== 'none';
   });
 }
 
@@ -3889,7 +3893,7 @@ function columnPlanOf(domNode, style, contentWidth, fontSizePx, ctx) {
   let rich = false;
   for (const child of children) {
     const childStyle = ctx.styles.computed(child);
-    if (childStyle.display === 'none' || childStyle.visibility === 'hidden') continue;
+    if (childStyle.display === 'none') continue;
     const words = String(normalizedText(child) || '').trim();
     if (!words) continue;
     if (!onlyInlineDescendants(child)) {

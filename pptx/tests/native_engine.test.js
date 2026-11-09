@@ -5359,3 +5359,37 @@ test('line-height: normal comes from the metrics of the first face that exists',
   assert.equal(heightOf('explicit'), 120);
 });
 
+
+test('visibility: hidden keeps the box in the layout but paints nothing', () => {
+  const build = (inner) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .ghost { width: 200px; height: 100px; background: #C05B3E; visibility: hidden; }',
+    '  .after { width: 200px; height: 50px; background: #17332F; }',
+    '  .row { display: flex; gap: 20px; width: 900px; }',
+    '  .cell { flex: 1; height: 60px; background: #17332F; }',
+    '</style></head><body><main class="slide">', inner, '</main></body></html>'
+  ].join('\n'));
+
+  // Block flow: the ghost occupies its band, so the sibling below cannot move up.
+  const flow = build('<div class="ghost"></div><div class="after"></div>');
+  const flowShapes = flow.deck.slides[0].elements.filter((element) => element.type === 'shape');
+  assert.equal(flowShapes.length, 1, 'the ghost emits no object');
+  assert.equal(+(flowShapes[0].y * 96).toFixed(1), 140, 'and the sibling below keeps its place');
+
+  // Flex: the ghost keeps its slot, so the visible cells are thirds, not halves.
+  // the ghost cell takes visibility from the inline style only: the .ghost class above
+  // also declares a width, and a flex basis would change the arithmetic under test.
+  const flex = build('<div class="row"><div class="cell"></div><div class="cell" style="visibility: hidden"></div><div class="cell"></div></div>');
+  const cells = flex.deck.slides[0].elements.filter((element) => element.type === 'shape');
+  assert.equal(cells.length, 2, 'two visible cells');
+  assert.equal(+(cells[0].w * 96).toFixed(1), 286.7, 'each a third of the row, not a half');
+  assert.equal(+(cells[1].x * 96).toFixed(1), 653.3, 'the second sits in the third slot');
+
+  // display: none remains the one that collapses the box entirely.
+  const gone = build('<div class="ghost" style="display: none"></div><div class="after"></div>');
+  const goneShapes = gone.deck.slides[0].elements.filter((element) => element.type === 'shape');
+  assert.equal(goneShapes.length, 1);
+  assert.equal(+(goneShapes[0].y * 96).toFixed(1), 40, 'display:none moves the sibling up');
+});
+

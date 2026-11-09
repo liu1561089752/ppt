@@ -790,6 +790,8 @@ function rotateLeaves(element, degrees) {
 }
 
 function leafElementRotationFree(node, resolvedTheme, report) {
+  // `visibility: hidden` laid out its box but paints nothing: the honest emission is no object.
+  if (node.hidden) return null;
   if (node.kind === 'text' || node.kind === 'list') {
     if (!node.text && !node.runs) return null;
     report.textElements += 1;
@@ -885,6 +887,8 @@ function elementZ(element) {
 /** Emit one child positioned by its parent container. */
 function containerChild(node, parentPlan, context) {
   const { resolvedTheme, report, state, probes, owners, ownerId } = context;
+  // A hidden child keeps its slot in the layout but is not emitted as an object.
+  if (node.hidden) return null;
   let element;
   if (isGroup(node)) {
     const plan = containerPlan(node, state);
@@ -970,7 +974,7 @@ function containerChild(node, parentPlan, context) {
 /** Emit a node (and its subtree) at explicit coordinates. */
 function emitAbsolute(node, context) {
   const { resolvedTheme, elements, report, state, probes, owners, ownerId } = context;
-  if (!node || node.w <= 0.01 || node.h <= 0.01) return;
+  if (!node || node.hidden || node.w <= 0.01 || node.h <= 0.01) return;
 
   if (node.backgroundImage) {
     const picture = imageElementFromNode({
