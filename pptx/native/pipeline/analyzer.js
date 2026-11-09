@@ -1177,7 +1177,8 @@ function clipsContent(node) {
  *   vertical-rl   → `eaVert`  (East Asian vertical: upright CJK, columns run right
  *                              to left, Latin runs rotated a quarter turn)
  *   sideways-rl   → `vert`    (the whole line rotated clockwise)
- *   vertical-lr / sideways-lr → reported: `verter`/`mongolianVert` means something
+ *   sideways-lr   → `vert270` (columns left to right)
+ *   vertical-lr   → reported: the upright-glyph left-to-right column order is
  *                              different from either CSS value.
  *
  * The trade the CSS makes is that a vertical box runs the text down its *height*:

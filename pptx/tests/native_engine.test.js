@@ -5942,3 +5942,25 @@ test('text-emphasis draws the dot above each character', async () => {
   assert.deepEqual(colourOnly.report.unsupportedDetails.map((entry) => entry.property), ['textEmphasis']);
 });
 
+
+test('writing-mode vertical spellings land as native vert attributes', () => {
+  // eaVert / vert / vert270 are the DrawingML names; the vertical-lr report is the one
+  // honest gap (DrawingML names no upright left-to-right direction).
+  const build = (value) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { writing-mode: ' + value + '; height: 300px; width: 400px; font-size: 16px; }',
+    '</style></head><body><main class="slide"><p class="b">竖排 mixed 横排</p></main></body></html>'
+  ].join('\n'));
+  const vert = (result) => result.deck.slides[0].elements[0].vert;
+
+  assert.equal(vert(build('vertical-rl')), 'eaVert');
+  assert.equal(vert(build('sideways-rl')), 'vert');
+  assert.equal(vert(build('sideways-lr')), 'vert270');
+  assert.deepEqual(build('vertical-rl').report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const lr = build('vertical-lr');
+  assert.equal(lr.deck.slides[0].elements[0].vert, undefined);
+  assert.deepEqual(lr.report.unsupportedDetails.map((entry) => entry.property), ['writingMode']);
+});
+

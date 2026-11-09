@@ -81,6 +81,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | semantic elements | Tables, figures, anchors, mark/sub/sup, nested lists and dl all translate natively; a file-level test pins hyperlink rels, a:highlight and the subscript baseline |
 | transition/animation | Report names the journey: the end state is drawn, the movement between states is not |
 | chart styling | Title/legend/colours land in ppt/charts/chartN.xml; file-level test locates the part by pattern |
+| writing-mode | eaVert/vert/vert270 pinned by test; vertical-lr over CJK is the one named gap; render-verified in LibreOffice |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |
