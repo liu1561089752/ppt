@@ -2880,9 +2880,10 @@ test('white-space: nowrap stays on one line and is written as wrap="none"', asyn
   assert.equal(wrapped.nowrap, undefined);
   assert.ok(nowrap.h < wrapped.h - 0.2, 'nowrap must be one line: ' + nowrap.h + ' vs ' + wrapped.h);
 
-  // `pre` keeps whitespace, which the DOM text walk already collapsed: reported.
+  // `pre` keeps whitespace now: the runs preserve their spaces, so nothing is lost
+  // and nothing is reported.
   const pre = build('white-space: pre;');
-  assert.equal(pre.report.unsupportedDetails.filter((entry) => entry.property === 'whiteSpace').length, 1);
+  assert.equal(pre.report.unsupportedDetails.filter((entry) => entry.property === 'whiteSpace').length, 0);
 
   // Writer: wrap="none" and no autofit, which is what makes a renderer stop re-flowing.
   await withTempDir('native-nowrap-', async (directory) => {
@@ -6332,5 +6333,36 @@ test('an oversized absolute picture in a clipping frame becomes a crop', async (
   } finally {
     if (fs.existsSync(output)) fs.unlinkSync(output);
   }
+});
+
+
+test('pre and pre-wrap keep their runs of spaces', () => {
+  // The collapse is a normal-mode rule; pre* contexts preserve both the spaces and the
+  // line breaks, and the written run keeps them (PptxGenJS holds the text verbatim).
+  const build = (whiteSpace) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { white-space: ' + whiteSpace + '; font-size: 16px; }',
+    '</style></head><body><main class="slide">',
+    '<p class="b">double  space\nnewline</p>',
+    '</main></body></html>'
+  ].join('\n'));
+
+  const preserved = build('pre');
+  const element = preserved.deck.slides[0].elements[0];
+  const text = typeof element.text === 'string' ? element.text : element.text.map((run) => run.text).join('');
+  assert.ok(text.includes('double  space'), 'the spaces survive: ' + JSON.stringify(text));
+  assert.deepEqual(preserved.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const wrapped = build('pre-wrap');
+  assert.deepEqual(wrapped.report.unsupportedDetails.map((entry) => entry.property), [],
+    'pre-wrap is translated the same way');
+
+  const normal = build('normal');
+  const normalElement = normal.deck.slides[0].elements[0];
+  const normalText = typeof normalElement.text === 'string'
+    ? normalElement.text
+    : normalElement.text.map((run) => run.text).join('');
+  assert.ok(!normalText.includes('double  space'), 'normal mode still collapses');
 });
 

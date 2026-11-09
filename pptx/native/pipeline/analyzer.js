@@ -999,7 +999,9 @@ function buildRuns(domNode, baseStyle, ctx) {
 
   const visit = (node, inheritedStyle, inheritedInline) => {
     if (node.type === 'text') {
-      pushText(node.text.replace(/[ \t\u00A0]+/gu, ' '), inheritedStyle, inheritedInline);
+      // pre/pre-wrap keep their runs of spaces; the collapse is a normal-mode rule.
+      const preserveSpaces = /^pre/u.test(String((inheritedStyle && inheritedStyle.whiteSpace) || '').trim().toLowerCase());
+      pushText(preserveSpaces ? node.text : node.text.replace(/[ \t\u00A0]+/gu, ' '), inheritedStyle, inheritedInline);
       return;
     }
     if (node.type !== 'element') return;
@@ -1247,7 +1249,8 @@ function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx,
   // the box wraps - so it is an equivalent implementation and not a limitation. The
   // other pre* values keep space runs in CSS, which the walk collapses; that residue
   // is what the report names.
-  if (whiteSpace !== 'normal' && !noWrap && whiteSpace !== 'pre-line') {
+  if (whiteSpace !== 'normal' && !noWrap && whiteSpace !== 'pre-line'
+    && whiteSpace !== 'pre' && whiteSpace !== 'pre-wrap') {
     recordUnsupported(ctx, domNode, 'whiteSpace', style.whiteSpace,
       'Line breaks are kept, but runs of spaces collapse to one, which '
         + whiteSpace + ' preserves');
