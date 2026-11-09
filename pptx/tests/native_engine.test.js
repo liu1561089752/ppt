@@ -6691,3 +6691,36 @@ test('chart tuning attributes map to reader options', () => {
   assert.equal(rejected.deck.slides[0].elements.find((entry) => entry.type === 'chart').options.barGapWidthPct, undefined);
 });
 
+
+test('merged cells round-trip to OOXML merge marks', async () => {
+  // rowspan/colspan are reader-native merges: the spanning cell carries rowSpan/colspan
+  // and the continuation rows omit it, which the OOXML writer expresses as vMerge and
+  // hMerge with the span attributes. Locked at the XML level because the deck-level
+  // convention (fewer cells in continuation rows) looks like data loss in JSON.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const table = (cells) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 600px; font-size: 13px; }',
+    '</style></head><body><main class="slide"><table>' + cells + '</table></main></body></html>'
+  ].join('\n'));
+  const xmlOf = async (deck) => {
+    const output = path.join(os.tmpdir(), 'native-merge-' + process.pid + '.pptx');
+    try {
+      await generatePptx(deck, output);
+      const zip = await JSZip.loadAsync(fs.readFileSync(output));
+      return await zip.file('ppt/slides/slide1.xml').async('string');
+    } finally {
+      if (fs.existsSync(output)) fs.unlinkSync(output);
+    }
+  };
+  const row = await xmlOf(table('<tr><td rowspan="2">跨行</td><td>A</td></tr><tr><td>B</td></tr>').deck);
+  assert.ok(/rowSpan="2"/.test(row) && row.includes('vMerge'), 'the row span survives as a real vertical merge');
+  const col = await xmlOf(table('<tr><td colspan="2">跨列</td></tr><tr><td>A</td><td>B</td></tr>').deck);
+  assert.ok(/gridSpan="2"/.test(col) && col.includes('hMerge'), 'the column span survives as a real horizontal merge');
+});
+
