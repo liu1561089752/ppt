@@ -176,7 +176,13 @@ def main():
             print("== " + html.name + " (" + str(len(prints)) + " page(s), "
                   + str(pages[0].size[0]) + "x" + str(pages[0].size[1]) + ")")
             before = previous.get(html.name)
-            if args.update or not before:
+            if args.update:
+                continue
+            if not before:
+                # A fixture nobody photographed is not a fixture this gate can hold: accepting
+                # it silently let a new deck skip the comparison for as long as it existed.
+                problems.append(html.name + ': no baseline yet - look at the pages, then run'
+                                ' --update' )
                 continue
             if len(before) != len(prints):
                 problems.append(html.name + ": " + str(len(prints)) + " page(s), baseline had " + str(len(before)))

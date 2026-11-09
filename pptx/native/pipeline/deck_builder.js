@@ -850,9 +850,11 @@ function backgroundPictureGeometry(layer, box, natural) {
   let w = axis(spec && spec[0], box.w);
   let h = axis(spec && spec[1], box.h);
   if (w === null && h === null) {
-    // Both axes auto: the picture keeps its own size, clipped to the box.
-    w = Math.min(naturalW, box.w);
-    h = Math.min(naturalH, box.h);
+    // Both axes auto: the picture keeps its own size. Clamping it into the box made a
+    // picture that is bigger than its card *stretch* to fit, where the browser draws it at
+    // its own size and clips the overflow - which the branch below already expresses.
+    w = naturalW;
+    h = naturalH;
   } else {
     if (w === null) w = h * (naturalW / naturalH);
     if (h === null) h = w * (naturalH / naturalW);
