@@ -221,7 +221,7 @@ function textElementFromNode(node, theme, resolvedTheme) {
       if (Number.isFinite(points) && points !== 0) element.charSpacing = Number(points.toFixed(2));
     }
   }
-  if (node.bullet) element.bullet = true;
+  if (node.bullet) element.bullet = node.bullet === true ? true : node.bullet;
   // `::marker` styles the bullet, not the text: the colour rides to the writer as its
   // own field so a red dot stays a red dot.
   if (node.markerColor) element.markerColor = node.markerColor;

@@ -627,11 +627,14 @@ function checkUnsupported(ctx, domNode, style) {
     recordUnsupported(ctx, domNode, 'wordSpacing', style.wordSpacing,
       'Words keep their ordinary advance; a run has per-character spacing, not per-word');
   }
-  // Every marker draws as the native round bullet: `disc`, `square`, `decimal` all
-  // look the same, so the declaration is named once with the truth. `none` is not a
-  // limitation - it switches the bullet off, which the list node reads.
+  // The common markers have native spellings (buChar for the round shapes, buAutoNum
+  // for the ordered ones) and are consumed by the list branch; anything rarer still
+  // draws the round bullet, so it stays named.
   const listStyleValue = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();
-  if (listStyleValue && listStyleValue !== 'none' && listStyleValue !== 'inherit') {
+  const KNOWN_MARKERS = new Set(['disc', 'circle', 'square', 'decimal', 'lower-alpha',
+    'lower-latin', 'upper-alpha', 'upper-latin', 'lower-roman', 'upper-roman',
+    'none', 'inherit']);
+  if (listStyleValue && !KNOWN_MARKERS.has(listStyleValue)) {
     recordUnsupported(ctx, domNode, 'listStyle', style.listStyleType || style.listStyle,
       'Every marker draws as the native round bullet; the declared shape does not change it');
   }
@@ -1979,9 +1982,23 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       generated.forEach((value) => recordUnsupported(ctx, domNode, '::before', value,
         'Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute'));
       // `list-style: none` is the design asking for no marker at all - a checklist row,
-      // a custom-drawn marker - and the native bullet has an `off` switch.
+      // a custom-drawn marker - and the native bullet has an `off` switch. The other
+      // markers have native spellings: buChar for the round shapes, buAutoNum for the
+      // ordered ones.
       const listStyle = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();
-      node.bullet = listStyle !== 'none';
+      const MARKER_CHARS = { disc: '2022', circle: '25CB', square: '25AA' };
+      const MARKER_NUMBERS = {
+        decimal: 'arabicPeriod',
+        'lower-alpha': 'alphaLcPeriod', 'lower-latin': 'alphaLcPeriod',
+        'upper-alpha': 'alphaUcPeriod', 'upper-latin': 'alphaUcPeriod',
+        'lower-roman': 'romanLcPeriod', 'upper-roman': 'romanUcPeriod'
+      };
+      let markerOption = null;
+      if (listStyle !== 'none') {
+        if (MARKER_CHARS[listStyle]) markerOption = { code: MARKER_CHARS[listStyle] };
+        else if (MARKER_NUMBERS[listStyle]) markerOption = { type: 'number', style: MARKER_NUMBERS[listStyle] };
+      }
+      node.bullet = listStyle !== 'none' ? (markerOption || true) : null;
       // `::marker { color: ... }` styles the bullet itself, which DrawingML spells as
       // `a:buClr` inside the paragraph properties. The rule targets the `li`, so every
       // item is asked; one colour across them rides on the element, a disagreement is
@@ -2024,7 +2041,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
             // Every run of the item carries the bullet: the writer takes a paragraph's
             // properties from the run it closes the paragraph on, which is the last one,
             // so a bullet only on the first run lost the first item of every list.
-            options.bullet = true;
+            options.bullet = markerOption || true;
             if (item.level > 0) options.indentLevel = item.level;
             if (runIndex === runs.length - 1 && index < itemRuns.length - 1) options.breakLine = true;
             flat.push(Object.keys(options).length ? { text: run.text, options } : { text: run.text });

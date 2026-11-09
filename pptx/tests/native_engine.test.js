@@ -5467,12 +5467,19 @@ test('list-style: none switches the bullet off, and repeat values are named per 
   assert.deepEqual(plain.report.unsupportedDetails.map((entry) => entry.property), [],
     'asking for what the native side does is not a limitation');
 
-  // Any other marker draws as the native round bullet, so the declaration is named
-  // with that truth rather than a generic subset complaint.
+  // The round shapes have native buChar spellings now, and the ordered ones have
+  // buAutoNum; only the rare markers still draw the round bullet and stay named.
   const square = buildList('ul.b { list-style: square; }');
-  assert.equal(square.deck.slides[0].elements[0].bullet, true);
-  const squareNote = square.report.unsupportedDetails.find((entry) => entry.property === 'listStyle');
-  assert.ok(squareNote.reason.includes('round bullet'), 'the reason says what actually draws');
+  assert.deepEqual(square.deck.slides[0].elements[0].bullet, { code: '25AA' });
+  assert.deepEqual(square.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const numbered = buildList('ul.b { list-style: decimal; }');
+  assert.deepEqual(numbered.deck.slides[0].elements[0].bullet, { type: 'number', style: 'arabicPeriod' });
+
+  const rare = buildList('ul.b { list-style: cjk-ideographic; }');
+  assert.equal(rare.deck.slides[0].elements[0].bullet, true, 'the rare marker still draws the round bullet');
+  const rareNote = rare.report.unsupportedDetails.find((entry) => entry.property === 'listStyle');
+  assert.ok(rareNote.reason.includes('round bullet'), 'the reason says what actually draws');
 
   // `no-repeat` is what a fitted picture does; tiling is the real limitation.
   const buildDiv = (css) => pipeline.convertHtml([
