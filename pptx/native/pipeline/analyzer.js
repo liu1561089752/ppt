@@ -336,21 +336,35 @@ function descriptionFocus(value) {
  * only carry one radius, so the analyzer reports the corners it cannot keep.
  */
 function radiusCorners(style) {
-  const sides = [style.borderTopLeftRadius, style.borderTopRightRadius,
-    style.borderBottomRightRadius, style.borderBottomLeftRadius].filter((value) => value);
-  const raw = sides.length ? sides.join(" ") : String(style.borderRadius || "");
-  if (!raw) return null;
+  // Longhands say one corner each; an undeclared corner is CSS 0 there. The
+  // shorthand expands to all four at declaration time, so its repeat rules apply.
+  const longhands = [style.borderTopLeftRadius, style.borderTopRightRadius,
+    style.borderBottomRightRadius, style.borderBottomLeftRadius];
+  let sides = longhands.filter((value) => value);
+  if (sides.length && sides.length < 4) {
+    // Mixed longhand set: the missing corners are zero, not a repeat of the first.
+    sides = longhands.map((value) => value || '0');
+  } else if (sides.length === 4) {
+    sides = longhands;
+  } else {
+    sides = String(style.borderRadius || "").trim().split(/\s+/u).filter(Boolean);
+    if (!sides.length) return null;
+  }
   const values = [];
-  for (const token of raw.trim().split(/\s+/u)) {
+  for (const token of sides) {
     const length = parseLength(token);
     if (!length) return null;
     const inches = toInches(length, {});
     values.push(Number.isFinite(inches) && inches > 0 ? Number(inches.toFixed(3)) : 0);
   }
   if (!values.length) return null;
-  // CSS repeats the list: one value means all four, two mean vertical/horizontal pairs.
-  const pick = (index) => values[index % values.length];
-  return [pick(0), pick(1), pick(2), pick(3)];
+  // The shorthand repeats its list: one value means all four, two mean
+  // vertical/horizontal pairs. A full longhand set does not repeat.
+  if (sides.length < 4) {
+    const pick = (index) => values[index % values.length];
+    return [pick(0), pick(1), pick(2), pick(3)];
+  }
+  return values;
 }
 
 /**
@@ -379,6 +393,19 @@ function ellipseOf(style) {
 
 /** Radius or ellipse, plus the report a shape that can hold neither deserves. */
 function applyRadius(node, domNode, style, ctx) {
+  // A native roundRect rounds all four corners alike; a mix of corner values would
+  // silently round every corner at the top-left's size, so a mixed set stays named.
+  const corners = ['borderTopLeftRadius', 'borderTopRightRadius',
+    'borderBottomRightRadius', 'borderBottomLeftRadius'].map((name) => style[name]);
+  // An undeclared corner is CSS 0, so a single-corner declaration is already a mix.
+  const declared = corners.filter((value) => value !== undefined && value !== null);
+  if (declared.length >= 1) {
+    const distinct = new Set(corners.map((value) => (value === undefined || value === null) ? '0' : String(value).trim()));
+    if (distinct.size > 1) {
+      recordUnsupported(ctx, domNode, 'borderRadius', declared.join(' '),
+        'The corners round by different amounts; a native roundRect rounds all four alike, so the box is drawn at the top-left radius');
+    }
+  }
   const radius = radiusOf(style);
   if (radius) {
     node.radius = radius;
@@ -393,6 +420,23 @@ function applyRadius(node, domNode, style, ctx) {
   recordUnsupported(ctx, domNode, 'borderRadius', style.borderTopLeftRadius || style.borderRadius,
     'A percentage radius below 50% is an elliptical corner, which no native geometry spells:'
       + ' the box is drawn square');
+}
+
+/**
+ * A native roundRect rounds all four corners alike. A mix of corner values would
+ * silently round every corner at the top-left's size, so a mixed set stays named.
+ * An undeclared corner is CSS 0, so a single-corner declaration is already a mix.
+ */
+function checkCornerMix(domNode, style, ctx) {
+  const corners = ['borderTopLeftRadius', 'borderTopRightRadius',
+    'borderBottomRightRadius', 'borderBottomLeftRadius'].map((name) => style[name]);
+  const declared = corners.filter((value) => value !== undefined && value !== null);
+  if (!declared.length) return;
+  const distinct = new Set(corners.map((value) => (value === undefined || value === null) ? '0' : String(value).trim()));
+  if (distinct.size > 1) {
+    recordUnsupported(ctx, domNode, 'borderRadius', declared.join(' '),
+      'The corners round by different amounts; a native roundRect rounds all four alike, so the box is drawn at the top-left radius');
+  }
 }
 
 function radiusOf(style) {
@@ -2145,7 +2189,8 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       node.alt = '';
       node.objectFit = layer.fit;
       node.focus = layer.focus;
-      node.radius = radiusOf(style);
+      checkCornerMix(domNode, style, ctx);
+    node.radius = radiusOf(style);
       if ((ellipseOf(style) || {}).percent >= 50) node.ellipse = true;
       // A gradient layer above the picture is a scrim: a second native object paints it.
       const overlay = backgroundOverlayGradientOf(style);
@@ -2181,6 +2226,7 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       'Unknown object-fit value: the picture is cropped to cover the box instead');
   }
     node.focus = descriptionFocus(style.objectPosition);
+    checkCornerMix(domNode, style, ctx);
     node.radius = radiusOf(style);
     if ((ellipseOf(style) || {}).percent >= 50) node.ellipse = true;
     else if (ellipseOf(style)) {

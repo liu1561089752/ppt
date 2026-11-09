@@ -6140,3 +6140,25 @@ test('z-index decides the paint order of overlapping absolutes', () => {
   assert.deepEqual(fills(build(9, 1)), ['C05B3E', '17332F'], 'the paint order follows z, not the DOM');
   assert.deepEqual(build(1, 9).report.unsupportedDetails.map((entry) => entry.property), []);
 });
+
+test('mixed corner radii are named, uniform ones draw', () => {
+  // A native roundRect rounds all four corners alike. Longhand zeros count: a single
+  // corner declaration is already a mix, while the shorthand's repeat rules stand.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  const notes = (result) => result.report.unsupportedDetails.filter((entry) => entry.property === 'borderRadius');
+
+  assert.equal(notes(build('  .b { width: 120px; height: 60px; background: #C05B3E; border-top-left-radius: 16px; }')).length, 1,
+    'a single corner is a mix of 16px and three zeros');
+  assert.equal(notes(build('  .b { width: 120px; height: 60px; background: #C05B3E; border-radius: 16px 8px; }')).length, 1,
+    'a two-value shorthand is a mix');
+  assert.equal(notes(build('  .b { width: 120px; height: 60px; background: #C05B3E; border-radius: 16px; }')).length, 0,
+    'a uniform shorthand draws');
+  assert.equal(notes(build('  .b { width: 120px; height: 60px; background: #C05B3E; border-top-left-radius: 16px; border-top-right-radius: 16px; border-bottom-right-radius: 16px; border-bottom-left-radius: 16px; }')).length, 0,
+    'four equal longhands draw');
+});
+
