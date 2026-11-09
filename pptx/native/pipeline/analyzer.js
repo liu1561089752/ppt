@@ -1800,6 +1800,14 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     else if (right !== null) x = parentBox.x + parentBox.w - right - width;
     if (top !== null) y = parentBox.y + top;
     else if (bottom !== null && parentBox.h !== null) y = parentBox.y + parentBox.h - bottom - (explicitHeight || 0);
+    // A margin offsets the box from its offset position; negative values pull it
+    // back toward the edge it came from. CSS resolves an absolute margin here,
+    // after the inset position, before layout continues.
+    const absMargin = boxShorthand(style, 'margin');
+    if (absMargin.left || absMargin.top) {
+      x += absMargin.left;
+      y += absMargin.top;
+    }
   }
 
   const contentWidth = Math.max(0, width - insetLeft - insetRight);
@@ -2570,7 +2578,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     const margins = childMargins(childStyle, { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
     const slotWidth = Math.max(0, contentBox.w - margins.left - margins.right);
     const explicitWidth = inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
-    const slot = isAbsolute(childStyle)
+    let slot = isAbsolute(childStyle)
       ? anchoredSlot(childStyle, containingBlockFor(childStyle, anchorBox, ctx), inherited)
       : {
         x: autoMarginSlotX(childStyle, contentBox, margins, explicitWidth, child, ctx),
@@ -2580,6 +2588,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
         h: null,
         parentContentHeight: soloHeight
       };
+
     const node = applyAnchorHints(analyzeNode(child, slot, inherited, ctx), slot);
     if (!node) continue;
     node.absolute = isAbsolute(childStyle);
@@ -3005,6 +3014,7 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
       const childStyle = ctx.styles.computed(child);
       const anchorBox = (inherited && inherited.parentPaddingBox) || contentBox;
       const slot = anchoredSlot(childStyle, containingBlockFor(childStyle, anchorBox, ctx), inherited);
+
       return applyAnchorHints(analyzeNode(child, slot, inherited, ctx), slot);
     })
     .filter(Boolean)

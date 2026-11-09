@@ -6667,6 +6667,37 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('a margin offsets an absolutely positioned box', async () => {
+  // CSS: the margin shifts the box from its inset position; a negative value pulls
+  // it back. The absolute branch recomputed x from style.left and ignored margins -
+  // the box drew at 100px instead of 80px with margin-left: -20px.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { position: absolute; left: 100px; top: 100px; margin-left: -20px; width: 100px; height: 50px; background: #C05B3E; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  const output = path.join(os.tmpdir(), 'native-absm-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const pattern = /<a:off x="(-?\d+)"/gu;
+    const offsets = [];
+    let match;
+    while ((match = pattern.exec(xml))) offsets.push(Number(match[1]) / 914400 * 96);
+    const childX = offsets[offsets.length - 1];
+    assert.equal(Number(childX.toFixed(1)), 80, 'the box lands at 100 - 20 = 80px, got ' + childX);
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
+
 test('each-line indent is named instead of half-applied', () => {
   // text-indent: 3em each-line asks for every wrapped line; the native paragraph
   // indent touches only the first line. The keyword used to silently parse as null
