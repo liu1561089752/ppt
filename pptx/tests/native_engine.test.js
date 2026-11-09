@@ -1773,7 +1773,7 @@ test('html pipeline maps transform: rotate() to native shape rotation', () => {
   // exact, so it is applied: a reported omission plus an exact remainder beats dropping both.
   const transformReports = result.report.unsupportedDetails.filter((entry) => entry.property === 'transform');
   assert.equal(transformReports.length, 1);
-  assert.equal(transformReports[0].value, 'scale()');
+  assert.equal(transformReports[0].value, 'scale(1.5)');
   assert.equal(elements.filter((element) => element.rotate === 10).length, 1, 'the exact rotate still lands');
 
   // rotate(0deg) is a no-op, not a rotation.

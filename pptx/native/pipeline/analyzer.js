@@ -186,14 +186,14 @@ function transformPlanOf(value, widthIn, heightIn, origin) {
   for (const entry of functions) {
     if (ROTATE_FUNCTIONS.has(entry.name)) {
       const degrees = angleDegrees(entry.args);
-      if (degrees === null) { plan.unsupported.push(entry.name + '()'); continue; }
+      if (degrees === null) { plan.unsupported.push(entry.name + '(' + entry.args + ')'); continue; }
       plan.rotate += degrees;
       steps.push({ rotate: degrees });
       continue;
     }
     const movesX = entry.name === 'translatex' || entry.name === 'translate';
     const movesY = entry.name === 'translatey' || entry.name === 'translate';
-    if (!movesX && !movesY) { plan.unsupported.push(entry.name + '()'); continue; }
+    if (!movesX && !movesY) { plan.unsupported.push(entry.name + '(' + entry.args + ')'); continue; }
     const args = String(entry.args || '').split(/[,\s]+/u).filter(Boolean);
     const axis = (argument, basis) => {
       const length = parseLength(argument);
