@@ -572,12 +572,31 @@ function checkUnsupported(ctx, domNode, style) {
     if ((domNode.tag === 'td' || domNode.tag === 'th') && TABLE_CELL_BORDER_PROPERTIES.has(property)) return;
     // `overflow` is judged after layout, against the content it would clip.
     if (POST_LAYOUT_PROPERTIES.has(property)) return;
+    // List markers and picture tiling are judged per value below: the generic
+    // subset report would call `no-repeat` and `none` unsupported when they ask
+    // for exactly what the native side does.
+    if (property === 'listStyle' || property === 'listStyleType' || property === 'backgroundRepeat') return;
     if (UNSUPPORTED_ALWAYS.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'CSS feature has no native translation');
     } else if (!SUPPORTED_PROPERTIES.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'Property is outside the supported subset');
     }
   });
+  // Every marker draws as the native round bullet: `disc`, `square`, `decimal` all
+  // look the same, so the declaration is named once with the truth. `none` is not a
+  // limitation - it switches the bullet off, which the list node reads.
+  const listStyleValue = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();
+  if (listStyleValue && listStyleValue !== 'none' && listStyleValue !== 'inherit') {
+    recordUnsupported(ctx, domNode, 'listStyle', style.listStyleType || style.listStyle,
+      'Every marker draws as the native round bullet; the declared shape does not change it');
+  }
+  // A picture is drawn once, fitted to its box, which is `no-repeat`. Tiling asks
+  // for something a fitted picture cannot do, so those values are named.
+  const repeat = String(style.backgroundRepeat || '').trim().toLowerCase();
+  if (repeat && repeat !== 'no-repeat' && repeat !== 'inherit' && repeat !== 'initial') {
+    recordUnsupported(ctx, domNode, 'backgroundRepeat', style.backgroundRepeat,
+      'The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled');
+  }
   if (style.display === 'inline' || style.display === 'inline-block') {
     recordUnsupported(ctx, domNode, 'display', style.display, 'Inline flow is approximated as a block box');
   }
@@ -1680,7 +1699,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     Object.assign(node, measured);
     if (kind === 'list') {
       const items = readListItems(domNode);
-      node.bullet = true;
+      // `list-style: none` is the design asking for no marker at all - a checklist row,
+      // a custom-drawn marker - and the native bullet has an `off` switch.
+      const listStyle = String(style.listStyleType || style.listStyle || '').trim().toLowerCase();
+      node.bullet = listStyle !== 'none';
       node.runs = null;
       // An item's own inline content keeps its styling (a `<strong>` in a bullet, a link
       // inside a bullet), so each item is built as runs rather than one flat string.

@@ -5448,3 +5448,40 @@ test('a box-shadow parses its hex colour and its first layer', () => {
   assert.deepEqual(inset.report.unsupportedDetails.map((entry) => entry.property), ['boxShadow']);
 });
 
+
+test('list-style: none switches the bullet off, and repeat values are named per value', () => {
+  const buildList = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><ul class="b"><li>one</li><li>two</li></ul></main></body></html>'
+  ].join('\n'));
+
+  // The design asked for no marker: the native bullet has an off switch, and using it
+  // is what `list-style: none` means. It used to be reported while the dot still drew.
+  const plain = buildList('ul.b { list-style: none; }');
+  assert.equal(plain.deck.slides[0].elements[0].bullet, undefined, 'no bullet is emitted');
+  assert.deepEqual(plain.report.unsupportedDetails.map((entry) => entry.property), [],
+    'asking for what the native side does is not a limitation');
+
+  // Any other marker draws as the native round bullet, so the declaration is named
+  // with that truth rather than a generic subset complaint.
+  const square = buildList('ul.b { list-style: square; }');
+  assert.equal(square.deck.slides[0].elements[0].bullet, true);
+  const squareNote = square.report.unsupportedDetails.find((entry) => entry.property === 'listStyle');
+  assert.ok(squareNote.reason.includes('round bullet'), 'the reason says what actually draws');
+
+  // `no-repeat` is what a fitted picture does; tiling is the real limitation.
+  const buildDiv = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+  ].join('\n'));
+  const quiet = buildDiv('.b { width: 100px; height: 50px; background: url(x.png); background-repeat: no-repeat; }');
+  assert.deepEqual(quiet.report.unsupportedDetails.map((entry) => entry.property), []);
+  const tiled = buildDiv('.b { width: 100px; height: 50px; background: url(x.png); background-repeat: repeat; }');
+  const tiledNote = tiled.report.unsupportedDetails.find((entry) => entry.property === 'backgroundRepeat');
+  assert.ok(tiledNote.reason.includes('drawn once'), 'the reason says what the reader sees');
+});
+
