@@ -6667,6 +6667,24 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('alt text reaches the file and srcset names its choice', () => {
+  // alt rode the whole chain already (element, writer, p:cNvPr descr); pinned at the
+  // deck level. srcset was silent: the deck always draws src, and the design may
+  // have meant a different picture - the choice is named.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '</style></head><body><main class="slide">',
+    '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="产品照片" style="width:100px;height:50px;">',
+    '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" srcset="x2.png 2x" style="width:100px;height:50px;">',
+    '</main></body></html>'
+  ].join('\n'));
+  const images = result.deck.slides[0].elements.filter((e) => e.type === 'image');
+  assert.equal(images[0].altText, '产品照片', 'alt rides the element');
+  const srcset = result.report.unsupportedDetails.find((entry) => entry.property === 'srcset');
+  assert.ok(srcset, 'the srcset choice is named');
+});
+
 test('axis bounds, label format and secondary axis spell natively', () => {
   // The three chart attributes were named as unknown; pptxgenjs spells each one,
   // so the honest report was actually hiding native capability.

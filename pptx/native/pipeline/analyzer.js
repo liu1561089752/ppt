@@ -2340,6 +2340,13 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.h = height === null ? width * 0.5625 : height;
     node.src = domNode.attrs.src || null;
     node.alt = domNode.attrs.alt || '';
+    // `srcset` lets the browser pick a source per density or art direction; the
+    // static deck always draws `src`. Same-layout different-pixels is close, but a
+    // different crop silently changes the picture - name the choice.
+    if (domNode.attrs.srcset) {
+      recordUnsupported(ctx, domNode, 'srcset', String(domNode.attrs.srcset),
+        'The deck always draws the src image; the variants srcset offers are not consulted');
+    }
     node.objectFit = (style.objectFit || 'cover').toLowerCase();
     // CSS opacity on a picture is the native alphaModFix: 40% opacity = 60% transparency.
     const imgOpacity = Number(style.opacity);
