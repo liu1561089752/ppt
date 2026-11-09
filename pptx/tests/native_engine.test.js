@@ -6667,6 +6667,24 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('each-line indent is named instead of half-applied', () => {
+  // text-indent: 3em each-line asks for every wrapped line; the native paragraph
+  // indent touches only the first line. The keyword used to silently parse as null
+  // and no indent was drawn with no trace.
+  const build = (indent) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { text-indent: ' + indent + '; width: 200px; font-size: 16px; }',
+    '</style></head><body><main class="slide"><p class="b">每行缩进的长文本，宽度足够小以致换行。</p></main></body></html>'
+  ].join('\n'));
+  const eachLine = build('3em each-line');
+  assert.ok(eachLine.report.unsupportedDetails.some((entry) => entry.property === 'textIndent' && entry.reason.includes('every wrapped line')),
+    'the keyword is named');
+  const plain = build('3em');
+  assert.deepEqual(plain.report.unsupportedDetails.map((entry) => entry.property), [],
+    'a plain first-line indent stays native and silent');
+});
+
 test('decoration style and sub/superscript spell at the run level', async () => {
   // dotted/wavy underlines collapse to a plain one, and vertical-align sub/super
   // carries a baseline offset: both are DrawingML run properties the writer already

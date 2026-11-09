@@ -1266,10 +1266,18 @@ function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx,
   const fontSizePt = Number((fontPx * 0.75).toFixed(2));
   const { multiple } = lineSpacingOf(style, fontPx);
   const built = buildRuns(domNode, Object.assign({ fontSize: fontPx + 'px' }, style), ctx);
-  const textIndent = textIndentOf(style, { parentWidth: availableWidth, fontSizePx: fontPx });
+  let textIndent = textIndentOf(style, { parentWidth: availableWidth, fontSizePx: fontPx });
   const measureOptions = { lineHeight: multiple, safetyFactor: 0.92 };
   const trackingPt = letterSpacingPtOf(style);
   if (trackingPt) measureOptions.letterSpacingPt = trackingPt;
+  // `each-line` would indent every wrapped line; the native paragraph indent touches
+  // only a paragraph's first line. Silently indenting one line while CSS asked for
+  // every line is a fake application, so the keyword is named and no indent drawn.
+  if (/each-line/iu.test(String(style.textIndent || ''))) {
+    recordUnsupported(ctx, domNode, 'textIndent', style.textIndent,
+      'The native paragraph indent touches only the first line; each-line would indent every wrapped line, so no indent is drawn');
+    textIndent = null;
+  }
   // A positive indent narrows the first line, which can add a line. A negative one
   // (a hanging indent) widens it; the box model around it is not modelled, so it is
   // reported instead of half-applied.
