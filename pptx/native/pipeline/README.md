@@ -98,6 +98,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | explicit crop | overflow:hidden + oversized absolute img → fit:crop with source-fraction rect (srcRect in XML); was drawn past its frame silently |
 | white-space pre/pre-wrap | Space runs + line breaks preserved in runs (was reported); normal still collapses |
 | semantic roles tally | report.roles counts title/body/heading/caption/... per deck; DOM→layout recognition probe-verified broad |
+| chart series colours | Painted header cells → per-series chartColors (series order); data-chart-colors keeps precedence |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |

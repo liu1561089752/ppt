@@ -3627,6 +3627,33 @@ function tableRowTexts(domNode) {
     .map((cell) => normalizedText(cell).trim()));
 }
 
+/**
+ * The colour each header cell paints is the colour a design gives that series.
+ * A th styled `.s1 { color: #1C4B57 }` is a per-series colour declaration in the
+ * language a designer actually writes; reading it keeps the chart on the page
+ * palette instead of the theme defaults.
+ */
+function headerSeriesColours(domNode, ctx) {
+  const findFirstRow = (node) => {
+    let found = null;
+    (node.children || []).forEach((child) => {
+      if (child.type !== 'element') return;
+      if (child.tag === 'tr') found = found || child;
+      else if (child.tag === 'thead' || child.tag === 'tbody') found = found || findFirstRow(child);
+    });
+    return found;
+  };
+  const tableNode = findTableNode(domNode);
+  const headerRow = tableNode ? findFirstRow(tableNode) : null;
+  if (!headerRow) return [];
+  return elementChildren(headerRow)
+    .filter((cell) => cell.tag === 'th' || cell.tag === 'td')
+    .map((cell) => {
+      const colour = parseColor(ctx.styles.computed(cell).color);
+      return colour && colour.hex ? colour.hex : null;
+    });
+}
+
 function numericOrZero(value) {
   const cleaned = String(value === undefined || value === null ? '' : value).replace(/[^0-9.\-]/gu, '');
   const parsed = Number(cleaned);
@@ -3679,6 +3706,11 @@ function readChart(domNode, ctx) {
     const seriesCount = Math.max(0, ...body.map((row) => row.length - 1));
     if (seriesCount >= 1) {
       data = [];
+      // Header cells that paint a colour name their series; the list rides in series
+      // order so the chart matches the page palette.
+      const seriesColours = headerSeriesColours(domNode, ctx).slice(1)
+        .filter((colour) => colour);
+      if (seriesColours.length === seriesCount) options.chartColors = seriesColours;
       for (let series = 0; series < seriesCount; series += 1) {
         data.push({
           name: (header[series + 1] || 'Series ' + (series + 1)).trim(),

@@ -6391,3 +6391,47 @@ test('the report tallies the roles a page translated into', () => {
   assert.equal(result.report.textElements >= 4, true);
 });
 
+
+test('header cell colours become the series palette', () => {
+  // A design that paints each column header gives the chart its series colours; the
+  // analyzer reads them in series order. Without this the chart silently fell back to
+  // the theme palette.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  .chart { width: 640px; height: 360px; }',
+    '  .s1 { color: #1C4B57; } .s2 { color: #D98A4B; } .s3 { color: #7A9E93; }',
+    '</style></head><body><main class="slide">',
+    '<div class="chart" data-chart="bar">',
+    '  <table>',
+    '    <tr><th>Q</th><th class="s1">A</th><th class="s2">B</th><th class="s3">C</th></tr>',
+    '    <tr><td>Q1</td><td>1</td><td>2</td><td>3</td></tr>',
+    '    <tr><td>Q2</td><td>4</td><td>5</td><td>6</td></tr>',
+    '  </table>',
+    '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const chart = result.deck.slides[0].elements.find((element) => element.type === 'chart');
+  assert.deepEqual(chart.options.chartColors, ['1C4B57', 'D98A4B', '7A9E93']);
+  assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), []);
+  // An explicit data-chart-colors still wins (it is the more specific spelling).
+  const explicit = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 48px; }',
+    '  .chart { width: 640px; height: 360px; }',
+    '  .s1 { color: #1C4B57; }',
+    '</style></head><body><main class="slide">',
+    '<div class="chart" data-chart="bar" data-chart-colors="#D98A4B,#1C4B57">',
+    '  <table>',
+    '    <tr><th>Q</th><th class="s1">A</th><th>B</th></tr>',
+    '    <tr><td>Q1</td><td>1</td><td>2</td></tr>',
+    '    <tr><td>Q2</td><td>4</td><td>5</td></tr>',
+    '  </table>',
+    '</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const explicitChart = explicit.deck.slides[0].elements.find((element) => element.type === 'chart');
+  assert.deepEqual(explicitChart.options.chartColors, ['D98A4B', '1C4B57'],
+    'the attribute keeps the final say');
+});
+
