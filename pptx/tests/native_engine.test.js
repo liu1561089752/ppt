@@ -6756,6 +6756,30 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('an outline draws alone and is named beside a border', () => {
+  // A native shape carries one line, so an outline declared beside a border used to
+  // vanish without a word.
+  const build = (css) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+      '  .b { width: 200px; height: 80px; ' + css + ' }',
+      '</style></head><body><main class="slide"><div class="b">框</div></main></body></html>'
+    ].join('\n'));
+    return { line: result.deck.slides[0].elements[0].background || {},
+      reported: result.report.unsupportedDetails.map((entry) => entry.property) };
+  };
+
+  const outline = build('outline: 2px dotted #CC0000;');
+  assert.equal(outline.line.lineColor, 'CC0000', 'an outline alone is the shape line');
+  assert.equal(outline.line.lineDash, 'sysDot', 'with its dash');
+  assert.deepEqual(outline.reported, [], 'and no report');
+
+  const both = build('border: 1px solid #0000CC; outline: 3px dotted #CC0000;');
+  assert.equal(both.line.lineColor, '0000CC', 'the border keeps the single line slot');
+  assert.ok(both.reported.includes('outline'), 'and the outline is named, not dropped');
+});
+
 test('text mixed into a nested container keeps its words too', () => {
   // The same anonymous box applies below the root: a div holding a paragraph and
   // some words used to report a loss and drop the words.

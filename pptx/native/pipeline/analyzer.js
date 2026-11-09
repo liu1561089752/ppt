@@ -1795,6 +1795,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   // box instead of floating outside it, and it is named, not hidden.
   const outline = style.outline ? parseBorder({ border: style.outline }) : null;
   const ring = border || (outline && outline.width > 0 ? outline : null);
+  // One line slot per shape: an outline declared beside a border had nowhere to go
+  // and disappeared without a word.
+  if (border && outline && outline.width > 0) {
+    recordUnsupported(ctx, domNode, 'outline', style.outline,
+      'A shape carries one line: the outline sits beside a border here, so the border is what draws');
+  }
   const insetLeft = padding.left + (border ? border.width / 72 : 0);
   const insetTop = padding.top + (border ? border.width / 72 : 0);
   const insetRight = padding.right + (border ? border.width / 72 : 0);
