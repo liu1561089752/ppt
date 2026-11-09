@@ -6114,3 +6114,29 @@ test('open-quote and close-quote print the element quotes', () => {
     '<p class="b">\u524D <em>\u5F3A\u8C03</em> \u540E</p>');
   assert.equal(textOf(arrow), '\u524D \u2192\u5F3A\u8C03 \u540E');
 });
+
+
+
+
+
+
+
+test('z-index decides the paint order of overlapping absolutes', () => {
+  // Higher z paints on top regardless of DOM order - the same stacking CSS gives. Each
+  // absolute becomes a container whose background is the surface shape with a hex fill.
+  const build = (zA, zC) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; position: relative; }',
+    '  .a { position: absolute; top: 40px; left: 40px; z-index: ' + zA + '; width: 200px; height: 100px; background: #17332F; font-size: 20px; }',
+    '  .c { position: absolute; top: 60px; left: 60px; z-index: ' + zC + '; width: 200px; height: 100px; background: #C05B3E; font-size: 20px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="a">dark</div>',
+    '<div class="c">red</div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const fills = (result) => result.deck.slides[0].elements.map((element) => element.background && element.background.fill);
+
+  assert.deepEqual(fills(build(1, 9)), ['17332F', 'C05B3E'], 'dark paints first');
+  assert.deepEqual(fills(build(9, 1)), ['C05B3E', '17332F'], 'the paint order follows z, not the DOM');
+  assert.deepEqual(build(1, 9).report.unsupportedDetails.map((entry) => entry.property), []);
+});
