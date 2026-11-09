@@ -5805,3 +5805,37 @@ test('a relative offset reaches the final PPTX coordinates', async () => {
   }
 });
 
+
+test('inline semantics reach the file: hyperlink, mark, and sub/sup', async () => {
+  // Semantic audit round: every family translated with no reports. The file-level checks
+  // pin the ones a spec-only assertion would miss.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .p { font-size: 16px; }',
+    '</style></head><body><main class="slide">',
+    '<p class="p">见<a href="https://example.com">链接</a>与<mark>高亮</mark>和H<sub>2</sub>O</p>',
+    '</main></body></html>'
+  ].join('\n'));
+  const output = path.join(os.tmpdir(), 'native-semantics-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const rels = await zip.file('ppt/slides/_rels/slide1.xml.rels').async('string');
+    const slide = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(rels.includes('example.com'), 'the hyperlink target is in the relationships');
+    assert.ok(slide.includes('hlinkClick'), 'the run carries the link');
+    assert.ok(slide.includes('<a:highlight><a:srgbClr val="FFFF00"/>'), 'mark paints its yellow');
+    assert.ok(slide.includes('baseline="-40000"'), 'subscript drops the baseline');
+    assert.deepEqual(result.report.unsupportedDetails.map((entry) => entry.property), []);
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
+
