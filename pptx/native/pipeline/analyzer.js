@@ -4593,6 +4593,31 @@ function analyzeHtml(html, options = {}) {
           reason: 'The box clips content that is larger than the box, and a native shape cannot clip its children'
         });
       }
+      // A clipping box that holds an oversized absolute picture is the crop idiom:
+      // the visible part is an intersection, and the native spelling for that
+      // intersection is a crop rectangle in source fractions. Converting keeps the
+      // picture inside its frame instead of drawing past it.
+      if (String((node.style && node.style.overflow) || '').toLowerCase() === 'hidden') {
+        (node.children || []).forEach((child) => {
+          if (!child.absolute || child.tag !== 'img') return;
+          const boxLeft = node.x, boxTop = node.y;
+          const boxRight = node.x + node.w, boxBottom = node.y + node.h;
+          const imgLeft = child.x, imgTop = child.y;
+          const imgRight = child.x + child.w, imgBottom = child.y + child.h;
+          if (imgLeft >= boxLeft - 0.005 && imgTop >= boxTop - 0.005
+            && imgRight <= boxRight + 0.005 && imgBottom <= boxBottom + 0.005) return;
+          const cropLeft = Math.max(0, (boxLeft - imgLeft) / child.w);
+          const cropTop = Math.max(0, (boxTop - imgTop) / child.h);
+          const cropRight = Math.max(0, (imgRight - boxRight) / child.w);
+          const cropBottom = Math.max(0, (imgBottom - boxBottom) / child.h);
+          child.x = Math.max(imgLeft, boxLeft);
+          child.y = Math.max(imgTop, boxTop);
+          child.w = Math.min(imgRight, boxRight) - child.x;
+          child.h = Math.min(imgBottom, boxBottom) - child.y;
+          child.objectFit = 'crop';
+          child.crop = { left: cropLeft, top: cropTop, right: cropRight, bottom: cropBottom };
+        });
+      }
       (node.children || []).forEach(visit);
     };
     slide.nodes.forEach(visit);

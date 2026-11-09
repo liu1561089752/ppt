@@ -50,7 +50,8 @@ const FIT_BY_OBJECT_FIT = {
   contain: 'contain',
   fill: 'stretch',
   none: 'contain',
-  'scale-down': 'contain'
+  'scale-down': 'contain',
+  crop: 'crop'
 };
 
 /** Maximum tolerated deviation (inches) between analyzer and engine boxes. */
@@ -364,6 +365,7 @@ function imageElementFromNode(node) {
     element.lineWidth = node.border.width;
   }
   if (node.transparency !== undefined) element.transparency = node.transparency;
+  if (node.crop) element.crop = node.crop;
   return element;
 }
 

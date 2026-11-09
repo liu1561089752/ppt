@@ -6286,3 +6286,51 @@ test('picture opacity lands as alphaModFix', async () => {
   }
 });
 
+
+test('an oversized absolute picture in a clipping frame becomes a crop', async () => {
+  // overflow: hidden + an absolute picture larger than its frame is the crop idiom. The
+  // visible part is an intersection; the native spelling is a crop rectangle in source
+  // fractions. The picture used to draw past its frame with no clip and no report.
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .frame { position: relative; width: 300px; height: 200px; overflow: hidden; border-radius: 10px; }',
+    '  .frame img { position: absolute; left: -50px; top: -30px; width: 420px; height: 280px; }',
+    '</style></head><body><main class="slide">',
+    '<div class="frame"><img src="stress-photo.png"></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const image = result.deck.slides[0].elements[0];
+  assert.equal(image.fit, 'crop', 'the fit names the crop');
+  // The fractions come from layout inches, so they carry float noise; compare with
+  // a tolerance.
+  assert.ok(Math.abs(image.crop.left - 50 / 420) < 1e-6, 'left crop = 50px of 420');
+  assert.ok(Math.abs(image.crop.top - 30 / 280) < 1e-6, 'top crop = 30px of 280');
+  assert.ok(Math.abs(image.crop.right - 70 / 420) < 1e-6, 'right crop = 70px of 420');
+  assert.ok(Math.abs(image.crop.bottom - 50 / 280) < 1e-6, 'bottom crop = 50px of 280');
+  assert.equal(Number((image.w * 96).toFixed(1)), 300, 'the picture is the frame size');
+  // Rebase the relative url onto the fixture directory, as the CLI does.
+  const imageWalk = (element) => {
+    if (element.type === 'image' && element.path && !path.isAbsolute(element.path)) {
+      element.path = path.join(__dirname, '..', 'examples', element.path);
+    }
+    (element.children || []).forEach(imageWalk);
+  };
+  result.deck.slides.forEach((slide) => (slide.elements || []).forEach(imageWalk));
+  const output = path.join(os.tmpdir(), 'native-crop-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    assert.ok(/<a:srcRect l="11905" t="10714" r="16667" b="17857"\/>/u.test(xml),
+      'the written srcRect carries the crop fractions');
+  } finally {
+    if (fs.existsSync(output)) fs.unlinkSync(output);
+  }
+});
+
