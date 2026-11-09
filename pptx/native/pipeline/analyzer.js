@@ -1142,6 +1142,13 @@ function buildRuns(domNode, baseStyle, ctx) {
       pushText(normalizedText(node), merged, inline);
       return;
     }
+    // A closed <details> shows only its summary; the collapsed content lives in the
+    // browser's disclosure widget, which a static mock also keeps closed.
+    if (node.tag === 'details' && node.attrs && node.attrs.open === undefined) {
+      (node.children || []).filter((child) => child.type === 'element' && child.tag === 'summary')
+        .forEach((summary) => visit(summary, merged, inline));
+      return;
+    }
     node.children.forEach((child) => visit(child, merged, inline));
     if (inlinePseudoRuns.after) pushText(inlinePseudoRuns.after, null, inline);
   };
@@ -1184,6 +1191,13 @@ function buildRuns(domNode, baseStyle, ctx) {
     // every option out loud. Push the visible label and stop.
     pushText(normalizedText(domNode), baseStyle, null);
     return { runs, text: runs.map((run) => run.text).join(''), hasFormatting: false };
+  }
+  // A closed <details> at the element level: only its summary joins the line.
+  if (domNode.tag === 'details' && domNode.attrs && domNode.attrs.open === undefined) {
+    (domNode.children || []).filter((child) => child.type === 'element' && child.tag === 'summary')
+      .forEach((summary) => visit(summary, baseStyle, null));
+    pseudoRun('after');
+    return { runs, text: runs.map((run) => run.text).join(''), hasFormatting: runs.some((run) => run.options) };
   }
   (domNode.children || []).forEach((child) => visit(child, baseStyle, null));
   pseudoRun('after');
@@ -2595,7 +2609,11 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
   const anchorBox = (inherited && inherited.parentPaddingBox) || contentBox;
   const nodes = [];
   let cursor = contentBox.y;
+  const closedDetails = domNode.tag === 'details' && domNode.attrs && domNode.attrs.open === undefined;
   const visible = elementChildren(domNode).filter((child) => {
+    // A closed <details> shows only its summary; the collapsed content draws in the
+    // browser's disclosure widget only.
+    if (closedDetails && child.tag !== 'summary') return false;
     const childStyle = ctx.styles.computed(child);
     return childStyle.display !== 'none';
   });

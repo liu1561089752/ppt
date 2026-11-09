@@ -183,6 +183,12 @@ const optionTextOf = (node) => (node.children || []).map((child) => child.type =
 function textContent(node) {
   if (!node) return '';
   if (node.type === 'text') return node.text;
+  // A closed <details> shows only its summary; the collapsed content lives in the
+  // browser's disclosure widget, which a static mock also keeps closed.
+  if (node.tag === 'details' && node.attrs && node.attrs.open === undefined) {
+    const summary = (node.children || []).find((child) => child.type === 'element' && child.tag === 'summary');
+    return summary ? textContent(summary) : '';
+  }
   // Form controls show text a static mock also shows: the placeholder and the
   // option labels. Without this they drew as empty boxes with the visible words
   // silently gone.

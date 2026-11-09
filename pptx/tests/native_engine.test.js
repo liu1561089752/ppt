@@ -6667,6 +6667,28 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('a closed details keeps its content collapsed', () => {
+  // The browser hides the content of a closed <details>; the deck drew it anyway -
+  // words the mock does not show.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<details><summary>标题</summary>内容正文</details>',
+    '<details open><summary>打开</summary>显示正文</details>',
+    '</main></body></html>'
+  ].join('\n'));
+  const texts = [];
+  const walk = (element) => {
+    if (element.text) texts.push(String(Array.isArray(element.text) ? element.text.map((run) => run.text).join('') : element.text));
+    (element.children || []).forEach(walk);
+  };
+  result.deck.slides[0].elements.forEach(walk);
+  const joined = texts.join('');
+  assert.ok(joined.includes('标题') && !joined.split('打开')[0].includes('内容正文'), 'the collapsed content stays hidden');
+  assert.ok(joined.includes('显示正文'), 'the open details keeps its content');
+});
+
 test('a list nested without an li still renders its items', () => {
   // Loose markup nests one list directly inside another; the browser renders the
   // items, and the walk silently dropped them.
