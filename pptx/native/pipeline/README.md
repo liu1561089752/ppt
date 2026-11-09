@@ -133,6 +133,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | absolute left+right | the box stretches between the insets (was hugging its content) |
 | table cell radius | named (no corner geometry in the file format; once per table) |
 | nested list markers | each level keeps its own marker language (was the outer marker everywhere) |
+| loose list nesting | a list directly inside another still renders its items (was dropped) |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 

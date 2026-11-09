@@ -6667,6 +6667,23 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('a list nested without an li still renders its items', () => {
+  // Loose markup nests one list directly inside another; the browser renders the
+  // items, and the walk silently dropped them.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<ul><li>外</li><ul><ol><li>内一</li></ol></ul></ul>',
+    '</main></body></html>'
+  ].join('\n'));
+  const element = result.deck.slides[0].elements[0];
+  const nested = element.text.find((run) => run.text === '内一');
+  assert.ok(nested, 'the loosely nested item survives');
+  assert.equal(nested.options.indentLevel, 2, 'two levels in');
+  assert.equal(nested.options.bullet.type, 'number', 'and counts like its ol');
+});
+
 test('a nested list keeps its own marker language', () => {
   // The browser switches markers per level: an ol inside a ul counts, a ul inside
   // an ol rounds. The deck stamped the outer marker on every line.

@@ -4363,6 +4363,10 @@ function readListItems(domNode, level = 0, out = [], parentOrdered = null) {
     elementChildren(item).filter((child) => child.tag === 'ul' || child.tag === 'ol')
       .forEach((nested) => readListItems(nested, level + 1, out, ordered));
   });
+  // Loose markup nests one list directly inside another (a ul inside a ul with no
+  // li between). The browser still renders its items, so the walk follows it.
+  elementChildren(domNode).filter((child) => child.tag === 'ul' || child.tag === 'ol')
+    .forEach((nested) => readListItems(nested, level + 1, out, ordered));
   return out;
 }
 
