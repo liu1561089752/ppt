@@ -6667,6 +6667,36 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('axis bounds, label format and secondary axis spell natively', () => {
+  // The three chart attributes were named as unknown; pptxgenjs spells each one,
+  // so the honest report was actually hiding native capability.
+  const build = (attrs) => {
+    const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '</style></head><body><main class="slide">',
+    '<table class="chart" data-chart="bar" ' + attrs + '>',
+    '<thead><tr><th>季度</th><th>收入</th></tr></thead>',
+    '<tbody><tr><td>Q1</td><td>320</td></tr><tr><td>Q2</td><td>418</td></tr></tbody>',
+    '</table>',
+    '</main></body></html>'
+  ].join('\n'));
+    return {
+      chart: result.deck.slides[0].elements.find((e) => e.type === 'chart'),
+      report: result.report
+    };
+  };
+  const bounded = build('data-chart-y-min="0" data-chart-y-max="100"');
+  assert.equal(bounded.chart.options.valAxisMinVal, 0, 'min rides the options');
+  assert.equal(bounded.chart.options.valAxisMaxVal, 100, 'max rides the options');
+  const formatted = build('data-chart-label-format="0.0%"');
+  assert.equal(formatted.chart.options.dataLabelFormatCode, '0.0%', 'the format code rides');
+  const secondary = build('data-chart-secondary-axis="true"');
+  assert.equal(secondary.chart.options.secondaryValAxis, true, 'the secondary axis rides');
+  const clean = build('');
+  assert.equal(clean.report.unsupportedDetails.length, 0, 'a plain chart stays silent');
+});
+
 test('form controls show the words the mock shows', () => {
   // An input drew an empty box: the placeholder lived in an attribute no text path
   // read. A select read EVERY option out loud - the labels sit behind the dropdown

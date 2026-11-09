@@ -3909,7 +3909,8 @@ function applyChartStyling(attrs, options, domNode, ctx) {
     'data-chart-legend', 'data-chart-title', 'data-chart-grid', 'data-chart-grouping',
     'data-chart-dir', 'data-chart-text-color', 'data-values', 'data-labels',
     'data-chart-gap-width', 'data-chart-smooth', 'data-chart-cat-label-rotate',
-    'data-chart-hole-size', 'data-chart-legend-font-size']);
+    'data-chart-hole-size', 'data-chart-legend-font-size', 'data-chart-y-min',
+    'data-chart-y-max', 'data-chart-label-format', 'data-chart-secondary-axis']);
   Object.keys(attrs).filter((name) => name.startsWith('data-chart-') && !KNOWN_CHART_ATTRS.has(name))
     .forEach((name) => {
       recordUnsupported(ctx, domNode, name, String(attrs[name]),
@@ -4023,6 +4024,31 @@ function applyChartStyling(attrs, options, domNode, ctx) {
     const value = Number(legendFontSize);
     if (Number.isFinite(value) && value > 0) options.legendFontSize = value;
     else recordUnsupported(ctx, domNode, 'data-chart-legend-font-size', legendFontSize, 'Use a font size in points');
+  }
+  // Axis bounds, a data-label number format and a secondary axis all carry native
+  // spellings the reader honours.
+  const yMin = attrs['data-chart-y-min'];
+  if (yMin !== undefined) {
+    const value = Number(yMin);
+    if (Number.isFinite(value)) options.valAxisMinVal = value;
+    else recordUnsupported(ctx, domNode, 'data-chart-y-min', yMin, 'Use a number');
+  }
+  const yMax = attrs['data-chart-y-max'];
+  if (yMax !== undefined) {
+    const value = Number(yMax);
+    if (Number.isFinite(value)) options.valAxisMaxVal = value;
+    else recordUnsupported(ctx, domNode, 'data-chart-y-max', yMax, 'Use a number');
+  }
+  const labelFormat = attrs['data-chart-label-format'];
+  if (labelFormat !== undefined) {
+    if (String(labelFormat).trim()) options.dataLabelFormatCode = String(labelFormat).trim();
+    else recordUnsupported(ctx, domNode, 'data-chart-label-format', labelFormat, 'Use an Excel number format code');
+  }
+  const secondary = attrs['data-chart-secondary-axis'];
+  if (secondary !== undefined) {
+    if (/^(true|on)$/iu.test(String(secondary).trim())) options.secondaryValAxis = true;
+    else if (/^(false|off)$/iu.test(String(secondary).trim())) options.secondaryValAxis = false;
+    else recordUnsupported(ctx, domNode, 'data-chart-secondary-axis', secondary, 'Use true or false');
   }
   const labelRotate = attrs['data-chart-cat-label-rotate'];
   if (labelRotate !== undefined) {
