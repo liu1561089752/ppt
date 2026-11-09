@@ -4505,6 +4505,21 @@ function readTableCell(cell, ctx, rowBackground) {
   if (String(style.fontStyle || '').toLowerCase() === 'italic') options.italic = true;
   const spacingPt = letterSpacingPtOf(style);
   if (spacingPt) options.charSpacing = spacingPt;
+  // The row height is measured with the cell's line spacing, so the drawn cell has to
+  // carry it too - otherwise a 1.6 cell is measured tall and drawn single spaced. The
+  // writer spells both halves of `a:lnSpc`, so points win when CSS gave a length.
+  const cellLineSpacing = lineSpacingOf(style, fontSizePt);
+  if (cellLineSpacing.explicit) options.lineSpacing = Number((cellLineSpacing.explicit * 72).toFixed(2));
+  else if (cellLineSpacing.multiple && Math.abs(cellLineSpacing.multiple - 1) > 0.01) {
+    options.lineSpacingMultiple = cellLineSpacing.multiple;
+  }
+  // A table cell has no per-cell wrap switch in the writer, so `nowrap` is named once
+  // per table instead of quietly re-wrapping the line the design forbade.
+  if (/^(nowrap|pre)$/u.test(String(style.whiteSpace || '').trim().toLowerCase()) && !ctx.cellNowrapNamed) {
+    ctx.cellNowrapNamed = true;
+    recordUnsupported(ctx, cell, 'whiteSpace', style.whiteSpace,
+      'A table cell has no wrap switch: the line may re-wrap inside its column');
+  }
   if (colspan > 1) options.colspan = colspan;
   if (rowspan > 1) options.rowspan = rowspan;
   return {
@@ -4742,7 +4757,9 @@ function readTable(domNode, ctx, contentWidth) {
     metrics.push(rowMetrics);
   });
 
-  const colWidths = resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, 16);
+  let colWidths = resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, 16);
+  // Nothing declared: the browser's own answer, measured from the cells.
+  if (!colWidths) colWidths = intrinsicColumnWidths(metrics, columns, contentWidth);
   // A row is as tall as its tallest cell: the measured line boxes plus the padding the
   // CSS declared. `rowH` then makes PowerPoint draw that height instead of its own
   // guess, so the reserved box and the drawing agree instead of drifting apart.
@@ -4778,6 +4795,76 @@ function readTable(domNode, ctx, contentWidth) {
   let headerRows = 0;
   while (headerRows < rowNodes.length && rowNodes[headerRows].header) headerRows += 1;
   return { rows, columns, colWidths, rowHeights, headerRows };
+}
+
+/**
+ * Column widths for a table that declares none. A browser does not divide the width
+ * evenly: it measures every cell, takes each column's widest line (max-content) and its
+ * narrowest unbreakable piece (min-content), then shares the table out - extra space in
+ * proportion to max-content, missing space between min and max. Dividing evenly made a
+ * 60px label column 350px wide and wrapped a sentence the browser kept on one line.
+ */
+function intrinsicColumnWidths(metrics, columns, contentWidth) {
+  const maxContent = new Array(columns).fill(0);
+  const minContent = new Array(columns).fill(0);
+  const narrowest = (text, fontSizePt) => {
+    // CJK breaks between characters, so its narrowest piece is one character; a Latin
+    // word only breaks at a space, so the whole word is the narrowest it can be.
+    let widest = 0;
+    String(text).split(/\s+/u).filter(Boolean).forEach((token) => {
+      if (/[\u3400-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/u.test(token)) {
+        [...token].forEach((character) => {
+          widest = Math.max(widest, measureTextPt(character, fontSizePt));
+        });
+      } else {
+        widest = Math.max(widest, measureTextPt(token, fontSizePt));
+      }
+    });
+    return widest;
+  };
+  metrics.forEach((cells) => {
+    cells.forEach((cell) => {
+      // A spanning cell does not name one column; leaving it out is the approximation,
+      // and the columns it spans are shared out afterwards.
+      if ((cell.colspan || 1) > 1) return;
+      const column = Number(cell.column) || 0;
+      if (column >= columns) return;
+      const padding = (cell.paddingLeft || 0) + (cell.paddingRight || 0);
+      const widest = measureTextPt(cell.text, cell.fontSizePt) / 72 + padding;
+      const narrowestCell = narrowest(cell.text, cell.fontSizePt) / 72 + padding;
+      maxContent[column] = Math.max(maxContent[column], widest);
+      minContent[column] = Math.max(minContent[column], narrowestCell);
+    });
+  });
+  const live = maxContent.map((value, index) => value > 0 ? index : -1).filter((index) => index >= 0);
+  if (!live.length) return null;
+  // A column with no plain cell keeps an equal share of what is left.
+  const empty = columns - live.length;
+  const budget = contentWidth / columns;
+  maxContent.forEach((value, index) => {
+    if (value > 0) return;
+    maxContent[index] = budget;
+    minContent[index] = budget;
+  });
+  const totalMax = maxContent.reduce((sum, value) => sum + value, 0);
+  const totalMin = minContent.reduce((sum, value) => sum + value, 0);
+  let widths;
+  if (totalMax <= 0) return null;
+  if (contentWidth >= totalMax) {
+    // Space to spare: handed out in proportion to how wide each column wants to be.
+    const scale = contentWidth / totalMax;
+    widths = maxContent.map((value) => value * scale);
+  } else if (contentWidth <= totalMin) {
+    const scale = contentWidth / totalMin;
+    widths = minContent.map((value) => value * scale);
+  } else {
+    // Between the two: every column keeps its narrowest piece and shares the rest.
+    const room = contentWidth - totalMin;
+    const slack = totalMax - totalMin;
+    const share = slack > 0 ? room / slack : 0;
+    widths = maxContent.map((value, index) => minContent[index] + (value - minContent[index]) * share);
+  }
+  return widths;
 }
 
 /** Width of the columns a cell spans, from the resolved track widths. */

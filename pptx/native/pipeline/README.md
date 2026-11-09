@@ -154,6 +154,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | scatter | native - first numeric column is x, the rest are y series; scatterStyle corrected to marker |
 | data-chart-secondary-axis | named - the writer emits one value axis only |
 | object-fit: none | native - source pixel size (96 px/in), slot clips the overflow as a source rectangle |
+| undeclared column widths | min/max-content split matching Chrome (verified against getBoundingClientRect) |
+| cell line-height | native a:lnSpc per cell (spcPct or spcPts) |
+| cell white-space: nowrap | named once per table - no per-cell wrap switch in the writer |
 | object-fit: scale-down | native - contain that never enlarges |
 | object-fit (undeclared) | drawn cover-cropped and named where a fixed box makes the crop possible |
 | data-chart-smooth | named on chart shapes without a line |

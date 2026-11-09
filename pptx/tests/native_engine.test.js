@@ -5148,6 +5148,94 @@ test('justify-content: space-evenly gives every gap the same width', () => {
   assert.ok(evenly[0] > evened[0], 'space-evenly is not space-around in disguise');
 });
 
+test('a table cell carries its line spacing, and names the wrap it cannot switch', async () => {
+  // The row height was measured with the cell's line spacing while the drawn cell used
+  // single spacing - measured tall, drawn tight. The writer does spell both halves of
+  // a:lnSpc for a cell, so points win when CSS gave a length. A cell has no per-cell wrap
+  // switch, and that is named once per table instead of quietly re-wrapping the line.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { width: 700px; border-collapse: collapse; }',
+    '  td { font-size: 15px; padding: 10px; }',
+    css,
+    '</style></head><body><main class="slide"><table><tr><td class="x">间距检验</td></tr></table></main></body></html>'
+  ].join('\n'));
+  const cellXml = async (css) => {
+    const result = build(css);
+    const output = path.join(os.tmpdir(), 'native-cell-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    return { cell: (/<a:tc>[\s\S]*?间距检验[\s\S]*?<\/a:tc>/u.exec(xml) || [''])[0], report: result.report };
+  };
+
+  const multiple = await cellXml('td.x { line-height: 1.6; }');
+  assert.match(multiple.cell, /<a:lnSpc><a:spcPct val="160000"\/>/u, '1.6 is 160% line spacing');
+
+  const points = await cellXml('td.x { line-height: 26px; }');
+  assert.match(points.cell, /<a:lnSpc><a:spcPts val="1950"\/>/u, '26px is 19.5pt');
+
+  const nowrap = await cellXml('td.x { white-space: nowrap; }');
+  const named = nowrap.report.unsupportedDetails.filter((entry) => entry.property === 'whiteSpace');
+  assert.equal(named.length, 1, 'nowrap in a cell is named once');
+  assert.match(named[0].reason, /no wrap switch/u, named[0].reason);
+  assert.equal((nowrap.report.unsupportedDetails.filter((entry) => entry.property === 'whiteSpace')).length, 1,
+    'and not once per cell');
+});
+
+test('an undeclared table shares its width the way the browser does', () => {
+  // A table that declares no widths used to be split evenly, which made a 60px label
+  // column 350px wide and wrapped a sentence Chrome kept on one line. Chrome measures
+  // each column's widest line and shares the table out; these numbers are what Chrome
+  // reported for each case (getBoundingClientRect on the first row's cells).
+  const build = (rows) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 0; }',
+    '  table { width: 700px; border-collapse: collapse; }',
+    '  td { font-size: 15px; padding: 10px 12px; border-bottom: 1px solid #ccc; }',
+    '</style></head><body><main class="slide"><table>',
+    rows.map((cells) => '<tr>' + cells.map((text) => '<td>' + text + '</td>').join('') + '</tr>').join(''),
+    '</table></main></body></html>'
+  ].join('\n'));
+  const widths = (rows) => {
+    const table = build(rows).deck.slides[0].elements.find((entry) => entry.type === 'table');
+    return table.options.colW.map((value) => Math.round(value * 96 * 100) / 100);
+  };
+  const near = (actual, expected, message) => {
+    assert.equal(actual.length, expected.length, message + ': column count');
+    actual.forEach((value, index) => {
+      assert.ok(Math.abs(value - expected[index]) <= 1,
+        message + ': column ' + index + ' is ' + value + ', Chrome said ' + expected[index]);
+    });
+  };
+
+  near(widths([['项目', '这一单元格的行距是一点六倍，用于检验行距是否写进文件而不是只用于测量高度。']]),
+    [59.7, 640.3], 'a label beside a sentence');
+  near(widths([['编号', '名称', '说明文字稍微长一些并会换行显示的内容']]), [94.02, 94.02, 511.97], 'three columns');
+  near(widths([['甲', '乙', '丙']]), [233.33, 233.33, 233.34], 'nothing to measure: an even split');
+  near(widths([['第一列稍微长一点点', '短']]), [562.11, 137.89], 'the wider column keeps the room');
+
+  // A declared width still wins: the browser's answer only fills the gap.
+  const declared = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  table { width: 700px; } td { font-size: 15px; padding: 0; }',
+    '  td.a { width: 200px; } td.b { width: 500px; }',
+    '</style></head><body><main class="slide"><table>',
+    '<tr><td class="a">甲</td><td class="b">乙</td></tr></table></main></body></html>'
+  ].join('\n'));
+  const declaredWidths = declared.deck.slides[0].elements.find((entry) => entry.type === 'table')
+    .options.colW.map((value) => Math.round(value * 96));
+  assert.deepEqual(declaredWidths, [200, 500], 'a declared column width is kept');
+});
+
 test('object-fit none keeps the source size and scale-down refuses to grow', () => {
   // CSS: `none` draws the source at its own pixel size and lets the slot clip it;
   // `scale-down` is contain that never enlarges. Both used to be drawn as contain,
