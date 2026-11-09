@@ -6746,6 +6746,36 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('the chart grid is read per axis', () => {
+  // A grid is asked for per axis: y is what the theme already draws, x is the other
+  // one, both is both. The single true/false spelling stopped reading the axis
+  // letters and named them as unknown instead.
+  const chartOf = (grid) => {
+    const html = [
+      '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style></head><body><main class="slide">',
+      '<div style="width: 800px; height: 400px;"><table class="chart" data-chart="bar"'
+        + (grid === null ? '' : ' data-chart-grid="' + grid + '"') + '>',
+      '<tr><th>月</th><th>A</th></tr><tr><td>一</td><td>10</td></tr></table></div>',
+      '</main></body></html>'
+    ].join('\n');
+    const result = pipeline.convertHtml(html);
+    const chart = result.deck.slides[0].elements[0].children.find((child) => child.type === 'chart');
+    return { options: (chart && chart.options) || {}, reported: result.report.unsupportedDetails.map((entry) => entry.property) };
+  };
+
+  assert.deepEqual(chartOf('y').options.catGridLine, undefined,
+    'y asks for the value lines the theme already draws');
+  assert.deepEqual(chartOf('y').reported, [], 'and is not named as unknown');
+  assert.deepEqual(chartOf('x').options.catGridLine, { style: 'solid' },
+    'x turns the category lines on');
+  assert.deepEqual(chartOf('both').options.catGridLine, { style: 'solid' });
+  assert.deepEqual(chartOf('none').options.valGridLine, { style: 'none' },
+    'none turns both off');
+  assert.deepEqual(chartOf('none').options.catGridLine, { style: 'none' });
+  assert.deepEqual(chartOf('diagonal').reported, ['data-chart-grid'],
+    'a spelling with no meaning is named');
+});
+
 test('collapsed borders name the edges the cells disagree on', () => {
   const html = (css) => [
     '<html><head><style>',

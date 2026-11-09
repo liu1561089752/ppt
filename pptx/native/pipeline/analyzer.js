@@ -4165,10 +4165,23 @@ function applyChartStyling(attrs, options, domNode, ctx) {
 
   const grid = attrs['data-chart-grid'];
   if (grid !== undefined) {
-    const value = String(grid).trim().toLowerCase();
-    if (value === 'false' || value === 'none' || value === 'off') options.valGridLine = { style: 'none' };
-    else if (value === 'true' || value === 'on') { /* the theme gridline already applies */ }
-    else recordUnsupported(ctx, domNode, 'data-chart-grid', value, 'Use true or false');
+    // The grid a design asks for is per axis: `y` is the horizontal lines a column
+    // chart reads against, `x` the vertical ones. The theme already draws the value
+    // axis lines, so `y` says nothing new and stays silent.
+    const value = String(grid).trim().toLowerCase().replace(/\s+/gu, ' ');
+    const wantsX = /^(x|cat|category|vertical|x y|y x|both|all)$/u.test(value);
+    const wantsY = /^(y|value|values|horizontal|true|on|x y|y x|both|all)$/u.test(value);
+    const wantsNone = /^(false|none|off|no|0)$/u.test(value);
+    if (wantsNone) {
+      options.valGridLine = { style: 'none' };
+      options.catGridLine = { style: 'none' };
+    } else if (wantsX || wantsY) {
+      if (wantsX) options.catGridLine = { style: 'solid' };
+      // `y` alone is what the theme draws already; naming it adds nothing.
+    } else {
+      recordUnsupported(ctx, domNode, 'data-chart-grid', value,
+        'Use y, x, both, true or false');
+    }
   }
 
   const grouping = attrs['data-chart-grouping'];

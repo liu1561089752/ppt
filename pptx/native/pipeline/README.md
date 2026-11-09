@@ -139,6 +139,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | object-position crop focus | native - both axes at 1% granularity, kept fraction constant |
 | object-fit: none / scale-down | named - no native "natural size and clip" switch |
 | collapsed border conflicts | named when two cells declare different edges on a shared line (one painted side stays silent) |
+| data-chart-grid | per axis: y (theme default, silent), x, both, none; an unknown word is named |
 | table-layout: fixed | native - colW plus the fixed flag |
 | vertical-align / single-side cell borders | native - valign and a four-entry border array |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
