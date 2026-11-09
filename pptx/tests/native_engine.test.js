@@ -6746,6 +6746,34 @@ test('a nested list keeps its own marker language', () => {
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
 });
 
+test('collapsed borders name the edges the cells disagree on', () => {
+  const html = (css) => [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '  table { width: 600px; border-collapse: collapse; }',
+    css,
+    '</style></head><body><main class="slide">',
+    '<table><tr><td>甲</td><td>乙</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n');
+  const named = (css) => pipeline.convertHtml(html(css)).report.unsupportedDetails
+    .filter((entry) => entry.property === 'borderCollapse');
+
+  // The browser resolves a shared edge to ONE line; a native cell keeps its own edge,
+  // so two different declarations are named.
+  const conflict = named('td:nth-child(1) { border-right: 1px solid #C00; } td:nth-child(2) { border-left: 3px solid #00C; }');
+  assert.equal(conflict.length, 1, 'the disagreement is named once');
+  assert.match(conflict[0].reason, /1px|0\.75pt/u, 'the reason quotes the losing edge');
+  assert.match(conflict[0].reason, /2\.25pt/u, 'and the winning one');
+
+  // One painted edge and one bare edge is what the collapse draws anyway: the union of
+  // the two declarations is the line the browser shows, so it stays silent.
+  assert.deepEqual(named('td:nth-child(1) { border-right: 1px solid #C00; }'), [],
+    'a single painted edge needs no report');
+  assert.deepEqual(named('td { border: 1px solid #333; }'), [],
+    'agreeing cells need no report');
+});
+
 test('a table cell radius is named as squaring off', () => {
   // An OOXML table cell has no corner geometry; the styled radius drew nothing
   // silently.

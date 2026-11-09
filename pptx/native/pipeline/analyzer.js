@@ -2470,6 +2470,18 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.colWidths = table.colWidths;
     node.rowHeights = table.rowHeights;
     if (table.headerRows) node.headerRows = table.headerRows;
+    // `border-collapse: collapse` makes the two declarations on a shared edge into
+    // ONE line, and the browser picks the winner. The file format has no collapse
+    // pass - each cell keeps its own edges - so a disagreement is named instead of
+    // drawn twice.
+    if (String(style.borderCollapse || '').toLowerCase() === 'collapse') {
+      const conflicts = collapsedBorderConflicts(table.rows);
+      if (conflicts) {
+        recordUnsupported(ctx, domNode, 'borderCollapse', style.borderCollapse,
+          'Collapsed borders resolve to one line in the browser; adjacent cells disagree on '
+          + conflicts + ', and a native table cell keeps both edges');
+      }
+    }
     // The height a declared CSS table already knows; otherwise the rows measured from
     // their real padding and line boxes, so the box reserved here matches what is drawn.
     const estimatedRows = (table.rowHeights || []).reduce((sum, height) => sum + height, 0);
@@ -4293,6 +4305,48 @@ function borderWidthPt(value) {
  * One `<td>`/`<th>`: the text, the cell options PowerPoint understands, the span it
  * covers, and the numbers a row height needs later.
  */
+/**
+ * The edges two neighbouring cells share, when they disagree. CSS collapse picks one
+ * line for a shared edge (wider first, then style, then the earlier cell); a native
+ * table keeps a declaration on each cell, so the disagreement is the honest report.
+ */
+function collapsedBorderConflicts(rows) {
+  const edgeOf = (cell, index) => {
+    const border = cell && cell.options && cell.options.border;
+    if (!border) return null;
+    const edge = Array.isArray(border) ? border[index] : border;
+    if (!edge || edge.type === 'none') return null;
+    return { type: edge.type || 'solid', color: edge.color || '000000', pt: edge.pt === undefined ? 1 : edge.pt };
+  };
+  // One painted edge and one bare edge is what the collapse draws anyway: the union of
+  // the two declarations is the line the browser shows. Only two different declared
+  // edges are a real disagreement.
+  const same = (a, b) => {
+    if (!a || !b) return true;
+    return a.type === b.type && a.color === b.color && Math.abs(a.pt - b.pt) < 0.01;
+  };
+  const describe = (a, b) => (a ? a.pt + 'pt ' + a.type + ' ' + a.color : 'no border')
+    + ' against ' + (b ? b.pt + 'pt ' + b.type + ' ' + b.color : 'no border');
+  let seen = '';
+  (rows || []).forEach((row, rowIndex) => {
+    (row || []).forEach((cell, colIndex) => {
+      const right = (row || [])[colIndex + 1];
+      if (right) {
+        const mine = edgeOf(cell, 1);
+        const theirs = edgeOf(right, 3);
+        if (!same(mine, theirs) && !seen) seen = describe(mine, theirs) + ' on one shared vertical edge';
+      }
+      const below = (rows || [])[rowIndex + 1] && rows[rowIndex + 1][colIndex];
+      if (below) {
+        const mine = edgeOf(cell, 2);
+        const theirs = edgeOf(below, 0);
+        if (!same(mine, theirs) && !seen) seen = describe(mine, theirs) + ' on one shared horizontal edge';
+      }
+    });
+  });
+  return seen;
+}
+
 function readTableCell(cell, ctx, rowBackground) {
   const style = ctx.styles.computed(cell);
   const color = parseColor(style.color);
