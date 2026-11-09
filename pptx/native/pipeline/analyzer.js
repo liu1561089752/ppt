@@ -2142,6 +2142,10 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       // 1. 2. 3. Falling through to the round-bullet default drew a bullet where the
       // design asked for a count, so the ordered tag seeds decimal.
       const orderedTag = String(domNode.tag || '').toLowerCase() === 'ol';
+      // The `type` attribute is the ordered list's own marker language: A/a/I/i/1.
+      const typeAttr = String((domNode.attrs && domNode.attrs.type) || '').trim();
+      const TYPE_STYLES = { A: 'upper-alpha', a: 'lower-alpha', I: 'upper-roman', i: 'lower-roman', '1': 'decimal' };
+      if (orderedTag && !listStyle && TYPE_STYLES[typeAttr]) listStyle = TYPE_STYLES[typeAttr];
       if (orderedTag && !listStyle) listStyle = 'decimal';
       // MARKER_CHARS follows:
       const MARKER_CHARS = { disc: '2022', circle: '25CB', square: '25AA' };
@@ -2164,6 +2168,13 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       if (node.bullet && node.bullet.type === 'number' && domNode.attrs) {
         const startAt = Number(domNode.attrs.start);
         if (Number.isFinite(startAt) && startAt > 0) node.bullet.startAt = startAt;
+        // The first item's `value` is the same request spelled on the item: the
+        // count starts there.
+        const firstItem = (domNode.children || []).find((child) => child.tag === 'li');
+        if (!Number.isFinite(Number(domNode.attrs.start))) {
+          const itemValue = Number(firstItem && firstItem.attrs && firstItem.attrs.value);
+          if (Number.isFinite(itemValue) && itemValue > 0) node.bullet.startAt = itemValue;
+        }
         if (domNode.attrs.reversed !== undefined) {
           recordUnsupported(ctx, domNode, 'reversed', domNode.attrs.reversed === null ? '' : String(domNode.attrs.reversed),
             'The native numbered list counts up; there is no reverse switch, so the numbering would read in the wrong order');
@@ -2212,6 +2223,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
             // properties from the run it closes the paragraph on, which is the last one,
             // so a bullet only on the first run lost the first item of every list.
             options.bullet = markerOption || true;
+            // `value="7"` starts that item's count at 7; the reader spells it as
+            // the paragraph's own buAutoNum startAt.
+            if (item.node && item.node.attrs && item.node.attrs.value !== undefined) {
+              const startAt = Number(item.node.attrs.value);
+              if (Number.isFinite(startAt) && startAt > 0) options.bullet = Object.assign({}, options.bullet, { startAt });
+            }
             if (item.level > 0) options.indentLevel = item.level;
             if (runIndex === runs.length - 1 && index < itemRuns.length - 1) options.breakLine = true;
             flat.push(Object.keys(options).length ? { text: run.text, options } : { text: run.text });

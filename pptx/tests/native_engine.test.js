@@ -6667,6 +6667,24 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('ol type and li value ride the native numbering', () => {
+  // type="A" drew arabic digits and value="7" started at 1: both attributes name
+  // the marker language and the count, which the native bullet carries.
+  const build = (markup) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide">' + markup + '</main></body></html>'
+  ].join('\n')).deck.slides[0].elements[0];
+  assert.equal(build('<ol type="A"><li>甲</li></ol>').bullet.style, 'alphaUcPeriod', 'A numbers as upper alpha');
+  assert.equal(build('<ol type="i"><li>一</li></ol>').bullet.style, 'romanLcPeriod', 'i numbers as lower roman');
+  assert.equal(build('<ol><li value="7">七</li></ol>').bullet.startAt, 7, 'value starts the count');
+  // A start attribute still outranks the item value when both are spelled.
+  assert.equal(build('<ol start="3"><li value="7">七</li></ol>').bullet.startAt, 3, 'start wins over value');
+  // dl keeps its definition-list shape without bullets.
+  const dl = build('<dl><dt>术语</dt><dd>释义</dd></dl>');
+  assert.ok(!dl.bullet, 'dl terms carry no bullet');
+});
+
 test('q paints its quotes like the browser does', () => {
   // The browser synthesizes open/close quotes around <q> content; the deck drew the
   // bare words, silently dropping glyphs the mock shows.
