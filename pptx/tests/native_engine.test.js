@@ -6724,3 +6724,22 @@ test('merged cells round-trip to OOXML merge marks', async () => {
   assert.ok(/gridSpan="2"/.test(col) && col.includes('hMerge'), 'the column span survives as a real horizontal merge');
 });
 
+
+test('interaction-only properties stay silent on a static slide', () => {
+  // cursor, user-select and background-attachment are judged against interaction or
+  // scrolling a slide never has: every value draws the same, so they are equivalent
+  // no-ops. The outline (no offset) is the native line, already drawn.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    css,
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  assert.deepEqual(build('  .b { width: 200px; height: 60px; cursor: pointer; user-select: none; background-attachment: fixed; font-size: 14px; }')
+    .report.unsupportedDetails.map((entry) => entry.property), []);
+  const outline = build('  .b { position: absolute; left: 100px; top: 100px; width: 200px; height: 60px; background: #C05B3E; outline: 2px solid #17332F; font-size: 14px; }');
+  const background = outline.deck.slides[0].elements[0].background;
+  assert.equal(background.lineColor, '17332F');
+  assert.equal(background.lineWidth, 1.5, '2px is 1.5pt');
+});
+

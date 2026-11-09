@@ -685,7 +685,11 @@ function checkUnsupported(ctx, domNode, style) {
     }
     // `column-span` only means something inside a multicol container; when it does,
     // the column plan names the design itself. Everywhere else it is a no-op.
-    if (property === 'columnSpan') return;
+    // Interaction-only properties mean nothing on a static slide: no pointer, no
+    // selection, no scrolling surface. `background-attachment` is likewise judged
+    // against a slide that never scrolls - every value draws the same.
+    if (property === 'cursor' || property === 'userSelect' || property === 'backgroundAttachment') return;
+    if (property === 'columnSpan') return;    if (property === 'columnSpan') return;
     if (property === 'columnSpan') return;
     if (property === 'listStylePosition' && String(style[property]).trim().toLowerCase() === 'inside') {
       recordUnsupported(ctx, domNode, property, style[property],
