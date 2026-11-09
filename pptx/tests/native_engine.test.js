@@ -6667,6 +6667,30 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('an explicit colour attribute outranks the header palette', () => {
+  // Header cells that paint a colour name their series, but a data-chart-colors
+  // attribute is a design statement: it wins even when the fixture-wide th style
+  // paints every header cell. The deeper stress page caught this - the attr was
+  // silently overwritten by the inherited th colour there.
+  const build = (styleTag, tableTag) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { font-size: 13px; }',
+    styleTag,
+    '</style></head><body><main class="slide">',
+    '<table ' + tableTag + '><tr><th>季度</th><th>销售额</th></tr>',
+    '<tr><td>Q1</td><td>120</td></tr><tr><td>Q2</td><td>150</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const chartOf = (result) => result.deck.slides[0].elements.find((entry) => entry.type === 'chart');
+  const attr = build('  th { color: #3F5450; }', 'data-chart="bar" data-chart-title="t" data-chart-colors="#F2A24C,#4FB3A8"');
+  assert.deepEqual(chartOf(attr).options.chartColors, ['F2A24C', '4FB3A8'],
+    'the attribute wins over the th palette');
+  const derived = build('  th { color: #3F5450; } th:nth-child(2) { color: #C05B3E; }', 'data-chart="bar" data-chart-title="t"');
+  assert.deepEqual(chartOf(derived).options.chartColors, ['C05B3E'],
+    'without an attribute, per-series header colours still name the palette');
+});
+
 test('chart tuning attributes map to reader options', () => {
   // Gap width, line smoothing and category label rotation are reader-native chart
   // settings; each data-chart-* attribute maps to one option and out-of-range values

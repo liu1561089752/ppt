@@ -3782,7 +3782,9 @@ function readChart(domNode, ctx) {
       // order so the chart matches the page palette.
       const seriesColours = headerSeriesColours(domNode, ctx).slice(1)
         .filter((colour) => colour);
-      if (seriesColours.length === seriesCount) options.chartColors = seriesColours;
+      // An explicit data-chart-colors attribute is a design statement: it outranks
+      // the palette the header cells merely inherit.
+      if (seriesColours.length === seriesCount && !options.chartColors) options.chartColors = seriesColours;
       for (let series = 0; series < seriesCount; series += 1) {
         data.push({
           name: (header[series + 1] || 'Series ' + (series + 1)).trim(),
