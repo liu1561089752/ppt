@@ -6667,6 +6667,31 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('form controls show the words the mock shows', () => {
+  // An input drew an empty box: the placeholder lived in an attribute no text path
+  // read. A select read EVERY option out loud - the labels sit behind the dropdown
+  // a static deck cannot open. The parser seeds the placeholder, and the text walk
+  // stops at a closed select to push only the chosen option's label.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .f { width: 200px; height: 32px; border: 1px solid #999; font-size: 14px; }',
+    '</style></head><body><main class="slide">',
+    '<input class="f" type="text" placeholder="用户名">',
+    '<select class="f"><option>选项甲</option><option selected>选项乙</option></select>',
+    '</main></body></html>'
+  ].join('\n'));
+  const texts = [];
+  const walk = (element) => {
+    if (element.text) texts.push(String(element.text));
+    (element.children || []).forEach(walk);
+  };
+  result.deck.slides[0].elements.forEach(walk);
+  assert.ok(texts.includes('用户名'), 'the placeholder is visible, got ' + JSON.stringify(texts));
+  assert.ok(texts.includes('选项乙') && !texts.some((t) => t.includes('选项甲')),
+    'only the chosen option shows, got ' + JSON.stringify(texts));
+});
+
 test('an elliptical corner is named instead of silently half-drawn', () => {
   // `border-radius: 50% / 30%` carries a horizontal and a vertical radius. The slash
   // used to be fed to the box expansion, which split it as tokens: the vertical half

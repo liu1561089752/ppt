@@ -175,9 +175,26 @@ function walk(node, visitor) {
   (node.children || []).forEach((child) => walk(child, visitor));
 }
 
+// The option a closed <select> shows; the others sit behind the dropdown and a static
+// deck cannot open it, so they contribute nothing to the visible text.
+const shownOptions = new WeakSet();
+const optionTextOf = (node) => (node.children || []).map((child) => child.type === 'text' ? child.text : '').join('');
+
 function textContent(node) {
   if (!node) return '';
   if (node.type === 'text') return node.text;
+  // Form controls show text a static mock also shows: the placeholder and the
+  // option labels. Without this they drew as empty boxes with the visible words
+  // silently gone.
+  if (node.tag === 'input') return String(node.attrs && node.attrs.placeholder || '');
+  if (node.tag === 'select') {
+    const options = (node.children || []).filter((child) => child.type === 'element' && child.tag === 'option');
+    const chosen = options.find((option) => option.attrs && option.attrs.selected !== undefined) || options[0];
+    if (chosen) shownOptions.add(chosen);
+    return chosen ? textContent(chosen) : '';
+  }
+  if (node.tag === 'option') return shownOptions.has(node) ? optionTextOf(node) : '';
+
   return (node.children || []).map(textContent).join('');
 }
 

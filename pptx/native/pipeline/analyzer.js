@@ -1111,6 +1111,13 @@ function buildRuns(domNode, baseStyle, ctx) {
       if (inlinePseudoRuns.after) pushText(inlinePseudoRuns.after, null, inline);
       return;
     }
+    // A closed <select> shows only the chosen option: the others sit behind the
+    // dropdown a static deck cannot open. Visiting every option read them all out
+    // loud, so the walk stops at the control and pushes its visible label.
+    if (node.tag === 'select') {
+      pushText(normalizedText(node), merged, inline);
+      return;
+    }
     node.children.forEach((child) => visit(child, merged, inline));
     if (inlinePseudoRuns.after) pushText(inlinePseudoRuns.after, null, inline);
   };
@@ -1143,6 +1150,17 @@ function buildRuns(domNode, baseStyle, ctx) {
     pushText(resolved.text, declaration, null);
   };
   pseudoRun('before');
+  if (domNode.tag === 'input') {
+    // A text input shows its placeholder: the visible words of the mock.
+    pushText(normalizedText(domNode), baseStyle, null);
+    return { runs, text: runs.map((run) => run.text).join(''), hasFormatting: runs.some((run) => run.options) };
+  }
+  if (domNode.tag === 'select') {
+    // A closed <select> shows only the chosen option; visiting the children read
+    // every option out loud. Push the visible label and stop.
+    pushText(normalizedText(domNode), baseStyle, null);
+    return { runs, text: runs.map((run) => run.text).join(''), hasFormatting: false };
+  }
   (domNode.children || []).forEach((child) => visit(child, baseStyle, null));
   pseudoRun('after');
   const text = runs.map((run) => run.text).join('');
