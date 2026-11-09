@@ -1957,7 +1957,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     // vanishing behind the words.
     const textLayer = backgroundImageOf(style);
     if (textLayer) {
-      node.bgImage = { src: textLayer.src, fit: textLayer.fit, focus: textLayer.focus };
+      node.bgImage = { src: textLayer.src, fit: textLayer.fit, size: textLayer.size || 'auto', focus: textLayer.focus };
       untranslatedBackgroundLayers(style).forEach((what) => {
         recordUnsupported(ctx, domNode,
           'backgroundImage', style.backgroundImage || style.background,
@@ -2248,7 +2248,14 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       node.h = explicitHeight === null ? Math.max(width * 0.5625, 0.2) : explicitHeight;
       node.src = layer.src;
       node.alt = '';
-      node.objectFit = layer.fit;
+      // `background-size: auto` is a natural-size picture centred in the box, not a
+      // stretched one: the geometry is resolved here, the emitter just draws it.
+      if ((layer.size || 'auto') === 'auto') {
+        node.backgroundNatural = true;
+        node.objectFit = 'contain';
+      } else {
+        node.objectFit = layer.fit;
+      }
       node.focus = layer.focus;
       checkCornerMix(domNode, style, ctx);
     node.radius = radiusOf(style);

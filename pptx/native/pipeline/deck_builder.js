@@ -804,6 +804,37 @@ function rotateLeaves(element, degrees) {
   });
 }
 
+/** Intrinsic pixel size from an image header: PNG, JPEG and GIF are read directly;
+ *  anything else returns null and the caller falls back to filling its box. */
+function intrinsicImageSize(src) {
+  try {
+    if (typeof src !== 'string') return null;
+    let bytes = null;
+    const dataMatch = /^data:image\/([a-z+]+);base64,(.*)$/iu.exec(src);
+    if (dataMatch) bytes = Buffer.from(dataMatch[2], 'base64');
+    else return null;
+    if (bytes.length > 24 && bytes[0] === 0x89 && bytes[1] === 0x50) {
+      return { widthPx: bytes.readUInt32BE(16), heightPx: bytes.readUInt32BE(20) };
+    }
+    if (bytes.length > 10 && bytes[0] === 0x47 && bytes[1] === 0x49) {
+      return { widthPx: bytes.readUInt16LE(6), heightPx: bytes.readUInt16LE(8) };
+    }
+    if (bytes.length > 4 && bytes[0] === 0xFF && bytes[1] === 0xD8) {
+      let scan = 2;
+      while (scan + 9 < bytes.length) {
+        if (bytes[scan] !== 0xFF) { scan += 1; continue; }
+        const marker = bytes[scan + 1];
+        const length = bytes.readUInt16BE(scan + 2);
+        if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+          return { widthPx: bytes.readUInt16BE(scan + 7), heightPx: bytes.readUInt16BE(scan + 5) };
+        }
+        scan += 2 + length;
+      }
+    }
+  } catch (error) { return null; }
+  return null;
+}
+
 function leafElementRotationFree(node, resolvedTheme, report) {
   // `visibility: hidden` laid out its box but paints nothing: the honest emission is no object.
   if (node.hidden) return null;
@@ -812,9 +843,27 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     // A background picture behind text: the image element first (document order
     // paints it beneath), then the text on top - both stay editable.
     if (node.bgImage && node.bgImage.src) {
+      // `background-size: auto` draws the picture at its natural size, centred in
+      // the box - not stretched. The intrinsic dimensions come from the image
+      // header (PNG, JPEG, GIF); anything unreadable falls back to the box fill.
+      let natural = null;
+      if ((node.bgImage.size || 'auto') === 'auto') natural = intrinsicImageSize(node.bgImage.src);
+      let imageW = node.w;
+      let imageH = node.h;
+      let imageX = xOf(node);
+      let imageY = yOf(node);
+      if (natural) {
+        const w = natural.widthPx / 96;
+        const h = natural.heightPx / 96;
+        imageW = Math.min(w, node.w);
+        imageH = Math.min(h, node.h);
+        imageX = xOf(node) + Math.max(0, (node.w - imageW) / 2);
+        imageY = yOf(node) + Math.max(0, (node.h - imageH) / 2);
+      }
+      const fitForPair = natural ? 'contain' : (node.bgImage.fit || 'cover');
       const imageNode = {
-        kind: 'image', x: xOf(node), y: yOf(node), w: node.w, h: node.h,
-        src: node.bgImage.src, alt: '', objectFit: node.bgImage.fit || 'cover',
+        kind: 'image', x: imageX, y: imageY, w: imageW, h: imageH,
+        src: node.bgImage.src, alt: '', objectFit: fitForPair,
         focus: node.bgImage.focus, style: {}
       };
       const image = imageElementFromNode(imageNode);
@@ -838,6 +887,16 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     return textElementFromNode(node, null, resolvedTheme);
   }
   if (node.kind === 'image') {
+    if (node.backgroundNatural) {
+      const natural = intrinsicImageSize(node.src);
+      if (natural) {
+        const naturalW = Math.min(natural.widthPx / 96, node.w);
+        const naturalH = Math.min(natural.heightPx / 96, node.h);
+        node = { ...node, w: naturalW, h: naturalH,
+          x: xOf(node) + Math.max(0, (node.w - naturalW) / 2),
+          y: yOf(node) + Math.max(0, (node.h - naturalH) / 2) };
+      }
+    }
     const element = imageElementFromNode(node);
     if (element) report.images += 1;
     return element;
@@ -1014,13 +1073,29 @@ function emitAbsolute(node, context) {
   if (!node || node.hidden || node.w <= 0.01 || node.h <= 0.01) return;
 
   if (node.backgroundImage) {
+    // `background-size: auto` draws at the picture's natural size, centred - not
+    // stretched over the box.
+    let natural = null;
+    if ((node.backgroundImage.size || 'auto') === 'auto') natural = intrinsicImageSize(node.backgroundImage.src);
+    let pictureW = node.w;
+    let pictureH = node.h;
+    let pictureX = xOf(node);
+    let pictureY = yOf(node);
+    if (natural) {
+      const naturalW = natural.widthPx / 96;
+      const naturalH = natural.heightPx / 96;
+      pictureW = Math.min(naturalW, node.w);
+      pictureH = Math.min(naturalH, node.h);
+      pictureX = xOf(node) + Math.max(0, (node.w - pictureW) / 2);
+      pictureY = yOf(node) + Math.max(0, (node.h - pictureH) / 2);
+    }
     const picture = imageElementFromNode({
       src: node.backgroundImage.src,
-      x: xOf(node),
-      y: yOf(node),
-      w: node.w,
-      h: node.h,
-      objectFit: node.backgroundImage.fit,
+      x: pictureX,
+      y: pictureY,
+      w: pictureW,
+      h: pictureH,
+      objectFit: natural ? 'contain' : node.backgroundImage.fit,
       focus: node.backgroundImage.focus,
       radius: node.radius,
       alt: ''

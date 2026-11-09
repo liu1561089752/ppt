@@ -110,6 +110,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | chart tuning attrs | gap-width/smooth/cat-label-rotate map to barGapWidthPct/lineSmooth/catAxisLabelRotate; ranges named |
 | interaction noops | cursor/user-select/background-attachment silent (static-slide equivalents); outline = native line, offset stays reported |
 | chart colour precedence | explicit data-chart-colors outranks the inherited th palette; per-series th colours still work without it |
+| bg natural size | background-size:auto draws intrinsic size centred (PNG/JPEG/GIF header); cover/contain unchanged |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 

@@ -6767,3 +6767,23 @@ test('interaction-only properties stay silent on a static slide', () => {
   assert.equal(background.lineWidth, 1.5, '2px is 1.5pt');
 });
 
+
+test('background-size auto draws at natural size, centred', () => {
+  // `background-size: auto` (the default) draws the picture at its intrinsic size
+  // centred in the box; the emitter used to stretch every background picture over the
+  // box, so a 1x1 PNG became a full-bleed block. Intrinsic dimensions come from the
+  // PNG/JPEG/GIF header; an unreadable image falls back to the box fill.
+  const build = (body) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '</style></head><body><main class="slide">' + body + '</main></body></html>'
+  ].join('\n'));
+  const png1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const result = build('<div style="position: absolute; left: 100px; top: 100px; width: 300px; height: 200px; background: url(&quot;' + png1x1 + '&quot;) no-repeat center;"></div>');
+  const image = result.deck.slides[0].elements.find((entry) => entry.type === 'image');
+  assert.ok(image, 'the background picture is emitted');
+  assert.equal(Number((image.w * 96).toFixed(1)), 4.8, 'a 1x1 PNG draws at its natural 1px (minimum tile size), not 300px wide');
+  const centreX = Number((image.x * 96 + image.w * 96 / 2).toFixed(0));
+  assert.ok(Math.abs(centreX - 250) <= 3, 'the natural picture centres on the box (100 + 150), got ' + centreX);
+});
+

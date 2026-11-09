@@ -1570,7 +1570,7 @@ function backgroundImageOf(style) {
   else if (/^100%\s*(?:100%|auto)?$/u.test(size) || /^auto\s+100%$/u.test(size)) fit = 'stretch';
   else if (size) fit = 'contain';
 
-  return { src, fit, focus: parseBackgroundFocus(rawPosition) };
+  return { src, fit, size: size || 'auto', focus: parseBackgroundFocus(rawPosition) };
 }
 
 module.exports = {
