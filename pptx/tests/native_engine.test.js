@@ -5839,3 +5839,28 @@ test('inline semantics reach the file: hyperlink, mark, and sub/sup', async () =
   }
 });
 
+
+test('transition and animation reports name the journey, not the state', () => {
+  // The end state of a transform IS drawn; what the reader misses is the movement.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+
+  const transition = build('.b { transition: transform .3s; transform: translateX(10px); width: 50px; height: 30px; }');
+  const tReport = transition.report.unsupportedDetails.find((entry) => entry.property === 'transition');
+  assert.ok(tReport.reason.includes('end state'), 'the report says the end state is drawn');
+  // The translate landed: x is 40 + 10.
+  assert.equal(+(transition.deck.slides[0].elements[0].x * 96).toFixed(1), 50);
+
+  const animation = build('.b { animation: slide 1s forwards; width: 50px; height: 30px; }');
+  const aReport = animation.report.unsupportedDetails.find((entry) => entry.property === 'animation');
+  assert.ok(aReport.reason.includes('final state'), 'the report says the final state is drawn');
+
+  // `none` stays silent on both.
+  const quiet = build('.b { transition: none; animation: none; width: 50px; height: 30px; }');
+  assert.deepEqual(quiet.report.unsupportedDetails.map((entry) => entry.property), []);
+});
+

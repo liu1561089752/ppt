@@ -583,6 +583,19 @@ function checkUnsupported(ctx, domNode, style) {
     // `table-layout: fixed` is the model this solver implements (declared or equal
     // columns, content wraps rather than stretches), so it says nothing.
     if (property === 'tableLayout') return;
+    // A transition or animation names a journey. The slide draws the END state (the
+    // transform and the final values are all applied), so the report says what the
+    // reader actually misses: the movement between states.
+    if (property === 'transition') {
+      recordUnsupported(ctx, domNode, 'transition', style[property],
+        'The slide draws the end state; the animated journey between states is not drawn');
+      return;
+    }
+    if (property === 'animation') {
+      recordUnsupported(ctx, domNode, 'animation', style[property],
+        'The slide draws the final state; the entrance or motion itself is not drawn');
+      return;
+    }
     if (UNSUPPORTED_ALWAYS.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'CSS feature has no native translation');
     } else if (!SUPPORTED_PROPERTIES.has(property)) {
