@@ -87,6 +87,9 @@ const SUPPORTED_PROPERTIES = new Set([
   // an equivalent implementation and not a limitation.
   'fontVariant',
   'writingMode', 'wordBreak', 'float', 'clear', 'aspectRatio',
+  // transformOrigin is named by the transform parser itself, which knows whether
+  // the origin actually shifted the drawn box; the sweep would only duplicate it.
+  'transformOrigin',
   // The `-webkit-line-clamp` properties; the clamp itself is applied where the text is
   // measured, and the orientation it needs is read there too.
   'WebkitLineClamp', 'WebkitBoxOrient', 'lineClamp',

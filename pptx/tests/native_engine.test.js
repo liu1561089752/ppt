@@ -6667,6 +6667,20 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('transform-origin reports once, through the parser that knows the shift', () => {
+  // The generic sweep listed transformOrigin AND the transform parser named the
+  // same origin again - one honest line beats two.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { position: absolute; left: 200px; top: 200px; width: 100px; height: 50px; background: #C05B3E; transform: rotate(15deg); transform-origin: left top; font-size: 14px; }',
+    '</style></head><body><main class="slide"><div class="b">x</div></main></body></html>'
+  ].join('\n'));
+  const entries = result.report.unsupportedDetails.filter((entry) => entry.property === 'transform' || entry.property === 'transformOrigin');
+  assert.equal(entries.length, 1, 'one entry, got ' + entries.length);
+  assert.equal(entries[0].property, 'transform');
+});
+
 test('a double border is named as one solid line', () => {
   // cmpd="dbl" has no pptxgenjs option, so the border would draw as a single
   // solid line silently.
