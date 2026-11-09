@@ -121,6 +121,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | form controls | placeholder visible; closed select shows only the chosen option (was empty / read all options) |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |
+| q quotes | synthesized “ ” join the content (was bare words); declared pseudos win |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 

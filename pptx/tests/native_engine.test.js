@@ -6667,6 +6667,38 @@ test('column-span: all is named where it changes the design', () => {
 });
 
 
+test('q paints its quotes like the browser does', () => {
+  // The browser synthesizes open/close quotes around <q> content; the deck drew the
+  // bare words, silently dropping glyphs the mock shows.
+  const result = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '</style></head><body><main class="slide"><p><q>引用的话</q>与正文。</p></main></body></html>'
+  ].join('\n'));
+  const texts = [];
+  const walk = (element) => {
+    if (element.text) texts.push(Array.isArray(element.text) ? element.text.map((run) => run.text).join('') : String(element.text));
+    (element.children || []).forEach(walk);
+  };
+  result.deck.slides[0].elements.forEach(walk);
+  const joined = texts.join('');
+  assert.ok(joined.includes('\u201C引用的话\u201D'), 'the quotes surround the content, got ' + joined);
+  // A design that declares its own pseudos keeps them.
+  const custom = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+    '  q::before { content: "《"; } q::after { content: "》"; }',
+    '</style></head><body><main class="slide"><p><q>引用的话</q></p></main></body></html>'
+  ].join('\n'));
+  const customTexts = [];
+  const walk2 = (element) => {
+    if (element.text) customTexts.push(Array.isArray(element.text) ? element.text.map((run) => run.text).join('') : String(element.text));
+    (element.children || []).forEach(walk2);
+  };
+  custom.deck.slides[0].elements.forEach(walk2);
+  assert.ok(customTexts.join('').includes('《引用的话》'), 'declared pseudos win, got ' + customTexts.join(''));
+});
+
 test('alt text reaches the file and srcset names its choice', () => {
   // alt rode the whole chain already (element, writer, p:cNvPr descr); pinned at the
   // deck level. srcset was silent: the deck always draws src, and the design may

@@ -1104,6 +1104,13 @@ function buildRuns(domNode, baseStyle, ctx) {
       }
       inlinePseudoRuns[pseudo] = resolved.text;
     });
+    // `<q>` is the browser quoting its content: open-quote before, close-quote
+    // after. The quotes are painted glyphs in the mock, so they join the line
+    // unless the design declares its own pseudos for the element.
+    if (node.tag === 'q' && !inlinePseudoRuns.before && !inlinePseudoRuns.after) {
+      inlinePseudoRuns.before = '\u201C';
+      inlinePseudoRuns.after = '\u201D';
+    }
     if (inlinePseudoRuns.before) pushText(inlinePseudoRuns.before, null, inline);
     const merged = Object.assign({}, inheritedStyle || baseStyle, style);
     if (!node.children.length) {
