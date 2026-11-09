@@ -6568,3 +6568,18 @@ test('margin auto centers a flex item in the line slack', async () => {
     'a single auto margin takes the whole slack: 40 + 500');
 });
 
+
+test('a variable weight between 501 and 599 is named', () => {
+  // 550 is a real semibold in CSS; the deck has no intermediate weight, so it draws as
+  // regular. Silence would read as "no weight was asked for".
+  const build = (weight) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .b { font-weight: ' + weight + '; font-size: 16px; }',
+    '</style></head><body><main class="slide"><p class="b">x</p></main></body></html>'
+  ].join('\n'));
+  assert.equal(build('550').report.unsupportedDetails.filter((entry) => entry.property === 'fontWeight').length, 1);
+  assert.deepEqual(build('600').report.unsupportedDetails.map((entry) => entry.property), [], '600 maps to bold');
+  assert.deepEqual(build('300').report.unsupportedDetails.map((entry) => entry.property), [], 'light draws as regular, no surprise');
+});
+

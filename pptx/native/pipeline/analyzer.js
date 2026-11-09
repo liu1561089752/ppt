@@ -623,6 +623,17 @@ function checkUnsupported(ctx, domNode, style) {
     // A table cell translates its four sides independently, so a single-side
     // border is not a limitation there (it is for every other element).
     if ((domNode.tag === 'td' || domNode.tag === 'th') && TABLE_CELL_BORDER_PROPERTIES.has(property)) return;
+    // A variable-font weight between the regular and bold thresholds draws as regular
+    // here: no native spelling exists for the intermediate weights. Silence would
+    // read as 'no weight was asked for'.
+    if (property === 'fontWeight') {
+      const numeric = Number(style[property]);
+      if (Number.isFinite(numeric) && numeric > 500 && numeric < 600) {
+        recordUnsupported(ctx, domNode, 'fontWeight', style[property],
+          'A weight between 501 and 599 draws as regular: no native spelling exists for intermediate weights');
+      }
+      return;
+    }
     // `overflow` is judged after layout, against the content it would clip.
     if (POST_LAYOUT_PROPERTIES.has(property)) return;
     // List markers and picture tiling are judged per value below: the generic
