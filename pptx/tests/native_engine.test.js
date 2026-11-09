@@ -6645,3 +6645,24 @@ test('data URIs survive declaration parsing', () => {
   assert.equal(declarations[1].value, 'red');
 });
 
+
+test('column-span: all is named where it changes the design', () => {
+  // Inside a multicol container, a spanning child pulls itself out of the column flow.
+  // The native text box wraps every paragraph with no exemptions, so the design is
+  // named; outside multicol the declaration is a no-op and stays silent.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    css,
+    '</style></head><body><main class="slide">',
+    '<div class="b"><h3>标题</h3><p>栏内文本内容，足够长以形成换行与两栏排布的效果。</p></div>',
+    '</main></body></html>'
+  ].join('\n'));
+  const multicol = build('  .b { columns: 2; width: 500px; font-size: 14px; } .b h3 { column-span: all; font-size: 16px; }');
+  const spanNote = multicol.report.unsupportedDetails.find((entry) => entry.reason.includes('span every column'));
+  assert.ok(spanNote, 'the design is named: ' + JSON.stringify(multicol.report.unsupportedDetails));
+  const outside = build('  .b { font-size: 14px; } .b h3 { column-span: all; font-size: 16px; }');
+  assert.deepEqual(outside.report.unsupportedDetails.map((entry) => entry.property), [],
+    'outside multicol the declaration does nothing, so it stays silent');
+});
+

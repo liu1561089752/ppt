@@ -683,6 +683,10 @@ function checkUnsupported(ctx, domNode, style) {
       }
       return;
     }
+    // `column-span` only means something inside a multicol container; when it does,
+    // the column plan names the design itself. Everywhere else it is a no-op.
+    if (property === 'columnSpan') return;
+    if (property === 'columnSpan') return;
     if (property === 'listStylePosition' && String(style[property]).trim().toLowerCase() === 'inside') {
       recordUnsupported(ctx, domNode, property, style[property],
         'The marker would sit inside the text line: native bullets always hang in the margin');
@@ -4485,6 +4489,12 @@ function columnPlanOf(domNode, style, contentWidth, fontSizePx, ctx) {
   };
   if (!children.length || ownText(domNode)) {
     return bail('A column block has to hold paragraph elements; text of its own is a line box this shape does not model');
+  }
+  // `column-span: all` pulls one child out of the column flow to span every column:
+  // the native text box columns cannot exempt a paragraph, so the design is named
+  // instead of silently column-wrapping the headline.
+  if (children.some((child) => String(ctx.styles.computed(child).columnSpan || '').trim().toLowerCase() === 'all')) {
+    return bail('A child asks to span every column; the native text box wraps every paragraph, no exemptions');
   }
   const paragraphs = [];
   let rich = false;

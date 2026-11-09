@@ -106,6 +106,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | variable font weight | 501-599 named (draws regular, no native intermediate); ≥600 bold, ≤500 regular silent |
 | per-value truth | list-style-position:inside + text-orientation:upright get real reasons; mixed stays silent (eaVert equivalent) |
 | bg picture behind text | url() background on a text box emits image-under-text; data URIs survive declaration parsing (splitter is quote/paren aware) |
+| column-span all | named inside multicol (no native exemption); no-op outside, silent |
 | WPS second reader | 7-page stress deck renders via WPS COM (cover + chart pages verified visually); real PowerPoint still unverified |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
