@@ -4342,9 +4342,19 @@ test('one radius for four corners, and three reports for what a run cannot paint
     '  <div class="wrap">Intro text<div class="card">card body</div>Outro text</div>',
     '</main></body></html>'
   ].join('\n'));
-  assert.ok(mixed.report.unsupportedDetails.some((entry) => entry.property === 'element'
-    && entry.reason.includes('does not share a line box')),
-  'text mixed with element children is reported');
+  // Text mixed with a block sibling forms an anonymous box in CSS, so the words used
+  // to be dropped; they are kept now, in document order and with no report.
+  const mixedTexts = [];
+  const collect = (element) => {
+    if (element.text !== undefined) mixedTexts.push(Array.isArray(element.text)
+      ? element.text.map((run) => run.text).join('') : String(element.text));
+    (element.children || []).forEach(collect);
+  };
+  mixed.deck.slides[0].elements.forEach(collect);
+  assert.deepEqual(mixedTexts, ['Intro text', 'card body', 'Outro text'],
+    'the words on both sides of the card survive, in order: ' + JSON.stringify(mixedTexts));
+  assert.ok(!mixed.report.unsupportedDetails.some((entry) => entry.property === 'element'),
+    'and no report claims they were lost');
 });
 
 test('margin: auto centres a fixed-width box, and tracking widens the measurement', () => {
@@ -6744,6 +6754,37 @@ test('a nested list keeps its own marker language', () => {
   assert.ok(nested, 'the nested item is its own paragraph');
   assert.equal(nested.options.indentLevel, 1, 'one level in');
   assert.equal(nested.options.bullet.code, '2022', 'and rounds like a ul');
+});
+
+test('text mixed into a nested container keeps its words too', () => {
+  // The same anonymous box applies below the root: a div holding a paragraph and
+  // some words used to report a loss and drop the words.
+  const textsOf = (body) => {
+    const result = pipeline.convertHtml([
+      '<html><head><style>',
+      '  body { margin: 0; }',
+      '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 14px; }',
+      '</style></head><body><main class="slide">' + body + '</main></body></html>'
+    ].join('\n'));
+    const texts = [];
+    const collect = (element) => {
+      if (element.text !== undefined) texts.push(Array.isArray(element.text)
+        ? element.text.map((run) => run.text).join('') : String(element.text));
+      (element.children || []).forEach(collect);
+    };
+    result.deck.slides[0].elements.forEach(collect);
+    return { texts, reported: result.report.unsupportedDetails.map((entry) => entry.property) };
+  };
+
+  const spaced = textsOf('<div><p>甲</p>乙</div>');
+  assert.deepEqual(spaced.texts, ['甲', '乙'], 'the words after a paragraph survive');
+  assert.deepEqual(spaced.reported, [], 'and nothing claims a loss');
+  assert.deepEqual(textsOf('<div>乙<p>甲</p></div>').texts, ['乙', '甲'], 'as do the words before');
+  assert.deepEqual(textsOf('<div><p>甲</p>乙<p>丙</p></div>').texts, ['甲', '乙', '丙'],
+    'and the words between two blocks');
+  // A list item and a table cell read their own direct text, so the wrap leaves them
+  // alone - the list numbering depends on it.
+  assert.deepEqual(textsOf('<ul><li>一</li><li>二</li></ul>').texts, ['一\n二']);
 });
 
 test('text directly in the slide root keeps its words', () => {

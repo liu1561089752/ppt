@@ -4977,28 +4977,48 @@ function findSlideElements(root, options) {
  * Analyze a whole HTML document into slide layout trees.
  * @returns {{pageSize: object, slides: Array, unsupported: Array, notes: Array, stats: object}}
  */
+// The containers whose bare text becomes an anonymous box. Text-ish tags are absent on
+// purpose: their own readers look for direct text children.
+const WRAP_HOSTS = new Set(['div', 'section', 'article', 'header', 'footer', 'main', 'aside',
+  'nav', 'figure', 'form', 'fieldset', 'details', 'body', 'html']);
+
 const INLINE_TEXT_TAGS = new Set(['span', 'strong', 'em', 'b', 'i', 'u', 's', 'ins', 'del',
   'small', 'code', 'kbd', 'mark', 'sub', 'sup', 'abbr', 'cite', 'q', 'time', 'label', 'a',
   'br', 'wbr', 'bdi', 'bdo', 'var', 'samp', 'dfn']);
 
 /**
- * Text that sits directly in the slide root forms an anonymous block box in CSS -
- * the browser wraps it and lays it out among its siblings. Only elements reached this
- * walk, so a one-line slide lost its words entirely. The run is wrapped in an element
- * no selector can match, which keeps the words and inherits the root's typography.
+ * Text that sits directly in a block container forms an anonymous block box in CSS -
+ * the browser wraps it and lays it out among its siblings. Only elements reached the
+ * walk, so bare text inside a container lost its words. Each run is wrapped in an
+ * element no selector can match, which keeps the words, the inline neighbours that
+ * share their line box, and the root's typography.
  */
-function wrapRootText(slideNode, ctx) {
+function wrapAnonymousText(domNode, ctx, force) {
   const ANONYMOUS = 'anonymous-text';
+  // The wrapper is never wrapped again; without this the box it just made looks like
+  // a fresh mixed container and the walk recurses until the stack runs out.
+  if (domNode.tag === ANONYMOUS) return false;
+  // Only a generic container gets the wrap. A list item, a table cell or a heading
+  // reads its own direct text (the list branch numbers each item, the table branch
+  // fills each cell), and hiding that text behind a wrapper would take the words away
+  // from the reader that needs them.
+  if (!force && !WRAP_HOSTS.has(domNode.tag)) return false;
+  const displayOf = (child) => String(ctx.styles.computed(child).display || '').toLowerCase();
   const inline = (child) => child.type === 'element'
-    && (INLINE_TEXT_TAGS.has(child.tag)
-      || /^inline/u.test(String(ctx.styles.computed(child).display || '').toLowerCase()));
-  const kids = slideNode.children || [];
+    && (INLINE_TEXT_TAGS.has(child.tag) || /^inline/u.test(displayOf(child)));
+  // A block sibling is one the browser stacks: a block tag, or a display that says so.
+  // An undeclared display on an unknown tag is neither, and must not count as a block
+  // or the wrapper would keep qualifying itself.
+  const block = (child) => child.type === 'element' && !inline(child)
+    && (BLOCK_TAGS.has(child.tag) || /^(block|flow-root|flex|grid|table|list-item)/u.test(displayOf(child)));
+  const kids = domNode.children || [];
+  if (!force && !kids.some(block)) return false;
   const runs = [];
   let run = null;
   kids.forEach((child) => {
     if (child.type === 'text' && child.text.trim()) {
       if (!run) {
-        run = { type: 'element', tag: ANONYMOUS, attrs: Object.create(null), children: [], parent: slideNode };
+        run = { type: 'element', tag: ANONYMOUS, attrs: Object.create(null), children: [], parent: domNode };
         runs.push(run);
       }
       run.children.push(child);
@@ -5018,8 +5038,20 @@ function wrapRootText(slideNode, ctx) {
     if (!owner) { rebuilt.push(child); return; }
     if (rebuilt[rebuilt.length - 1] !== owner) rebuilt.push(owner);
   });
-  slideNode.children = rebuilt;
+  domNode.children = rebuilt;
   return true;
+}
+
+/** The wrap applied everywhere: the slide root always, a mixed box below it. */
+function wrapAllAnonymousText(root, ctx) {
+  wrapAnonymousText(root, ctx, true);
+  const visit = (node) => {
+    (node.children || []).filter((child) => child.type === 'element').forEach((child) => {
+      wrapAnonymousText(child, ctx, false);
+      visit(child);
+    });
+  };
+  visit(root);
 }
 
 function analyzeHtml(html, options = {}) {
@@ -5030,7 +5062,7 @@ function analyzeHtml(html, options = {}) {
 
   slideElements.forEach((slideNode, index) => {
     // Run before the style is read: the wrap changes the child list, not the root.
-    wrapRootText(slideNode, ctx);
+    wrapAllAnonymousText(slideNode, ctx);
     const style = ctx.styles.computed(slideNode);
     checkUnsupported(ctx, slideNode, style);
     const padding = boxShorthand(style, 'padding');
