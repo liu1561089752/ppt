@@ -87,6 +87,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | list pseudo content | A literal before/after string joins the item text; a counter() is reported once per list (was silent) |
 | css counters | reset/increment/counter() implemented in the list branch (start and step honoured); counters() and non-list use stay reported |
 | quote keywords | open/close-quote resolve against the inherited quotes pair (UA default otherwise) on inline pseudos; no- forms suppress; quotes itself is silent |
+| nested counters | Per-name scope stacks; counters(name, sep) joins outermost-in; names are custom idents (h1 legal) |
 | text-emphasis | Dot (or sesame) becomes a:emphasisMark on the run via the patch; other shapes and colour-only values stay reported; LibreOffice ignores the mark, so the test is file-level |
 
 | line-height: normal | Read from the first face in the stack that exists (fontkit hhea metrics via the Windows font registry), verified against Chrome per face. A stack whose faces all miss keeps the 1.25 estimate - the reader`s generic fallback measured taller (1.45) than any static guess, so that residue stays named, not guessed |

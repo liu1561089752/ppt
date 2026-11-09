@@ -1868,13 +1868,17 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       // on each item advances it, and a counter() in the before-content prints the
       // value. This covers the numbered-rows design the list spellings serve.
       const counters = {};
+      const nestedListsOf = (node) => (node.children || []).filter((child) => child.type === 'element'
+        && (child.tag === 'ul' || child.tag === 'ol'));
       const resetOn = (node) => {
         const style = ctx.styles.computed(node);
         const reset = String(style.counterReset || '').trim();
         if (reset && reset !== 'none') {
           reset.split(/\s*,\s*/u).forEach((entry) => {
             const [name, start] = entry.split(/\s+/u);
-            counters[name.trim()] = start === undefined ? 0 : (Number(start) || 0);
+            const key = name.trim();
+            if (!counters[key]) counters[key] = [];
+            counters[key].push(start === undefined ? 0 : (Number(start) || 0));
           });
         }
       };
@@ -1911,7 +1915,18 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
         }
         return parts.join('');
       };
-      const evaluate = (content) => decodeCounted(String(content || '').replace(/counter\(([A-Za-z-]+)\)/giu, (whole, name) => String(counters[name] ?? '')));
+      const currentValue = (key) => {
+        const scopes = counters[key];
+        return scopes && scopes.length ? scopes[scopes.length - 1] : '';
+      };
+      // Counter names are custom idents: letters, digits, hyphen, underscore after
+      // the first character - 'h1' is a legal name and the letter-only class dropped it.
+      const evaluate = (content) => decodeCounted(String(content || '')
+        .replace(/counters?\(([A-Za-z0-9_-]+)\s*,\s*('(?:[^']*)'|"(?:[^"]*)")\)/giu, (whole, name, sep) => {
+          const scopes = counters[name.trim()] || [];
+          return scopes.map((value) => String(value)).join(decodeCssContent(sep.trim()));
+        })
+        .replace(/counter\(([A-Za-z0-9_-]+)\)/giu, (whole, name) => String(currentValue(name.trim()))));
       const generated = [];
       items.forEach((item) => {
         const itemStyle = ctx.styles.computed(item.node);
@@ -1920,9 +1935,27 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
           increment.split(/\s*,\s*/u).forEach((entry) => {
             const [name, step] = entry.split(/\s+/u);
             const key = name.trim();
-            counters[key] = (counters[key] || 0) + (step === undefined ? 1 : (Number(step) || 0));
+            if (!counters[key] || !counters[key].length) counters[key] = [0];
+            const top = counters[key];
+            top[top.length - 1] += step === undefined ? 1 : (Number(step) || 0);
           });
         }
+        // A nested list under this item opens its own scopes when the walk reaches
+        // its items; its reset applies from that point on.
+        const incrementScopes = [];
+        nestedListsOf(item.node).forEach((nested) => {
+          const nestedStyle = ctx.styles.computed(nested);
+          const nestedReset = String(nestedStyle.counterReset || '').trim();
+          if (nestedReset && nestedReset !== 'none') {
+            nestedReset.split(/\s*,\s*/u).forEach((entry) => {
+              const [name, start] = entry.split(/\s+/u);
+              const key = name.trim();
+              if (!counters[key]) counters[key] = [];
+              counters[key].push(start === undefined ? 0 : (Number(start) || 0));
+              incrementScopes.push(key);
+            });
+          }
+        });
         ['before', 'after'].forEach((pseudo) => {
           const declaration = ctx.styles.decoration(item.node, pseudo);
           if (!declaration) return;
@@ -1930,7 +1963,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
           // A counter() call is resolved against the state before the literal walk:
           // the call is replaced by its number, and the remaining quoted strings take
           // the normal decoding path.
-          const hasCounter = /\bcounter\(/iu.test(raw);
+          const hasCounter = /\bcounter/iu.test(raw);
           const resolved = hasCounter
             ? { text: evaluate(raw) }
             : inlinePseudoText(declaration, item.node);

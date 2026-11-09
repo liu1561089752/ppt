@@ -6039,6 +6039,27 @@ test('counters number the rows, literals join them', () => {
   );
   assert.equal(textOf(stepped), '7 . one\n9 . two');
 
+
+  // Nested scopes: the inner ol resets h2, counters() joins the scope chain, and
+  // the outer counter continues after the nested list closes.
+  const nested = build(
+    ['  ol.outline { counter-reset: h1; list-style: none; margin: 0; padding: 0; }',
+     '  ol.outline li { font-size: 16px; }',
+     '  ol.outline > li { counter-increment: h1; }',
+     '  ol.outline ol { counter-reset: h2; list-style: none; margin: 0; padding-left: 20px; }',
+     '  ol.outline ol > li { counter-increment: h2; }',
+     '  ol.outline > li::before { content: counter(h1) ". "; }',
+     '  ol.outline ol > li::before { content: counters(h2, "-") " "; }'].join('\n'),
+    '<ol class="outline"><li>one<ol><li>sub-a</li><li>sub-b</li></ol></li><li>two</li></ol>'
+  );
+  const nestedText = typeof nested.deck.slides[0].elements[0].text === 'string'
+    ? nested.deck.slides[0].elements[0].text
+    : nested.deck.slides[0].elements[0].text.map((run) => run.text).join('');
+  // A single scope has no joiner to apply; the separator only appears between
+  // nested levels.
+  assert.equal(nestedText, '1 . one1  sub-a2  sub-b2 . two');
+  assert.deepEqual(nested.report.unsupportedDetails.map((entry) => entry.property), []);
+
   // A literal prefix still joins the line, and the arrow arrives before the words.
   const literal = build(
     ['  .b li { font-size: 16px; }',
