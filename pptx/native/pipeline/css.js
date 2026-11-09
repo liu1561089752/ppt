@@ -762,6 +762,43 @@ function expandFontShorthand(value) {
   return out;
 }
 /**
+ * Logical → physical aliases for the horizontal-tb, ltr writing mode. Multi-value
+ * shorthands map positionally: `inset: 10px 20px` is top/bottom 10, left/right 20.
+ */
+const LOGICAL_ALIASES = {
+  // `inset` follows the box-shorthand expansion (top right bottom left), not pairs:
+  // `inset: 10px 20px` is top/bottom 10, left/right 20, and in ltr the left wins when
+  // left and right are both set (Chrome-verified).
+  inset: 'BOX',
+  'inset-block': [['top', 0], ['bottom', 0]],
+  'inset-inline': [['left', 0], ['right', 1]],
+  'inset-block-start': 'top',
+  'inset-block-end': 'bottom',
+  'inset-inline-start': 'left',
+  'inset-inline-end': 'right',
+  'margin-block': [['marginTop', 0], ['marginBottom', 0]],
+  'margin-inline': [['marginLeft', 0], ['marginRight', 1]],
+  'margin-block-start': 'marginTop',
+  'margin-block-end': 'marginBottom',
+  'margin-inline-start': 'marginLeft',
+  'margin-inline-end': 'marginRight',
+  'padding-block': [['paddingTop', 0], ['paddingBottom', 0]],
+  'padding-inline': [['paddingLeft', 0], ['paddingRight', 1]],
+  'padding-block-start': 'paddingTop',
+  'padding-block-end': 'paddingBottom',
+  'padding-inline-start': 'paddingLeft',
+  'padding-inline-end': 'paddingRight',
+  'border-block-start': 'borderTop',
+  'border-block-end': 'borderBottom',
+  'border-inline-start': 'borderLeft',
+  'border-inline-end': 'borderRight',
+  'border-start-start-radius': 'borderTopLeftRadius',
+  'border-start-end-radius': 'borderTopRightRadius',
+  'border-end-start-radius': 'borderBottomLeftRadius',
+  'border-end-end-radius': 'borderBottomRightRadius'
+};
+
+/**
  * Which properties a style object has already taken from an `!important` declaration.
  * Kept beside the style instead of on it: the resolver hands plain objects to the rest of
  * the pipeline, and a bookkeeping key inside one would leak into the cascade.
@@ -814,6 +851,25 @@ function applyDeclarations(style, declarations, variables) {
       set(suffix + 'Right', right);
       set(suffix + 'Bottom', bottom);
       set(suffix + 'Left', left);
+      return;
+    }
+    // Logical properties are aliases of the physical ones in a horizontal-tb, ltr
+    // writing mode, which is the only mode this solver models. Normalising here keeps
+    // the whole pipeline physical-property-only without a report per alias.
+    const logical = LOGICAL_ALIASES[property];
+    if (logical) {
+      if (logical === 'BOX') {
+        const [topSide, rightSide, bottomSide, leftSide] = expandBoxShorthand(resolvedValue);
+        set('top', topSide);
+        set('right', rightSide);
+        set('bottom', bottomSide);
+        set('left', leftSide);
+        return;
+      }
+      if (typeof logical === 'string') { set(logical, resolvedValue); return; }
+      logical.forEach(([name, index]) => {
+        set(name, splitTopLevelSpaces(resolvedValue)[index] || splitTopLevelSpaces(resolvedValue)[0]);
+      });
       return;
     }
     if (property === 'font') {

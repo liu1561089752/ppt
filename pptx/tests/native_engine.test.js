@@ -5737,3 +5737,36 @@ test('outline draws a uniform ring without taking layout space', () => {
   assert.equal(+(second.y * 96).toFixed(1), 130, 'the outline adds no inset');
 });
 
+
+test('logical properties alias their physical sides in ltr', () => {
+  // Chrome-measured on the twin fixture: inset 10px 20px puts the box at x 20 (left wins
+  // in ltr), y 10; inset-inline-start 50px puts it at x 50.
+  const build = (css) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  ' + css,
+    '</style></head><body><main class="slide"><div class="b"></div></main></body></html>'
+  ].join('\n'));
+  const spot = (result) => {
+    const element = result.deck.slides[0].elements[0];
+    return { x: +(element.x * 96).toFixed(1), y: +(element.y * 96).toFixed(1) };
+  };
+
+  const inset = build('.b { position: absolute; inset: 10px 20px; width: 100px; height: 50px; background: #ccc; }');
+  assert.deepEqual(spot(inset), { x: 20, y: 10 });
+  assert.deepEqual(inset.report.unsupportedDetails.map((entry) => entry.property), []);
+
+  const inline = build('.b { position: absolute; inset-inline-start: 50px; top: 10px; width: 100px; height: 50px; background: #ccc; }');
+  assert.deepEqual(spot(inline), { x: 50, y: 10 });
+
+  // Single-value inset spreads to all four sides.
+  const all = build('.b { position: absolute; inset: 10px; width: 100px; height: 50px; background: #ccc; }');
+  assert.deepEqual(spot(all), { x: 10, y: 10 });
+
+  // The border alias feeds the same single-side edge path the physical side does.
+  const ring = build('.b { border-block-start: 2px solid #C05B3E; width: 100px; height: 50px; background: #ccc; }');
+  const element = ring.deck.slides[0].elements[0];
+  assert.equal(element.edge && element.edge.color, 'C05B3E');
+  assert.equal(element.edge && element.edge.side, 'top');
+});
+
