@@ -3834,7 +3834,8 @@ function applyChartStyling(attrs, options, domNode, ctx) {
   const KNOWN_CHART_ATTRS = new Set(['data-chart', 'data-chart-colors', 'data-chart-labels',
     'data-chart-label-position', 'data-chart-value-format', 'data-chart-axis-titles',
     'data-chart-legend', 'data-chart-title', 'data-chart-grid', 'data-chart-grouping',
-    'data-chart-dir', 'data-chart-text-color', 'data-values', 'data-labels']);
+    'data-chart-dir', 'data-chart-text-color', 'data-values', 'data-labels',
+    'data-chart-gap-width', 'data-chart-smooth', 'data-chart-cat-label-rotate']);
   Object.keys(attrs).filter((name) => name.startsWith('data-chart-') && !KNOWN_CHART_ATTRS.has(name))
     .forEach((name) => {
       recordUnsupported(ctx, domNode, name, String(attrs[name]),
@@ -3920,6 +3921,28 @@ function applyChartStyling(attrs, options, domNode, ctx) {
       recordUnsupported(ctx, domNode, 'data-chart-legend', value,
         'Use true, false, none, top, bottom, left, right or top-right');
     }
+  }
+
+  // Reader-native chart tuning: bar gap width, line smoothing, category label
+  // rotation - each maps to one pptxgenjs option.
+  const gapWidth = attrs['data-chart-gap-width'];
+  if (gapWidth !== undefined) {
+    const value = Number(gapWidth);
+    if (Number.isFinite(value) && value >= 0 && value <= 500) options.barGapWidthPct = value;
+    else recordUnsupported(ctx, domNode, 'data-chart-gap-width', gapWidth, 'Use a percentage from 0 to 500');
+  }
+  const smooth = attrs['data-chart-smooth'];
+  if (smooth !== undefined) {
+    const value = String(smooth).trim().toLowerCase();
+    if (value === 'true' || value === '1') options.lineSmooth = true;
+    else if (value === 'false' || value === '0') options.lineSmooth = false;
+    else recordUnsupported(ctx, domNode, 'data-chart-smooth', smooth, 'Use true or false');
+  }
+  const labelRotate = attrs['data-chart-cat-label-rotate'];
+  if (labelRotate !== undefined) {
+    const value = Number(labelRotate);
+    if (Number.isFinite(value) && value >= -90 && value <= 90) options.catAxisLabelRotate = value;
+    else recordUnsupported(ctx, domNode, 'data-chart-cat-label-rotate', labelRotate, 'Use an angle from -90 to 90');
   }
 
   const grid = attrs['data-chart-grid'];

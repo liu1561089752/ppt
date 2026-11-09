@@ -6666,3 +6666,28 @@ test('column-span: all is named where it changes the design', () => {
     'outside multicol the declaration does nothing, so it stays silent');
 });
 
+
+test('chart tuning attributes map to reader options', () => {
+  // Gap width, line smoothing and category label rotation are reader-native chart
+  // settings; each data-chart-* attribute maps to one option and out-of-range values
+  // are named.
+  const build = (tableTag) => pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  table { font-size: 13px; }',
+    '</style></head><body><main class="slide">',
+    '<table ' + tableTag + '><tr><th>季度</th><th>销售额</th></tr>',
+    '<tr><td>Q1</td><td>120</td></tr><tr><td>Q2</td><td>150</td></tr></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const tuned = build('data-chart="bar" data-chart-title="t" data-chart-gap-width="40" data-chart-smooth="true" data-chart-cat-label-rotate="-45"');
+  const chart = tuned.deck.slides[0].elements.find((entry) => entry.type === 'chart');
+  assert.equal(chart.options.barGapWidthPct, 40);
+  assert.equal(chart.options.lineSmooth, true);
+  assert.equal(chart.options.catAxisLabelRotate, -45);
+  const rejected = build('data-chart="bar" data-chart-title="t" data-chart-gap-width="900"');
+  assert.ok(rejected.report.unsupportedDetails.some((entry) => entry.property === 'data-chart-gap-width'),
+    'a 900% gap is named, not clamped');
+  assert.equal(rejected.deck.slides[0].elements.find((entry) => entry.type === 'chart').options.barGapWidthPct, undefined);
+});
+
