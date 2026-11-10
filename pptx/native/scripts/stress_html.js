@@ -371,7 +371,10 @@ const STYLE = `
 function generate(options = {}) {
   topicCursor = 0;
   topicOrder = [];
-  const total = Math.max(1, Math.min(200, Number(options.slides) || 12));
+  // 400 is a guard against a typo (a stray `--slides 5000` would take minutes), not a
+  // statement about the engine: the scale gate asks for three hundred pages, which is the
+  // size where a layout or writer regression stops fitting in a human's patience.
+  const total = Math.max(1, Math.min(400, Number(options.slides) || 12));
   const random = makeRandom(options.seed === undefined ? 1 : options.seed);
   const parts = [];
   for (let index = 0; index < total; index += 1) {

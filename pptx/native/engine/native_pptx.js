@@ -10,10 +10,12 @@ const { validateSlide } = require('./validation');
 const { FontManager } = require('./font_manager');
 const { patchEastAsianFonts } = require('./east_asian_font');
 const {
+  EMU_PER_INCH,
   EMU_PER_POINT,
   roundRectAdjustment,
   resolveImageGeometry,
-  srcRectAttributes
+  srcRectAttributes,
+  tileOrigin
 } = require('./image_fit');
 const defaultTheme = require('../themes/default');
 const { resolveTheme } = require('../themes/design_system');
@@ -174,7 +176,19 @@ function addElement(slide, el, theme, pptx, context = {}) {
       }
     });
   } else if (el.type === 'image') {
-    const geometry = resolveImageGeometry(el, context.image || {});
+    let geometry = resolveImageGeometry(el, context.image || {});
+    // A repeating layer paints its whole box: `<a:tile>` anchors the pattern at the frame's
+    // corner and the frame clips it, so a fitted (letterboxed) frame would leave the pattern
+    // short of the edges the CSS painted - and the cell is a percentage of the frame, so the
+    // frame decides the pattern's scale. The box it fills is the element's own.
+    if (el.tile) {
+      const box = {
+        x: Number(el.x), y: Number(el.y), w: Number(el.w), h: Number(el.h)
+      };
+      if ([box.x, box.y, box.w, box.h].every(Number.isFinite)) {
+        geometry = { fit: 'stretch', box, srcRect: null, natural: geometry.natural };
+      }
+    }
     // The writer reads media while it assembles the package, long after this call, so a source
     // that cannot be read has to be caught here. It costs this picture and one line in the
     // report; it used to abort the whole deck, every other slide included.
@@ -221,6 +235,11 @@ function addElement(slide, el, theme, pptx, context = {}) {
       return;
     }
     if (Array.isArray(context.imagePlans)) context.imagePlans.push(buildImagePlan(el, geometry));
+    // One entry per picture the writer really placed, in the order it emitted them, so the tile
+    // patch can pair `p:pic` with the element that asked for the pattern - or prove it cannot.
+    if (Array.isArray(context.tileFills)) {
+      context.tileFills.push(el.tile ? { tile: el.tile, box: geometry.box, focus: el.focus } : null);
+    }
   } else if (el.type === 'chart') {
     const chartTypes = {
       bar: pptx.ChartType.bar,
@@ -432,6 +451,96 @@ async function patchImageEffects(outputPath, plansBySlide) {
   return true;
 }
 
+/**
+ * A repeating background is DrawingML's `<a:tile>`: one cell, expressed as a percentage of the
+ * picture's own frame, and the reader repeats it. The writer only ever writes
+ * `<a:stretch><a:fillRect/></a:stretch>`, so a repeating layer used to arrive as a single
+ * stretched copy - the pattern collapsed into one enormous cell, which is not what
+ * `background-repeat` asked for.
+ *
+ * `sx`/`sy` are the cell against the frame, in ST_Percentage (100000 = the frame's own size).
+ * The axis that does not repeat keeps `100000`, which is exactly the un-repeated picture
+ * stretched across that axis - one cell is not a repeat - and its offset stays 0, because a
+ * shift on that axis would drag the single cell against the wrap and paint a seam at the edge.
+ * `tx`/`ty` move the pattern's origin by a percentage of the cell, negative when it starts
+ * before the box's corner. A tiled fill has no stretch left for a source rectangle to describe,
+ * so any `<a:srcRect>` is dropped.
+ */
+function applyTileFill(picXml, plan) {
+  const tile = plan.tile;
+  const box = plan.box;
+  const origin = tileOrigin(plan.focus, box, tile);
+  const percent = (value) => Math.round(value * 100000);
+  const node = '<a:tile tx="' + (tile.x ? percent(origin.x / tile.width) : 0)
+    + '" ty="' + (tile.y ? percent(origin.y / tile.height) : 0)
+    + '" sx="' + (tile.x ? percent(tile.width / box.w) : 100000)
+    + '" sy="' + (tile.y ? percent(tile.height / box.h) : 100000)
+    + '" flip="none" algn="tl"/>';
+  const xml = String(picXml).replace(/<a:srcRect\b[^>]*\/>/gu, '');
+  // Idempotent: a second run replaces its own tile node instead of looking for the stretch it
+  // already replaced.
+  if (/<a:tile\b[^>]*\/>/u.test(xml)) return xml.replace(/<a:tile\b[^>]*\/>/u, node);
+  const stretch = /<a:stretch\s*\/>|<a:stretch>[\s\S]*?<\/a:stretch>/u;
+  if (!stretch.test(xml)) throw new Error('Unable to locate the picture fill for a tile patch');
+  return xml.replace(stretch, node);
+}
+
+/** The frame a picture was really drawn in, in inches, read back from its own geometry. */
+function pictureFrameInches(picXml) {
+  const ext = /<a:ext\s+cx="(\d+)"\s+cy="(\d+)"\/>/u.exec(String(picXml));
+  if (!ext) throw new Error('Unable to read the picture frame for a tile patch');
+  return { w: Number(ext[1]) / EMU_PER_INCH, h: Number(ext[2]) / EMU_PER_INCH };
+}
+
+/**
+ * Tiled picture fills, one entry per picture the writer emitted and `null` for the rest - the
+ * same pairing `patchImageEffects` uses, because both patch the same `p:pic` nodes in order.
+ * The cell is a percentage of the frame, so the frame is checked against the spec box: a tile
+ * scaled against a fitted (letterboxed) frame would draw a smaller pattern than the design.
+ */
+async function patchTiledFills(outputPath, tilesBySlide) {
+  const slides = Array.isArray(tilesBySlide) ? tilesBySlide : [];
+  const needed = slides.some((plans) => Array.isArray(plans) && plans.some(Boolean));
+  if (!needed) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const plans = slides[slideIndex] || [];
+    if (!plans.some(Boolean)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    const pictureCount = (xml.match(/<p:pic>/gu) || []).length;
+    if (pictureCount !== plans.length) {
+      throw new Error('Tile patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + plans.length + ' image elements but PPTX has ' + pictureCount + ' p:pic elements');
+    }
+    let index = 0;
+    let patched = 0;
+    const next = xml.replace(/<p:pic>[\s\S]*?<\/p:pic>/gu, (whole) => {
+      const plan = plans[index];
+      index += 1;
+      if (!plan) return whole;
+      const frame = pictureFrameInches(whole);
+      if (Math.abs(frame.w - plan.box.w) > 0.01 || Math.abs(frame.h - plan.box.h) > 0.01) {
+        throw new Error('Tile patch frame mismatch on slide ' + (slideIndex + 1) + ': the spec box is '
+          + plan.box.w + 'x' + plan.box.h + 'in but the picture frame is ' + frame.w + 'x' + frame.h + 'in');
+      }
+      const updated = applyTileFill(whole, plan);
+      if (updated !== whole) patched += 1;
+      return updated;
+    });
+    if (!patched) continue;
+    zip.file(name, next);
+    touched += 1;
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 async function buildPresentation(deck, options = {}) {
   const errors = validateDeck(deck);
   if (errors.length) throw new Error('Invalid deck spec:\n- ' + errors.join('\n- '));
@@ -461,6 +570,7 @@ async function buildPresentation(deck, options = {}) {
 
   const report = [];
   const imagePlans = [];
+  const tiledFills = [];
   const droppedPictures = [];
   // The patches below rewrite `slideN.xml` by walking the elements in order, so they need
   // the *laid out* list: a container contributes its background, its single-side border
@@ -478,17 +588,20 @@ async function buildPresentation(deck, options = {}) {
       });
     });
     const slidePlans = [];
+    const slideTiles = [];
     elements.forEach((element) => addElement(slide, element, theme, pptx, {
       image: { readFile: options.readImageFile },
       imagePlans: slidePlans,
+      tileFills: slideTiles,
       droppedPictures,
       slideIndex: index
     }));
     if (spec.notes) slide.addNotes(spec.notes);
     imagePlans.push(slidePlans);
+    tiledFills.push(slideTiles);
     report.push({ slide: index + 1, warnings });
   }
-  return { pptx, report, pageSize, fontReport: fontManager.inspect(), imagePlans, laidOut, droppedPictures };
+  return { pptx, report, pageSize, fontReport: fontManager.inspect(), imagePlans, tiledFills, laidOut, droppedPictures };
 }
 
 /** Can the bytes behind this source be read? A `data:` source carries its own. */
@@ -1913,6 +2026,9 @@ async function generatePptx(deck, outputPath, options = {}) {
     await patchInnerShadows(outputPath, deck, result.laidOut);
   }
   await patchImageEffects(outputPath, result.imagePlans);
+  // A repeating background is `<a:tile>`, which the writer has no option for. After the image
+  // effects, because this patch owns the fill mode and drops the source rectangle it writes.
+  await patchTiledFills(outputPath, result.tiledFills);
   if (laidOutShapes.some((elements) => elements.some((element) => element.type === 'chart'
     && element.chartType === 'scatter'))) {
     await patchScatterStyle(outputPath);
@@ -1945,7 +2061,8 @@ async function generatePptx(deck, outputPath, options = {}) {
 
 module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
-  shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
+  shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects,
+  applyTileFill, patchTiledFills, pictureFrameInches, applyTextColumns, patchTextColumns,
   cellBulletMarker, applyCellBullets, patchCellBullets, bulletParagraphIndent, cellBulletIndentBase,
   applyRelsEscapes, patchHyperlinkRelEscapes,
   applyShapeClick, patchShapeHyperlinks, hyperlinkRegistry, hyperlinkId, spHyperlinkUrl,

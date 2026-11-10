@@ -3611,7 +3611,11 @@ test('declared chart styling reaches the chart part, not just the spec', async (
   assert.equal(options.showCatAxisTitle, true);
   assert.equal(options.showValAxisTitle, true);
   assert.equal(options.showValue, true);
-  assert.equal(options.valLabelFormatCode, '#,##0');
+  // The declared value format is the DATA-LABEL format. The writer reads `valLabelFormatCode`
+  // only for a chart's data table (`c:dataTable`), so carrying the declaration under that name
+  // wrote the writer's default into `c:dLbls` and threw the design's format away.
+  assert.equal(options.dataLabelFormatCode, '#,##0');
+  assert.equal(options.valLabelFormatCode, undefined, 'and not under the data-table name');
   assert.equal(options.barGrouping, 'stacked');
   assert.equal(options.barDir, 'bar');
   assert.equal(options.titleColor, '3F5450');
@@ -5675,7 +5679,7 @@ test('every example deck is one the gates convert', () => {
     .map((name) => name.replace(/\.html$/u, ''))
     .sort();
   assert.deepEqual(listed, onDisk, 'the converter covers every pipeline example');
-  assert.equal(listed.length, 20, 'twenty example decks today');
+  assert.equal(listed.length, 21, 'twenty-one example decks today');
 });
 
 test('a link, a cell list and a reading cross the pipeline end to end', async () => {
@@ -5730,6 +5734,45 @@ test('a link, a cell list and a reading cross the pipeline end to end', async ()
   const ruby = result.report.unsupportedDetails.filter((entry) => entry.property === 'ruby');
   assert.equal(ruby.length, 1, 'the reading is named once');
   assert.equal(ruby[0].value, 'とうきょう', 'and the report quotes it');
+});
+
+test('a repeating background, a cropped picture and a placed one reach one package', async () => {
+  // The crop fixture is the only place where the three picture contracts meet in one deck: a
+  // tile whose cell is a fraction of its frame, a clip-path rectangle that became a source crop,
+  // and a cover crop that is placed rather than centred. Each stage was built by a different
+  // hand this round, so this pins where they join - and pins the numbers a reader cannot show,
+  // since both readers available here draw one stretched cell for an `a:tile`.
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'examples', 'pipeline-crop.html'), 'utf8');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.report.unsupportedDetails, [], 'the whole fixture is expressible');
+  assert.equal(result.report.maxBoxDelta < 0.01, true, 'and both layout paths agree: ' + result.report.maxBoxDelta);
+  const output = path.join(os.tmpdir(), 'native-crop-' + process.pid + '.pptx');
+  await generatePptx(result.deck, output);
+  const zip = await JSZip.loadAsync(fs.readFileSync(output));
+  const third = await zip.file('ppt/slides/slide3.xml').async('string');
+  const second = await zip.file('ppt/slides/slide2.xml').async('string');
+  fs.rmSync(output, { force: true });
+
+  const tiles = [...third.matchAll(/<a:tile ([^/>]*)\/>/gu)].map((match) => match[1].trim());
+  assert.equal(tiles.length, 2, 'two repeating boxes, two tiles: ' + JSON.stringify(tiles));
+  const repeat = tiles.find((attributes) => /sy="(\d+)"/u.test(attributes) && Number(/sy="(\d+)"/u.exec(attributes)[1]) < 100000);
+  assert.ok(repeat, 'the fully repeating box scales both axes: ' + JSON.stringify(tiles));
+  assert.match(repeat, /sx="20002"/u, '40px of a 2.0833in frame: ' + repeat);
+  assert.match(repeat, /sy="26669"/u, 'and of a 1.5625in one: ' + repeat);
+  assert.match(repeat, /tx="0" ty="0"/u, 'the pattern starts at the corner, as background-position does: ' + repeat);
+  const oneAxis = tiles.find((attributes) => attributes !== repeat);
+  assert.match(oneAxis, /sy="100000"/u, 'a repeat-x box leaves the other axis stretched: ' + oneAxis);
+  assert.equal((third.match(/<a:stretch>/gu) || []).length, 1, 'and only the no-repeat box keeps a stretch fill');
+
+  // The clip-path rectangle: the frame is the visible rectangle, the crop is the region, and the
+  // slot the picture came from keeps its size so the page below does not move up.
+  assert.match(second, /<a:srcRect l="22000" t="18000" r="22000" b="6000"\/>/u,
+    'the inset becomes a source rectangle in tenths of a percent');
 });
 
 test('the catalogue of what the engine cannot draw matches the code', () => {
@@ -8497,13 +8540,14 @@ test('a background-size that names a length draws at that length', async () => {
   };
   const close = (actual, expected) => Math.abs(actual - expected) < 0.003;
 
-  // 120px is 1.25in wide; the picture is 24x16, so the height follows at 0.833in, centred in
-  // a 240x120 box that starts at 0.4167in.
+  // 120px is 1.25in wide; the picture is 24x16, so the height follows at 0.833in, placed at the
+  // box's top-left corner in a 240x120 box that starts at 0.4167in - because CSS's initial
+  // `background-position` is `0% 0%`, unlike `object-position`'s 50% 50%.
   const sized = await picture('background-size: 120px;');
   assert.ok(close(sized.w, 1.25), 'width is the declared 120px: ' + sized.w);
   assert.ok(close(sized.h, 0.8333), 'height follows the source aspect: ' + sized.h);
-  assert.ok(close(sized.x, 1.0417), 'centred horizontally: ' + sized.x);
-  assert.ok(close(sized.y, 0.625), 'centred vertically: ' + sized.y);
+  assert.ok(close(sized.x, 0.4167), 'at the box corner horizontally: ' + sized.x);
+  assert.ok(close(sized.y, 0.4167), 'and vertically: ' + sized.y);
 
   // One axis by the source, one by the design; and a percentage of the box.
   const heightOnly = await picture('background-size: auto 80px;');
@@ -8518,11 +8562,14 @@ test('a background-size that names a length draws at that length', async () => {
   assert.ok(close(corner.x, 1.6667) && close(corner.y, 0.8333), 'placed at the corner: ' + corner.x + ',' + corner.y);
 
   // Bigger than its box: the picture becomes the box and the browser's clipping becomes a
-  // source rectangle - 300px of 240 leaves 10% cut on each side, 200px of 120 leaves 20%.
+  // source rectangle. Anchored at the corner (the initial position), 300px of 240 cuts the
+  // far 20% horizontally and 40% vertically - the near edges are shown whole.
   const big = await picture('background-size: 300px;');
   assert.ok(close(big.w, 2.5) && close(big.h, 1.25), 'the drawn picture is the box: ' + big.w + 'x' + big.h);
-  assert.match(big.crop, /l="10000"/u, 'a centred clip: ' + big.crop);
-  assert.match(big.crop, /t="20000"/u, 'vertically too: ' + big.crop);
+  assert.match(big.crop, /l="0"/u, 'nothing cut from the near edge: ' + big.crop);
+  assert.match(big.crop, /t="0"/u, 'vertically too: ' + big.crop);
+  assert.match(big.crop, /r="20000"/u, 'the far side takes the cut: ' + big.crop);
+  assert.match(big.crop, /b="40000"/u, 'and the far bottom: ' + big.crop);
   const cornerClip = await picture('background-size: 300px; background-position: left top;');
   assert.match(cornerClip.crop, /l="0"/u, 'left top shows the top left: ' + cornerClip.crop);
   assert.match(cornerClip.crop, /r="20000"/u, 'and cuts the rest away: ' + cornerClip.crop);
@@ -8567,12 +8614,17 @@ test('a background picture stretches, crops and is placed like its CSS says', as
   assert.equal(stretched.crop, '', 'and a stretched picture has nothing to crop');
 
   const centred = await background('background-size: cover;');
-  assert.match(centred.crop, /t="12500"/u, 'cover crops from the middle: ' + centred.crop);
+  assert.match(centred.crop, /t="0"/u, 'cover crops from the near edge: ' + centred.crop);
+  assert.match(centred.crop, /b="25000"/u, 'and takes the far side: ' + centred.crop);
 
+  // A positive length pushes the object down and leaves a gap the format cannot draw, so the
+  // window stays at the near edge (the analyzer names the strip); a negative one moves in.
   const down = await background('background-size: cover; background-position: 10px 5px;');
-  assert.match(down.crop, /t="9375"/u, 'a 5px offset moves the crop window: ' + down.crop);
+  assert.match(down.crop, /t="0"/u, 'a positive offset clamps at the edge: ' + down.crop);
+  assert.match(down.crop, /b="25000"/u, 'and keeps the whole far crop: ' + down.crop);
   const up = await background('background-size: cover; background-position: -10px -5px;');
-  assert.match(up.crop, /t="15625"/u, 'and the sign decides the direction: ' + up.crop);
+  assert.match(up.crop, /t="3125"/u, 'a negative offset moves the window in: ' + up.crop);
+  assert.match(up.crop, /b="21875"/u, 'and the far crop shrinks by as much: ' + up.crop);
 
   const placed = await background('background-size: contain; background-position: 20px 0;');
   assert.ok(Math.abs(placed.x - (0.4167 + 20 / 96)) < 0.002, 'a contained background is placed at 20px: ' + placed.x);
@@ -8621,10 +8673,12 @@ test('a length object-position crops and places the picture it names', async () 
   const up = await picture('img { object-fit: cover; object-position: -10px -5px; }');
   assert.match(centred.crop, /t="12500"/u, 'the default crop is centred: ' + centred.crop);
   assert.match(centred.crop, /b="12500"/u, 'top and bottom alike: ' + centred.crop);
-  assert.match(down.crop, /t="9375"/u, '5px down moves the window up: ' + down.crop);
-  assert.match(down.crop, /b="15625"/u, 'and takes the bottom with it: ' + down.crop);
-  assert.match(up.crop, /t="15625"/u, 'and the minus sign goes the other way: ' + up.crop);
-  assert.match(up.crop, /b="9375"/u, 'bottom first: ' + up.crop);
+  // A positive offset is a gap the file format cannot draw: the window stays at the near edge,
+  // and the analyzer reports the strip that a reader cannot show. A negative offset moves in.
+  assert.match(down.crop, /t="0"/u, 'a positive offset clamps at the near edge: ' + down.crop);
+  assert.match(down.crop, /b="25000"/u, 'and keeps the whole far crop: ' + down.crop);
+  assert.match(up.crop, /t="3125"/u, 'the minus sign moves the window in: ' + up.crop);
+  assert.match(up.crop, /b="21875"/u, 'bottom first: ' + up.crop);
 
   // A contained picture is smaller than its box, so the offset is placement from the edge:
   // 20px in a 0.625in of free space lands 0.208in past the box's left edge.

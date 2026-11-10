@@ -1,4 +1,4 @@
-'use strfot';
+'use strict';
 
 /**
  * Layout tree → Native Deck Spec (stage 3 of the HTML → Native pipeline).
@@ -365,6 +365,29 @@ function standaloneEdgeElement(node) {
   return element;
 }
 
+/**
+ * A repeating `background-repeat` is DrawingML's `<a:tile>`, which the engine writes.
+ *
+ * The analyzer resolves the pattern - which axes repeat, and the tile cell in inches - because it
+ * is the only stage that has both the CSS and the source's natural size. The numbers travel
+ * verbatim: `a:tile` wants percentages of the picture frame, and only the engine knows that frame.
+ *
+ * The declaration may sit on the layer object (`backgroundImage.tile`) or on the node that paints
+ * it (`node.tile`); both are the same declaration, and the first one found wins.
+ */
+function tileOf(...sources) {
+  const holder = sources.find((source) => source && source.tile);
+  const tile = holder && holder.tile;
+  if (!tile || typeof tile !== 'object') return undefined;
+  const width = Number(tile.width);
+  const height = Number(tile.height);
+  // A cell with no positive side cannot be repeated into - `a:tile`'s scale would divide by it -
+  // so the layer keeps the single fitted picture it draws today, and the analyzer that declared
+  // the pattern is the stage that has to say so.
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return undefined;
+  return { x: Boolean(tile.x), y: Boolean(tile.y), width, height };
+}
+
 function imageElementFromNode(node) {
   if (!node.src) return null;
   const element = {
@@ -375,6 +398,10 @@ function imageElementFromNode(node) {
     h: Number(Math.max(0.05, node.h).toFixed(4)),
     fit: FIT_BY_OBJECT_FIT[node.objectFit] || 'cover'
   };
+  // A tiled layer's frame is the box it fills; the pattern repeats *inside* that frame, so the
+  // tile cell and the frame are two different sizes and both travel.
+  const tile = tileOf(node);
+  if (tile) element.tile = tile;
   if (/^data:/iu.test(node.src) || /^https?:/iu.test(node.src)) element.data = node.src;
   else element.path = node.src;
   if (node.alt) element.altText = node.alt;
@@ -1007,11 +1034,15 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     // A background picture behind text: the image element first (document order
     // paints it beneath), then the text on top - both stay editable.
     if (node.bgImage && node.bgImage.src && !node.bgImage.undrawable) {
+      // A repeating layer is written as one picture covering the whole box, with the pattern
+      // repeated inside it: the frame and the tile cell are two different sizes, so shrinking
+      // the picture to the cell (or to its natural size) would leave the tile nowhere to repeat.
+      const bgTile = tileOf(node.bgImage, node);
       // `background-size: auto` draws the picture at its natural size, centred in
       // the box - not stretched. The intrinsic dimensions come from the image
       // header (PNG, JPEG, GIF); anything unreadable falls back to the box fill.
       let natural = null;
-      if ((node.bgImage.size || 'auto') === 'auto') natural = intrinsicImageSize(node.bgImage.src);
+      if ((node.bgImage.size || 'auto') === 'auto' && !bgTile) natural = intrinsicImageSize(node.bgImage.src);
       let imageW = node.w;
       let imageH = node.h;
       let imageX = xOf(node);
@@ -1024,11 +1055,12 @@ function leafElementRotationFree(node, resolvedTheme, report) {
         imageX = xOf(node) + Math.max(0, (node.w - imageW) / 2);
         imageY = yOf(node) + Math.max(0, (node.h - imageH) / 2);
       }
-      const fitForPair = natural ? 'contain' : (node.bgImage.fit || 'cover');
+      const fitForPair = bgTile ? 'stretch' : (natural ? 'contain' : (node.bgImage.fit || 'cover'));
       const imageNode = {
         kind: 'image', x: imageX, y: imageY, w: imageW, h: imageH,
         src: node.bgImage.src, alt: '', objectFit: fitForPair,
-        focus: node.bgImage.focus, style: {}
+        focus: node.bgImage.focus, style: {},
+        ...(bgTile ? { tile: bgTile } : {})
       };
       const image = imageElementFromNode(imageNode);
       const text = textElementFromNode(node, null, resolvedTheme);
@@ -1054,9 +1086,18 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     // No bytes to draw - a remote source or a file that is not there. The box stays reserved by
     // the layout; the report says why it is empty.
     if (node.undrawableSource) return null;
+    // A repeating layer is one picture over the whole box with the pattern repeated inside it.
+    // Its frame is therefore the box, not the tile cell and not the source's natural size:
+    // shrinking it would leave the tile nowhere to repeat, and the picture would show one cell
+    // floating in the middle of the area the design covers.
+    const tile = tileOf(node);
+    // `a:tile` fills the picture's own frame, so the frame has to be the element's box exactly:
+    // a `contain` fit would letterbox the frame inside the box and the pattern would stop short
+    // of the edges the CSS painted.
+    if (tile) node = { ...node, objectFit: 'stretch', crop: undefined };
     // A background picture with an explicit `background-size` is drawn at that size; the
     // geometry is resolved before the element is built, because the element carries a box.
-    if (node.backgroundSizeSpec && !node.backgroundNatural) {
+    if (node.backgroundSizeSpec && !node.backgroundNatural && !tile) {
       const geometry = backgroundPictureGeometry(
         { size: node.backgroundSize, sizeSpec: node.backgroundSizeSpec, focus: node.focus, fit: node.objectFit },
         boxOf(node), intrinsicImageSize(node.src));
@@ -1065,7 +1106,7 @@ function leafElementRotationFree(node, resolvedTheme, report) {
           objectFit: geometry.fit, crop: geometry.crop || undefined, focus: undefined };
       }
     }
-    if (node.backgroundNatural) {
+    if (node.backgroundNatural && !tile) {
       const natural = intrinsicImageSize(node.src);
       if (natural) {
         const naturalW = Math.min(natural.widthPx / 96, node.w);
@@ -1274,11 +1315,15 @@ function emitNodeAtBox(node, context) {
   };
 
   if (node.backgroundImage && !node.backgroundImage.undrawable) {
+    // A repeating layer is one picture over the whole box with the pattern repeated inside it:
+    // the frame is the box, and the tile cell (which the engine turns into scale percentages)
+    // is a second size that travels beside it.
+    const layerTile = tileOf(node.backgroundImage, node);
     // `background-size` decides the drawn size: the natural size, a length, a percentage, or
     // the box itself for `cover`/`contain`. `backgroundPictureGeometry` resolves the first
     // three - including the clip a picture bigger than its box needs.
     const natural = intrinsicImageSize(node.backgroundImage.src);
-    const geometry = backgroundPictureGeometry(node.backgroundImage, boxOf(node), natural);
+    const geometry = layerTile ? null : backgroundPictureGeometry(node.backgroundImage, boxOf(node), natural);
     let pictureW = node.w;
     let pictureH = node.h;
     let pictureX = xOf(node);
@@ -1299,11 +1344,13 @@ function emitNodeAtBox(node, context) {
       y: pictureY,
       w: pictureW,
       h: pictureH,
-      objectFit: geometry ? pictureFit : node.backgroundImage.fit,
+      // `a:tile` fills the picture's own frame, so a tiled picture must be drawn at the box.
+      objectFit: layerTile ? 'stretch' : (geometry ? pictureFit : node.backgroundImage.fit),
       focus: node.backgroundImage.focus,
       crop: pictureCrop || undefined,
       radius: node.radius,
-      alt: ''
+      alt: '',
+      ...(layerTile ? { tile: layerTile } : {})
     });
     if (picture) {
       picture._probe = 'bg-' + node.id;
@@ -1673,6 +1720,7 @@ module.exports = {
   textElementFromNode,
   surfaceElementFromNode,
   imageElementFromNode,
+  tileOf,
   anchorHrefOf,
   anchorLinkFits,
   anchorLinkObjects,

@@ -18,8 +18,8 @@ generated from the source, so it cannot drift away from the code.
 
 <!-- generated:start -->
 
-Generated from `pipeline/analyzer.js`: **143 call sites**, **82 properties**,
-**129 distinct explanations**. Regenerate with `npm run limits:update`; a new report
+Generated from `pipeline/analyzer.js`: **151 call sites**, **84 properties**,
+**136 distinct explanations**. Regenerate with `npm run limits:update`; a new report
 without a line here fails the gate.
 
 | reported as | what the deck says it could not do |
@@ -30,14 +30,15 @@ without a line here fails the gate.
 | `accentColor` | An accent colour has no native spelling here: only a progress bar or a meter is coloured by it |
 | `animation` | The slide draws the final state; the entrance or motion itself is not drawn |
 | `backgroundImage` | Only one picture layer and one linear gradient above it can be painted: ⟨what⟩ is dropped<br>Only one picture layer behind the text can be painted: ⟨what⟩ is dropped<br>⟨unreadableLayer⟩, so the layer is dropped and the box keeps its own fill<br>⟨unsupportedGradient⟩ cannot be translated (⟨why⟩), so the box keeps its geometry and is left unpainted |
-| `backgroundRepeat` | The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled |
+| `backgroundPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge |
+| `backgroundRepeat` | The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled<br>`space` and `round` resize the cell until a whole number of cells fills the box; a tile repeats one fixed cell, so the pattern is drawn once |
 | `border` | A native shape outline is uniform; declare every side the same, or use a separate rule/shape |
 | `borderCollapse` | Collapsed borders resolve to one line in the browser; adjacent cells disagree on ⟨conflicts⟩, and a native table cell keeps both edges |
 | `borderRadius` | A corner with a horizontal and a vertical radius is an elliptical corner, which no native geometry spells: the box is drawn square<br>A native rounded rectangle carries one radius: corners ⟨corners.map((value) => value.toFi…⟩ keep only the first value<br>A percentage radius below 50% is an elliptical corner, which no native geometry spells: the box is drawn square<br>A percentage radius below 50% is an elliptical corner, which no native geometry spells: the picture keeps square corners<br>A table cell has no corner geometry in the file format; the radius squares off<br>The corners round by different amounts; a native roundRect rounds all four alike, so the box is drawn at the top-left radius |
 | `borderStyle` | A double border needs a compound line, which the writer cannot spell: it draws as one solid line |
 | `boxShadow` | ⟨shadowNote⟩ |
 | `boxSizing` | Width is resolved as a border box; declare box-sizing: border-box to make it exact |
-| `clipPath` | clip-path clips the subtree; only this box's own paint is clipped, its children keep their shape<br>⟨explicitHeight === null ? 'A clip…⟩ |
+| `clipPath` | A rounded inset needs a rounded geometry; a source rectangle has right angles, so the picture keeps square corners<br>Only lengths and percentages inside inset() name a source rectangle; this clip shape is not one<br>The inset leaves no picture; a source rectangle cannot be empty<br>The picture is already cropped or letterboxed by its fit, so this clip would compose two crops; one source rectangle cannot hold both, and the clip is not drawn<br>The picture is clipped by its own inset and the frame crops it again: one source rectangle cannot hold both, so the frame keeps the picture as the inset left it<br>clip-path clips the subtree; only this box's own paint is clipped, its children keep their shape<br>⟨explicitHeight === null ? 'A clip…⟩ |
 | `column-widths` | Fixed-layout columns are scaled into the table box instead of widening it |
 | `columns` | ⟨reason⟩ |
 | `data-chart` | A bubble needs three numbers per point: an x column, a y column and a size column<br>A bubble reads the columns after x in pairs (y, size); ⟨seriesCount⟩ leaves one of them unpaired<br>A chart needs data: add data-values="1,2,3" or put the numbers in a <table><br>A chart value has to be a number, and this cell holds no number, so it is plotted as 0⟨more(textValues.length)⟩<br>A scatter needs an x column and at least one y series: two numeric columns<br>An empty value cell is plotted as 0; use an explicit 0 if that is what the page means⟨more(blankValues.length)⟩<br>The first column of a bubble is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>The first column of a scatter is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>Unknown chart type; use bar or column, line, area, pie, doughnut or radar |
@@ -78,6 +79,7 @@ without a line here fails the gate.
 | `meter` | The gauge is drawn in the deck accent; the browser also tints it by where the value falls in the range, which this shape does not reproduce |
 | `name` | Unknown chart attribute; the styling it asks for is not applied |
 | `objectFit` | Unknown object-fit value: the picture is stretched to fill the box instead |
+| `objectPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge |
 | `opacity` | opacity fades the whole subtree; only this box's own fill and text are faded, its children keep full opacity |
 | `outline` | A shape carries one line: the outline sits beside a border here, so the border is what draws |
 | `overflowWrap` | A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break |
@@ -139,7 +141,7 @@ cell, and small caps and per-cell decorations are named once per table | set it 
 
 ## Gaps this machine cannot adjudicate
 
-Two questions need a real Microsoft PowerPoint, and no reader available here can answer them:
+Three questions need a real Microsoft PowerPoint, and no reader available here can answer them:
 
 1. **Line spacing convention.** `a:lnSpc/a:spcPct` is a percentage of the line's *natural*
    height, and CSS `line-height: 1.25` is 1.25 *em*. LibreOffice and WPS both read it the CSS
@@ -150,6 +152,11 @@ Two questions need a real Microsoft PowerPoint, and no reader available here can
    and python-pptx (which round-trips the package) - and the OOXML audit checks child order,
    table grids, enumerations and fonts against the schema. Only PowerPoint itself decides whether
    it offers to repair a file it can parse.
+3. **Tile rendering.** `a:tile` is standard DrawingML and the numbers are verified by
+   construction - `sx`/`sy` are the cell as a fraction of the frame, `tx`/`ty` the pattern's
+   origin in cells - but LibreOffice's and WPS's importers ignore the tile attributes and
+   draw the first cell stretched across the frame. The deck is right (`pipeline-crop.html`
+   names this on its own page); whether PowerPoint agrees is not measurable here.
 
 ## What is *not* on this list
 

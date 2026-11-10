@@ -98,38 +98,109 @@ function lengthInInches(token) {
 }
 
 /**
- * `object-position: 10px 5px` is an offset from the box's top-left, not a percentage, so it
- * can only be read once the source size and the box are known. The offset is turned into the
- * same 0..1 focus the percentage form uses: for a cover crop the object overflows the box by
- * `scaled - box`, and shifting it by `offset` shows that fraction of the overflow; for a
- * contained picture it is the free space the object is placed in.
+ * The size an object is really drawn at inside its slot, in inches: the same arithmetic every
+ * fit mode uses. A length position is read against that drawn size, so the modes cannot drift
+ * apart - `object-fit: none` at its own pixel size, `scale-down` as contain that never enlarges,
+ * `cover` overflowing the slot by `drawn - box`.
+ */
+function fitDrawnSize(natural, box, fit) {
+  const naturalW = natural.width / PX_PER_INCH;
+  const naturalH = natural.height / PX_PER_INCH;
+  if (fit === 'none') return { w: naturalW, h: naturalH };
+  if (fit === 'cover') {
+    const scale = Math.max(box.w / naturalW, box.h / naturalH);
+    return { w: naturalW * scale, h: naturalH * scale };
+  }
+  let scale = Math.min(box.w / naturalW, box.h / naturalH);
+  // `scale-down` is contain capped at the source's own size: 40x100 px draws 0.4167x1.0417in
+  // at most, however much room the slot offers.
+  if (fit === 'scale-down') scale = Math.min(scale, 1);
+  return { w: naturalW * scale, h: naturalH * scale };
+}
+
+/**
+ * `object-position: 10px 5px` is an offset from the box's top-left edge, not a percentage, so
+ * it can only be read once the source size and the box are known.
+ *
+ * CSS `<position>` lengths are measured from the near edge: a positive length moves the object
+ * right/down. A *contained* picture is therefore placed at that offset, so the focus is the
+ * offset across the free space. A *cropped* picture already overflows its box, and the browser
+ * answers a positive offset by pushing the object inward - a real gap at the near edge, with
+ * the crop moving to the far edge - so the crop window starts at `max(0, -offset)`. That is
+ * the clamp below: `a:srcRect` always fills the frame and cannot draw a gap, so the window
+ * stops at the edge and the analyzer names the strip that the browser would have left blank.
  */
 function focusFromLengths(tokens, natural, box, fit) {
   const xIn = lengthInInches(tokens[0]);
   const yIn = tokens.length > 1 ? lengthInInches(tokens[1]) : null;
   if (xIn === null || (tokens.length > 1 && yIn === null)) return null;
   const centre = 0.5;
-  const scale = fit === 'none'
-    ? 1
-    : (fit === 'cover'
-      ? Math.max(box.w / natural.width, box.h / natural.height)
-      : Math.min(box.w / natural.width, box.h / natural.height));
-  const scaledW = natural.width * scale;
-  const scaledH = natural.height * scale;
-  // Two different meanings, as in `background-position`. A contained picture is *placed*:
-  // the offset is the distance from the box edge, so it is the fraction of the free space
-  // directly. A cover crop fills the box already, so the offset can only mean "this much
-  // further than centred", which moves the crop window by that fraction of the overflow.
-  const fraction = (offset, size, boxSize) => {
-    const span = fit === 'cover' ? size - boxSize : boxSize - size;
-    if (!Number.isFinite(span) || Math.abs(span) < 1e-6) return centre;
-    const value = fit === 'cover' ? centre - offset / span : offset / span;
+  const drawn = fitDrawnSize(natural, box, fit);
+  const fraction = (offset, drawnSize, boxSize) => {
+    if (!Number.isFinite(drawnSize) || Math.abs(drawnSize - boxSize) < 1e-6) return centre;
+    const value = drawnSize > boxSize
+      ? Math.max(0, -offset) / (drawnSize - boxSize)
+      : offset / (boxSize - drawnSize);
     return Math.min(1, Math.max(0, value));
   };
   return {
-    x: fraction(xIn || 0, scaledW, box.w),
-    y: fraction(yIn || 0, scaledH, box.h)
+    x: fraction(xIn || 0, drawn.w, box.w),
+    // One value leaves the other axis `center`, as CSS resolves `object-position: 10px`.
+    y: yIn === null ? centre : fraction(yIn || 0, drawn.h, box.h)
   };
+}
+
+const TILE_POSITION_KEYWORDS = new Map([
+  ['left', 0], ['top', 0], ['center', 0.5], ['centre', 0.5], ['right', 1], ['bottom', 1]
+]);
+
+/**
+ * Where a tiled pattern's first cell starts, in inches from the box's top-left.
+ *
+ * `background-position` is not `object-position`: a repeating layer is *placed*, so a length is
+ * the offset itself, and a keyword or percentage moves the pattern across the box's slack
+ * (`(box - cell) * p`) - negative when the cell is bigger than the box, which is how a pattern
+ * that starts before the box's corner is spelled. An undeclared position is `0% 0%`, the box's
+ * corner, not the centred default `object-position` has.
+ */
+function tileOrigin(focus, box, tile) {
+  const boxW = Number(box && box.w);
+  const boxH = Number(box && box.h);
+  const cellW = Number(tile && tile.width);
+  const cellH = Number(tile && tile.height);
+  if (![boxW, boxH, cellW, cellH].every(Number.isFinite) || boxW <= 0 || boxH <= 0 || cellW <= 0 || cellH <= 0) {
+    throw new Error('A tile needs a positive cell size and a finite picture frame');
+  }
+  const zero = { kind: 'fraction', value: 0 };
+  let x = zero;
+  let y = zero;
+  if (focus && typeof focus === 'object' && !Array.isArray(focus)) {
+    x = { kind: 'fraction', value: Number(focus.x) };
+    y = { kind: 'fraction', value: Number(focus.y) };
+  } else if (typeof focus === 'string' && focus.trim()) {
+    const tokens = focus.trim().toLowerCase().split(/\s+/u).filter(Boolean);
+    const read = (token) => {
+      const length = lengthInInches(token);
+      if (length !== null) return { kind: 'length', value: length };
+      if (/^-?[\d.]+%$/u.test(token)) return { kind: 'fraction', value: Number(token.slice(0, -1)) / 100 };
+      const keyword = TILE_POSITION_KEYWORDS.get(token.replace(/[()]/gu, ''));
+      return keyword === undefined ? null : { kind: 'fraction', value: keyword };
+    };
+    // A two-token keyword pair may be written in either order (`top left`); a length pair is
+    // always horizontal then vertical, and one value leaves the other `center`, as CSS does.
+    const verticalFirst = /^(top|bottom)$/u.test(tokens[0] || '')
+      || /^(left|right)$/u.test(tokens[1] || '');
+    const first = read(tokens[0]) || zero;
+    const second = tokens.length > 1 ? (read(tokens[1]) || zero) : { kind: 'fraction', value: 0.5 };
+    x = verticalFirst ? second : first;
+    y = verticalFirst ? first : second;
+  }
+  const offset = (position, boxSize, cellSize) => {
+    const value = Number(position.value);
+    if (position.kind === 'length') return Number.isFinite(value) ? value : 0;
+    return (boxSize - cellSize) * (Number.isFinite(value) ? value : 0);
+  };
+  return { x: offset(x, boxW, cellW), y: offset(y, boxH, cellH) };
 }
 
 function normalizeCrop(crop) {
@@ -301,12 +372,36 @@ function roundRectAdjustment(radiusIn, box) {
 }
 
 /**
+ * A window inside a window, back in source fractions.
+ *
+ * A declared crop (`element.crop`, the analyzer's clip-path inset) and a fit mode's own source
+ * rectangle describe the same picture twice: the crop says *which* part of the source is
+ * visible, the fit says how that part is drawn. Nesting the fit's window inside the crop draws
+ * both instead of letting one of them win in silence.
+ */
+function nestSrcRect(outer, inner) {
+  if (!outer) return inner;
+  if (!inner) return outer;
+  const width = 1 - outer.left - outer.right;
+  const height = 1 - outer.top - outer.bottom;
+  return {
+    left: outer.left + inner.left * width,
+    top: outer.top + inner.top * height,
+    right: outer.right + inner.right * width,
+    bottom: outer.bottom + inner.bottom * height
+  };
+}
+
+/**
  * Resolve an image element into its drawn box and OOXML crop fractions.
  *
  * - stretch: fills the box, no crop (distortion is possible; legacy behaviour).
  * - cover:   fills the box, crops the overflow around the focus point.
  * - contain: shrinks the drawn box to the native aspect ratio inside the slot.
  * - crop:    draws an explicit source sub-rectangle into the box.
+ *
+ * A declared `crop` is applied first and the fit mode to the crop, so a picture that carries
+ * both draws their composition: the crop selects the visible source, the fit places it.
  */
 function resolveImageGeometry(element, options = {}) {
   const fit = normalizeFit(element.fit);
@@ -314,35 +409,41 @@ function resolveImageGeometry(element, options = {}) {
   // The source size is read once, here: a length-based `object-position` needs it, and so
   // does every fit that keeps proportions.
   const natural = options.natural || readImageSize(element, options);
-  const focus = normalizeFocus(element.focus, { natural, box, fit });
+  const crop = element.crop ? normalizeCrop(element.crop) : null;
+  // What the fit modes see: the declared crop carved out of the source, so a cropped picture
+  // covers/contains at the proportions of the part that is actually visible.
+  const visible = crop && natural
+    ? { width: natural.width * (1 - crop.left - crop.right), height: natural.height * (1 - crop.top - crop.bottom) }
+    : natural;
+  const focus = normalizeFocus(element.focus, { natural: visible, box, fit });
 
   if (fit === 'stretch') {
-    return { fit, box, srcRect: null, natural };
+    return { fit, box, srcRect: crop, natural, crop };
   }
 
   // An explicit crop rectangle is already expressed in source-image fractions,
   // so it does not depend on the natural pixel size.
   if (fit === 'crop') {
-    return { fit, box, srcRect: normalizeCrop(element.crop), natural };
+    return { fit, box, srcRect: crop || normalizeCrop(element.crop), natural, crop };
   }
 
-  if (!natural) {
+  if (!visible) {
     // The source size is unknown - a picture whose bytes the analyzer could not read, or a data
     // URI it could not decode. The analyzer has already named the source; failing the whole
     // conversion here would take every other slide down with it, so the geometry degrades to a
     // stretch, which is what a reader draws for a picture it cannot measure anyway.
-    return { fit: 'stretch', box, srcRect: null, natural: null, fitFallback: fit };
+    return { fit: 'stretch', box, srcRect: crop, natural: null, fitFallback: fit, crop };
   }
 
   if (fit === 'contain') {
-    return { fit, box: computeContainBox(natural, box, focus), srcRect: null, natural };
+    return { fit, box: computeContainBox(visible, box, focus), srcRect: crop, natural, crop };
   }
   if (fit === 'none' || fit === 'scale-down') {
-    const intrinsic = computeIntrinsicGeometry(natural, box, focus, fit === 'scale-down');
-    return { fit, box: intrinsic.box, srcRect: intrinsic.srcRect, natural };
+    const intrinsic = computeIntrinsicGeometry(visible, box, focus, fit === 'scale-down');
+    return { fit, box: intrinsic.box, srcRect: nestSrcRect(crop, intrinsic.srcRect), natural, crop };
   }
   const zoom = normalizeZoom(element.zoom);
-  return { fit, box, srcRect: computeCoverCrop(natural, box, focus, zoom), natural };
+  return { fit, box, srcRect: nestSrcRect(crop, computeCoverCrop(visible, box, focus, zoom)), natural, crop };
 }
 
 function srcRectAttributes(srcRect) {
@@ -363,10 +464,13 @@ module.exports = {
   normalizeCrop,
   normalizeZoom,
   readImageSize,
+  fitDrawnSize,
+  tileOrigin,
   computeCoverCrop,
   computeContainBox,
   computeIntrinsicGeometry,
   roundRectAdjustment,
+  nestSrcRect,
   resolveImageGeometry,
   srcRectAttributes
 };

@@ -340,6 +340,57 @@ function sortByOrder(kids, ctx) {
     .map((entry) => entry.child);
 }
 
+/**
+ * The paint layer of a box among its siblings, in the order CSS paints a stacking context:
+ * negative z-index boxes first, then the in-flow boxes, then the positioned ones - z-index auto
+ * or 0 in document order, then the positive values ascending.
+ *
+ * The deck paints element order, so a box that asks to sit above a later sibling has to be
+ * emitted after it. Only the siblings of one container are ordered here: a z-index deep in one
+ * subtree competing with another subtree needs a real stacking pass, and document order is what
+ * this solver keeps for that.
+ */
+function paintLayerOf(node) {
+  const style = node.style || {};
+  const position = String(style.position || 'static').toLowerCase();
+  const positioned = node.absolute === true || position === 'absolute' || position === 'fixed'
+    || position === 'relative' || position === 'sticky';
+  // A z-index is read by positioned boxes only; on a static box CSS ignores it, and so does
+  // this - the declaration changes nothing there.
+  if (!positioned) return { layer: 0, z: 0 };
+  const raw = String(style.zIndex === undefined ? 'auto' : style.zIndex).trim().toLowerCase();
+  const value = raw === '' || raw === 'auto' ? 0 : Number(raw);
+  const z = Number.isFinite(value) ? value : 0;
+  return { layer: z < 0 ? -1 : 1, z };
+}
+
+/**
+ * Order a container's children into the order it paints them.
+ *
+ * Only a container where something actually declares a z-index is touched: reordering the boxes
+ * that already draw in the same place would move every object in the file for no visible reason.
+ * The sort is in place, because a layout function may hand back an array carrying a track list or
+ * a content height of its own, and a fresh array would drop them.
+ *
+ * The children reaching this are resolved layout nodes, not DOM elements: their own `style` is the
+ * computed declaration, and re-resolving them through the stylesheet would find no rule at all.
+ */
+function sortByPaintOrder(kids) {
+  const declared = kids.some((child) => {
+    const raw = String((child.style || {}).zIndex === undefined ? 'auto' : child.style.zIndex)
+      .trim().toLowerCase();
+    return raw !== '' && raw !== 'auto' && Number.isFinite(Number(raw));
+  });
+  if (!declared) return kids;
+  const order = kids
+    .map((child, index) => ({ child, index, paint: paintLayerOf(child) }))
+    .sort((left, right) => (left.paint.layer - right.paint.layer)
+      || (left.paint.z - right.paint.z)
+      || (left.index - right.index));
+  order.forEach((entry, position) => { kids[position] = entry.child; });
+  return kids;
+}
+
 /** The child's align-self in native spelling, or undefined to inherit. */
 function alignSelfOf(style) {
   const self = String(style.alignSelf || '').toLowerCase();
@@ -876,17 +927,9 @@ function checkUnsupported(ctx, domNode, style) {
     recordUnsupported(ctx, domNode, 'listStyle', style.listStyleType || style.listStyle,
       'Every marker draws as the native round bullet; the declared shape does not change it');
   }
-  // A picture is drawn once, fitted to its box, which is `no-repeat`. Tiling asks
-  // for something a fitted picture cannot do, so those values are named.
-  // The `background` shorthand can carry the repeat keyword too (`url(x) round`),
-  // and the longhand read above would miss it.
-  const shorthandRepeat = String(style.background || '').replace(/url\([^)]*\)/iu, ' ')
-    .split(/\s+/u).find((token) => /^(no-repeat|repeat|repeat-x|repeat-y|round|space)$/iu.test(token));
-  const repeat = String(style.backgroundRepeat !== undefined ? style.backgroundRepeat : (shorthandRepeat || '')).trim().toLowerCase();
-  if (repeat && repeat !== 'no-repeat' && repeat !== 'inherit' && repeat !== 'initial') {
-    recordUnsupported(ctx, domNode, 'backgroundRepeat', repeat,
-      'The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled');
-  }
+  // `background-repeat` is not judged here: a picture layer may become `a:tile`, and only the
+  // finished tree knows whether the pattern was carried. The post-layout sweep names the ones
+  // that were not.
   if (style.display === 'inline' || style.display === 'inline-block') {
     recordUnsupported(ctx, domNode, 'display', style.display, 'Inline flow is approximated as a block box');
   }
@@ -1057,6 +1100,333 @@ function noteSvgPicture(source, domNode, ctx) {
   recordUnsupported(ctx, domNode, 'svgPicture', readableSource(text),
     'An SVG picture travels as a vector behind PowerPoint\'s svgBlip extension: PowerPoint 2016 and later draw it,'
       + ' and a reader without that extension shows a placeholder - export the icon as a PNG to be portable');
+}
+
+/**
+ * The natural pixel size of a picture source, when its bytes can be read here.
+ *
+ * Two questions in the layout stage need it and nothing else does: how much slack a `cover` fit
+ * leaves on an axis (a length `object-position` is an offset inside that slack), and how big a
+ * `background-repeat` cell is when `background-size` leaves an axis `auto`. The fit resolver reads
+ * the same header through the same library, so the two stages cannot disagree about "natural".
+ */
+function pictureNaturalSize(source, ctx) {
+  const text = String(source || '').trim();
+  if (!text) return null;
+  let bytes = null;
+  try {
+    const data = /^data:([^;,]*)((?:;[^,]*)*),(.*)$/isu.exec(text);
+    if (data) {
+      if (!/;base64/iu.test(data[2] || '')) return null;
+      bytes = Buffer.from(String(data[3] || '').replace(/\s+/gu, ''), 'base64');
+    } else if (/^(?:https?:)?\/\//iu.test(text)) {
+      // A remote source is never downloaded, so its size is as unknown here as it is to a
+      // reader that will not fetch it either.
+      return null;
+    } else {
+      const base = ctx && ctx.options && ctx.options.baseDir;
+      const file = path.isAbsolute(text) ? text : (base ? path.resolve(base, text) : null);
+      if (!file || !fs.existsSync(file)) return null;
+      bytes = fs.readFileSync(file);
+    }
+  } catch (_) {
+    return null;
+  }
+  if (!bytes || !bytes.length) return null;
+  // Optional the way `fontkit()` is: a decoder that is missing or surprised means the size is
+  // unknown, never that the conversion failed.
+  try {
+    const loaded = require('image-size');
+    const read = typeof loaded === 'function' ? loaded
+      : (typeof loaded.imageSize === 'function' ? loaded.imageSize : loaded.default);
+    const size = typeof read === 'function' ? read(bytes) : null;
+    if (size && Number(size.width) > 0 && Number(size.height) > 0) {
+      return { width: Number(size.width), height: Number(size.height) };
+    }
+  } catch (_) { /* an unreadable header is already named by the source check */ }
+  return null;
+}
+
+/**
+ * The size a fitted picture is really drawn at, in inches - the same arithmetic every fit mode
+ * uses in the resolver. `cover` overflows its box on one axis, and that overflow is the slack a
+ * length position is measured against; `contain`, `none` and `scale-down` leave the box instead.
+ */
+function pictureDrawnSize(natural, box, fit) {
+  const naturalW = natural.width / 96;
+  const naturalH = natural.height / 96;
+  if (fit === 'none') return { w: naturalW, h: naturalH };
+  if (fit === 'fill' || fit === 'stretch') return { w: box.w, h: box.h };
+  if (fit === 'cover') {
+    const scale = Math.max(box.w / naturalW, box.h / naturalH);
+    return { w: naturalW * scale, h: naturalH * scale };
+  }
+  let scale = Math.min(box.w / naturalW, box.h / naturalH);
+  if (fit === 'scale-down') scale = Math.min(scale, 1);
+  return { w: naturalW * scale, h: naturalH * scale };
+}
+
+/** One token of `object-position`/`background-position` in inches, or null when it is no length. */
+function positionLengthInches(token) {
+  const length = parseLength(token);
+  if (!length || length.unit === '%') return null;
+  const inches = toInches(length, {});
+  return Number.isFinite(inches) ? inches : null;
+}
+
+/**
+ * Does a length position ask for something the fit cannot honour?
+ *
+ * CSS places the *object* against its box: a length that reaches past the space the picture can
+ * move in pushes it out and leaves a gap, and the source rectangle a native picture carries always
+ * fills its frame. The resolver therefore stops the window at the near edge, so a reader sees the
+ * near edge instead of the strip the numbers name. A percentage never lands here - it resolves to
+ * a 0..1 share by construction - and an axis the object exactly fills has no window to move at
+ * all, so neither is named.
+ */
+function lengthPositionClamped(node, ctx) {
+  const raw = node.focus;
+  if (typeof raw !== 'string' || !raw.trim()) return false;
+  const natural = pictureNaturalSize(node.src, ctx);
+  if (!natural) return false;
+  const box = { w: Number(node.w), h: Number(node.h) };
+  if (!(box.w > 0) || !(box.h > 0)) return false;
+  const drawn = pictureDrawnSize(natural, box, String(node.objectFit || 'fill').toLowerCase());
+  const tokens = raw.trim().split(/\s+/u).filter(Boolean);
+  const offsets = [positionLengthInches(tokens[0]), tokens.length > 1 ? positionLengthInches(tokens[1]) : 0];
+  return [[offsets[0], drawn.w, box.w], [offsets[1], drawn.h, box.h]].some((axis) => {
+    const offset = axis[0];
+    const slack = axis[1] - axis[2];
+    if (offset === null || !Number.isFinite(offset) || Math.abs(slack) < 1e-6) return false;
+    // The share of the slack the resolver can reach: positive slack is the overflow a `cover` fit
+    // crops, negative slack the free space a contained picture is placed in.
+    const wanted = slack > 0 ? -offset / slack : offset / -slack;
+    return wanted < -1e-6 || wanted > 1 + 1e-6;
+  });
+}
+
+/**
+ * The two properties are named at their own call site, with the sentence spelled out, because the
+ * catalogue in `LIMITS.md` is read from these arguments: a shared constant would show up there as
+ * an expression instead of an explanation.
+ */
+function noteClampedObjectPosition(node, domNode, ctx) {
+  if (!lengthPositionClamped(node, ctx)) return;
+  recordUnsupported(ctx, domNode, 'objectPosition', node.focus,
+    'A length offset would push the picture out of its box; the file format cannot draw that gap,'
+      + ' so the picture is cropped from the near edge');
+}
+
+function noteClampedBackgroundPosition(node, domNode, ctx) {
+  if (!lengthPositionClamped(node, ctx)) return;
+  recordUnsupported(ctx, domNode, 'backgroundPosition', node.focus,
+    'A length offset would push the picture out of its box; the file format cannot draw that gap,'
+      + ' so the picture is cropped from the near edge');
+}
+
+/** The body of a `clip-path: inset(...)` declaration, or null when the clip is another shape. */
+function clipInsetBody(style) {
+  const raw = String((style && style.clipPath) || '').trim();
+  if (!raw) return null;
+  const match = /^inset\s*\(([\s\S]*)\)$/iu.exec(raw);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * The four sides of `inset()` as fractions of the box, in CSS order (top, right, bottom, left -
+ * the shorthand repeats like `margin` does). `{ rounded: true }` says the corners are rounded,
+ * which no rectangle can be, and null says a side is not a length this can resolve.
+ */
+function clipInsetSides(body, widthIn, heightIn) {
+  const text = String(body || '').trim();
+  if (!text) return null;
+  if (/\bround\b/iu.test(text)) return { rounded: true };
+  const tokens = text.split(/\s+/u).filter(Boolean);
+  if (!tokens.length || tokens.length > 4) return null;
+  const side = (token, extent) => {
+    const value = String(token === undefined ? '' : token).trim();
+    const percent = /^(-?[\d.]+)%$/u.exec(value);
+    if (percent) return Number(percent[1]) / 100;
+    const length = parseLength(value);
+    if (!length || length.unit === '%') return null;
+    const inches = toInches(length, {});
+    return Number.isFinite(inches) && extent > 0 ? inches / extent : null;
+  };
+  const top = tokens[0];
+  const right = tokens.length > 1 ? tokens[1] : top;
+  const bottom = tokens.length > 2 ? tokens[2] : top;
+  const left = tokens.length > 3 ? tokens[3] : right;
+  const sides = {
+    top: side(top, heightIn),
+    right: side(right, widthIn),
+    bottom: side(bottom, heightIn),
+    left: side(left, widthIn)
+  };
+  if (Object.keys(sides).some((key) => sides[key] === null || !Number.isFinite(sides[key]))) return null;
+  return sides;
+}
+
+/**
+ * `clip-path: inset()` on a picture is that picture's own source rectangle: what the browser shows
+ * of the image is the part inside the inset, so the box shrinks to the inset and the crop carries
+ * the same fractions - the visible pixels then stay at the size they were drawn at, which a crop
+ * that kept the whole box would not do (it would stretch them to fill it).
+ *
+ * Only a picture that fills its box translates this way. A `cover`/`contain` fit, or a frame that
+ * already crops the picture, is a second crop: two crops in one source rectangle is a separate
+ * job, and the report stays.
+ *
+ * Every refusal names `clipPath` with its sentence written out at the call, because that is how
+ * the catalogue in `LIMITS.md` learns what the deck could not draw.
+ */
+function applyInsetCrop(node, domNode, style, ctx, fills) {
+  const body = clipInsetBody(style);
+  if (body === null) return;
+  const value = style.clipPath;
+  if (!fills) {
+    recordUnsupported(ctx, domNode, 'clipPath', value,
+      'The picture is already cropped or letterboxed by its fit, so this clip would compose two'
+        + ' crops; one source rectangle cannot hold both, and the clip is not drawn');
+    return;
+  }
+  const sides = clipInsetSides(body, node.w, node.h);
+  if (sides && sides.rounded) {
+    recordUnsupported(ctx, domNode, 'clipPath', value,
+      'A rounded inset needs a rounded geometry; a source rectangle has right angles, so the picture keeps square corners');
+    return;
+  }
+  if (!sides) {
+    recordUnsupported(ctx, domNode, 'clipPath', value,
+      'Only lengths and percentages inside inset() name a source rectangle; this clip shape is not one');
+    return;
+  }
+  // A negative inset reaches past the box, which cuts nothing there; the clamp is what a region
+  // that grew outward already shows.
+  const left = Math.max(0, sides.left);
+  const top = Math.max(0, sides.top);
+  const right = Math.max(0, sides.right);
+  const bottom = Math.max(0, sides.bottom);
+  if (left + right < 1e-6 && top + bottom < 1e-6) return;
+  const width = Number((node.w * (1 - left - right)).toFixed(4));
+  const height = Number((node.h * (1 - top - bottom)).toFixed(4));
+  if (left + right >= 1 - 1e-6 || top + bottom >= 1 - 1e-6
+    || !(width > 0.01) || !(height > 0.01)) {
+    recordUnsupported(ctx, domNode, 'clipPath', value,
+      'The inset leaves no picture; a source rectangle cannot be empty');
+    return;
+  }
+  // CSS clips the paint, not the layout: the box keeps its slot in the flow (the cursor reads the
+  // layout box back) while the picture is drawn at the visible rectangle only.
+  node.layoutX = node.x;
+  node.layoutY = node.y;
+  node.layoutW = node.w;
+  node.layoutH = node.h;
+  node.x = Number((node.x + node.w * left).toFixed(4));
+  node.y = Number((node.y + node.h * top).toFixed(4));
+  node.w = width;
+  node.h = height;
+  node.objectFit = 'crop';
+  node.crop = {
+    left: Number(left.toFixed(5)),
+    top: Number(top.toFixed(5)),
+    right: Number(right.toFixed(5)),
+    bottom: Number(bottom.toFixed(5))
+  };
+}
+
+/**
+ * The repeat a `background-repeat` declaration asks for, or why no tile can draw it.
+ *
+ * `no-repeat` is not a plan - nothing repeats. `space` and `round` resize the cell until a whole
+ * number of cells fits the box, which `a:tile` cannot do: it repeats one fixed cell.
+ */
+function backgroundRepeatPlan(style) {
+  // The `background` shorthand can carry the keyword too (`url(x) repeat-x`), and the longhand
+  // read alone would miss it.
+  const shorthand = String(style.background || '').replace(/url\([^)]*\)/iu, ' ')
+    .split(/\s+/u).find((token) => /^(no-repeat|repeat|repeat-x|repeat-y|round|space)$/iu.test(token));
+  const value = String(style.backgroundRepeat !== undefined ? style.backgroundRepeat : (shorthand || ''))
+    .trim().toLowerCase();
+  if (!value || value === 'no-repeat' || value === 'inherit' || value === 'initial') return null;
+  if (value === 'repeat') return { value, x: true, y: true };
+  if (value === 'repeat-x') return { value, x: true, y: false };
+  if (value === 'repeat-y') return { value, x: false, y: true };
+  return { value, unable: '`' + value + '` resizes the cell until a whole number of cells fills the'
+    + ' box; a tile repeats one fixed cell, so the pattern is drawn once' };
+}
+
+/**
+ * The cell one `a:tile` repeats, in inches.
+ *
+ * `background-size` names it: two lengths are the cell, a percentage is that share of the box, and
+ * an `auto` axis follows the source's proportions from the other one. `cover`/`contain` name a fit
+ * rather than a size, so the cell is the size that fit is drawn at. An axis this cannot resolve
+ * leaves the caller its report rather than guessing a cell a reader would tile wrongly.
+ */
+function tileCellOf(layer, box, natural) {
+  const size = String((layer && layer.size) || 'auto').trim().toLowerCase();
+  const spec = layer && layer.sizeSpec;
+  const naturalW = natural ? natural.width / 96 : null;
+  const naturalH = natural ? natural.height / 96 : null;
+  if (!spec) {
+    if (!natural) return null;
+    const scale = size === 'cover'
+      ? Math.max(box.w / naturalW, box.h / naturalH)
+      : Math.min(box.w / naturalW, box.h / naturalH);
+    return { width: naturalW * scale, height: naturalH * scale };
+  }
+  const axisOf = (entry, boxSize) => {
+    if (!entry || entry.auto) return null;
+    if (entry.percent !== undefined) return (boxSize * entry.percent) / 100;
+    if (entry.inches !== undefined) return entry.inches;
+    return null;
+  };
+  let width = axisOf(spec[0], box.w);
+  let height = axisOf(spec[1], box.h);
+  if (width === null && height === null) {
+    if (!natural) return null;
+    width = naturalW;
+    height = naturalH;
+  } else if (width === null) {
+    if (!naturalW || !naturalH) return null;
+    width = height * (naturalW / naturalH);
+  } else if (height === null) {
+    if (!naturalW || !naturalH) return null;
+    height = width * (naturalH / naturalW);
+  }
+  return { width, height };
+}
+
+/**
+ * The `a:tile` numbers for a repeating picture layer, or null when the layer stays one fitted
+ * picture. The cell travels in inches because only the emitter knows the frame it fills: it turns
+ * the pair into `a:tile`'s scale percentages.
+ */
+function tilePlanOf(layer, style, box, ctx) {
+  const repeat = backgroundRepeatPlan(style || {});
+  if (!repeat || repeat.unable) return null;
+  const cell = tileCellOf(layer, box, pictureNaturalSize(layer && layer.src, ctx));
+  if (!cell || !(cell.width > 0) || !(cell.height > 0)
+    || !Number.isFinite(cell.width) || !Number.isFinite(cell.height)) return null;
+  return {
+    x: Boolean(repeat.x),
+    y: Boolean(repeat.y),
+    width: Number(cell.width.toFixed(4)),
+    height: Number(cell.height.toFixed(4))
+  };
+}
+
+/**
+ * Put the tile on the object the emitter reads it from.
+ *
+ * The emitter accepts the declaration on the node, on the layer behind the words, or on a
+ * container's own background layer, so the caller says where it belongs. A repeat this declines to
+ * tile is not reported here: the post-layout sweep names every repeat that ended up without a tile,
+ * once - reporting here as well would say the same thing twice.
+ */
+function attachTile(host, layer, style, box, ctx) {
+  const tile = tilePlanOf(layer, style, box, ctx);
+  if (tile) host.tile = tile;
 }
 
 /**
@@ -2466,7 +2836,11 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   // CSS pinned that axis: an 80px chip in a 415px row stays 80px, top aligned.
   // `clip-path: polygon()` becomes the shape's own geometry. It clips the box, not the
   // subtree, so a box that has children is reported: their paint would escape the polygon.
-  const maybeClip = clipPolygonOf(style, width, explicitHeight === null ? 0 : explicitHeight);
+  // An `inset()` on a picture is the picture's own source rectangle instead, and only the
+  // picture branches hold the box it fills, so they decide - see `applyInsetCrop`.
+  const pictureInset = kind === 'image' && clipInsetBody(style) !== null;
+  const maybeClip = pictureInset
+    ? null : clipPolygonOf(style, width, explicitHeight === null ? 0 : explicitHeight);
   if (maybeClip && maybeClip.unsupported === undefined && explicitHeight !== null) {
     if (elementKids.length && kind !== 'image') {
       recordUnsupported(ctx, domNode, 'clipPath', style.clipPath,
@@ -2999,6 +3373,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     }
   }
 node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : explicitHeight;
+    // The layer behind the words fills their box, so its cell is resolved here, where that box is
+    // finally known: a percentage `background-size` is a share of it. The cell is read from the
+    // parsed layer rather than from `bgImage`, which keeps the size spelling but not its spec.
+    if (node.bgImage && !node.bgImage.undrawable) {
+      attachTile(node.bgImage, textLayer, style, { w: node.w, h: node.h }, ctx);
+    }
     applyWritingMode(node, domNode, style, measured, explicitHeight, ctx);
     applyRelativeShift(node, style, parentWidth);
     return node;
@@ -3043,6 +3423,13 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
         node.backgroundSizeSpec = layer.sizeSpec || null;
       }
       node.focus = layer.focus;
+      // `background-repeat` is DrawingML's `a:tile`: one cell, repeated by the reader. The cell
+      // travels in inches because the emitter is the only stage that knows the frame it fills.
+      attachTile(node, layer, style, { w: node.w, h: node.h }, ctx);
+      // A tiled layer's position places the first cell; only a fitted picture reads it as a crop
+      // window, so the gap a length would leave is named for that case alone.
+      if (!node.tile) noteClampedBackgroundPosition(node, domNode, ctx);
+      applyInsetCrop(node, domNode, style, ctx, node.objectFit === 'stretch');
       checkCornerMix(domNode, style, ctx);
     node.radius = radiusOf(style);
       if ((ellipseOf(style) || {}).percent >= 50) node.ellipse = true;
@@ -3128,6 +3515,12 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
           + ' the picture keeps square corners');
     }
     applyRelativeShift(node, style, parentWidth);
+    // A length position the overflow cannot reach is named: a source rectangle always fills the
+    // frame, so a reader sees the near edge instead of the strip the numbers ask for.
+    noteClampedObjectPosition(node, domNode, ctx);
+    // `clip-path: inset()` on a picture is that picture's own crop rectangle, as long as the
+    // picture is what fills the box - see `applyInsetCrop`.
+    applyInsetCrop(node, domNode, style, ctx, node.objectFit === 'fill');
     return node;
   }
 
@@ -3227,10 +3620,21 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
   } else {
     node.children = layoutFlow(domNode, contentBox, childContext, ctx);
   }
+  // Z-index orders the paint, not the layout, so it is applied once every child has its box.
+  sortByPaintOrder(node.children);
 
+  // The flow cursor reads a scaled or inset-cropped child back at its slot, so the container's
+  // own auto height has to hold both: the slot (where the next row starts) and the paint (what a
+  // reader sees outside it). A `scale()` draws past its slot and an inset crop draws inside it;
+  // taking the larger of the two keeps the box around the pixels either way.
   const contentBottom = node.children.reduce((bottom, child) => {
-    const childBottom = child.absolute ? bottom : child.y - relativeDy(child) + child.h;
-    return Math.max(bottom, childBottom);
+    if (child.absolute) return bottom;
+    const dy = relativeDy(child);
+    const painted = child.y - dy + child.h;
+    const slotted = Number.isFinite(child.layoutY) && Number.isFinite(child.layoutH)
+      ? child.layoutY - dy + child.layoutH
+      : painted;
+    return Math.max(bottom, painted, slotted);
   }, contentBox.y);
   // A child's bottom margin collapses out of its parent only when nothing separates
   // them. With a bottom padding (or border) the margin stays inside the box - which is
@@ -3247,6 +3651,11 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
   node.h = explicitHeight === null ? autoHeight : explicitHeight;
   applyRelativeShift(node, style, parentWidth);
   if (node.h <= 0) node.h = 0.02;
+  // A container's own background layer fills this box, and the box is only known now: a
+  // percentage `background-size` is a share of the height the layout just measured.
+  if (node.backgroundImage && !node.backgroundImage.undrawable) {
+    attachTile(node.backgroundImage, node.backgroundImage, style, { w: node.w, h: node.h }, ctx);
+  }
   return node;
 }
 
@@ -5034,7 +5443,10 @@ function applyChartStyling(attrs, options, domNode, ctx, chartType) {
 
   const valueFormat = attrs['data-chart-value-format'];
   if (valueFormat !== undefined) {
-    options.valLabelFormatCode = String(valueFormat);
+    // The labels' own number format. `valLabelFormatCode` is the *data table's* format in the
+    // writer - reading them as one name wrote the default and dropped the declared one without a
+    // word, because `#,##0` (the writer's default) is what most decks ask for anyway.
+    options.dataLabelFormatCode = String(valueFormat);
     if (options.showValue === undefined) options.showValue = true;
   }
 
@@ -5807,17 +6219,24 @@ function readTable(domNode, ctx, contentWidth, options) {
   // A row or section may carry the background a browser paints behind its cells -
   // the usual way a striped table is written. A cell inherits it visually, so the
   // first declared background wins: cell, then row, then section, then table.
-  const collect = (node, sectionBackground, inHeader) => {
+  const collect = (node, sectionBackground, inHeader, section) => {
     (node.children || []).forEach((child) => {
       if (child.type !== 'element') return;
-      if (child.tag === 'tr') rowNodes.push({ rowNode: child, sectionBackground, header: inHeader });
-      else if (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot') {
+      if (child.tag === 'tr') {
+        rowNodes.push({ rowNode: child, sectionBackground, header: inHeader, section });
+      } else if (child.tag === 'thead' || child.tag === 'tbody' || child.tag === 'tfoot') {
         collect(child, backgroundOf(ctx.styles.computed(child)) || sectionBackground,
-          inHeader || child.tag === 'thead');
+          inHeader || child.tag === 'thead', child.tag);
       }
     });
   };
-  collect(domNode, backgroundOf(ctx.styles.computed(domNode)), false);
+  collect(domNode, backgroundOf(ctx.styles.computed(domNode)), false, 'tbody');
+  // A browser paints the head first and the foot last wherever the tags are written, so a
+  // `<tfoot>` authored above the body still draws after every body row. Reading the DOM order
+  // would put the totals above the numbers they add up. The sort is stable, so the rows inside
+  // one section keep the order they were written in.
+  const SECTION_ORDER = ['thead', 'tbody', 'tfoot'];
+  rowNodes.sort((left, right) => SECTION_ORDER.indexOf(left.section) - SECTION_ORDER.indexOf(right.section));
 
   // Phase 1: read every row's cells the way the DOM presents them.
   const rawRows = rowNodes.map(({ rowNode, sectionBackground }) => {
@@ -6596,6 +7015,9 @@ function analyzeHtml(html, options = {}) {
         ? layoutFlex(slideNode, contentBox, rootContext, ctx)
         : layoutFlow(slideNode, contentBox, rootContext, ctx));
     assignRoles(children);
+    // Roles are read from document order, but paint order is not: a slide-level box with a
+    // z-index is emitted above the boxes it overlaps, exactly as it is inside a container.
+    sortByPaintOrder(children);
     // The root list is built here rather than by `analyzeNode`, so the scrim pass that
     // turns a gradient-over-picture into a sibling shape has to run on it too.
     insertOverlayNodes({ children }, ctx);
@@ -6638,6 +7060,22 @@ function analyzeHtml(html, options = {}) {
           reason: 'The box clips content that is larger than the box, and a native shape cannot clip its children'
         });
       }
+      // A repeat no picture layer turned into a tile is a pattern this translation cannot draw:
+      // the box paints one fitted picture. Named here, once the whole tree exists, because only
+      // then is it known whether a layer carried the pattern.
+      const repeat = backgroundRepeatPlan(node.style || {});
+      const tiled = node.tile || (node.bgImage && node.bgImage.tile)
+        || (node.backgroundImage && node.backgroundImage.tile);
+      if (repeat && !tiled && repeat.unable) {
+        recordUnsupported(ctx, { tag: node.tag, classes: node.classes || [] },
+          'backgroundRepeat', repeat.value,
+          '`space` and `round` resize the cell until a whole number of cells fills the box; a tile'
+            + ' repeats one fixed cell, so the pattern is drawn once');
+      } else if (repeat && !tiled) {
+        recordUnsupported(ctx, { tag: node.tag, classes: node.classes || [] },
+          'backgroundRepeat', repeat.value,
+          'The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled');
+      }
       // A clipping box that holds an oversized absolute picture is the crop idiom:
       // the visible part is an intersection, and the native spelling for that
       // intersection is a crop rectangle in source fractions. Converting keeps the
@@ -6645,6 +7083,15 @@ function analyzeHtml(html, options = {}) {
       if (String((node.style && node.style.overflow) || '').toLowerCase() === 'hidden') {
         (node.children || []).forEach((child) => {
           if (!child.absolute || child.tag !== 'img') return;
+          // A picture its own `inset()` already clipped is one crop; the frame around it would be
+          // a second, and one source rectangle cannot hold both. Named rather than composed.
+          if (child.crop) {
+            recordUnsupported(ctx, { tag: 'img', classes: [] }, 'clipPath',
+              String((child.style && child.style.clipPath) || ''),
+              'The picture is clipped by its own inset and the frame crops it again: one source'
+                + ' rectangle cannot hold both, so the frame keeps the picture as the inset left it');
+            return;
+          }
           const boxLeft = node.x, boxTop = node.y;
           const boxRight = node.x + node.w, boxBottom = node.y + node.h;
           const imgLeft = child.x, imgTop = child.y;

@@ -1784,7 +1784,13 @@ function backgroundImageOf(style) {
   // the offset (`20px 0` became `{ x: 0.5, y: 0 }`). The string travels instead.
   const positionText = String(rawPosition || '').trim().toLowerCase().replace(/\s+/gu, ' ');
   const lengthPosition = /^-?[\d.]+(px|pt|in|cm|mm)( -?[\d.]+(px|pt|in|cm|mm)?)?$/u.test(positionText);
-  const focus = lengthPosition ? positionText : parseBackgroundFocus(rawPosition);
+  // CSS's initial `background-position` is `0% 0%`, the box's top-left corner, while this used to
+  // hand the emitter `center`: a `contain` layer was letterboxed in the middle of its box and a
+  // tiled pattern started half a cell in. `object-position` is a separate property with a
+  // separate initial value (50% 50%) and never comes through here, so a picture keeps its centre.
+  const focus = !positionText
+    ? { x: 0, y: 0 }
+    : (lengthPosition ? positionText : parseBackgroundFocus(rawPosition));
   return { src, fit, size: size || 'auto', sizeSpec: backgroundSizeSpec(size), focus };
 }
 
