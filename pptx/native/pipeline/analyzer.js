@@ -1250,6 +1250,20 @@ function buildRuns(domNode, baseStyle, ctx) {
       pushText('\n', null, null);
       return;
     }
+    // A control keeps its words (the value, the chosen option) but not its box: the browser
+    // paints its own border, background and padding, which this shape does not reproduce.
+    // Named wherever a control appears, so a form mock-up is never silently a plain line.
+    if (node.tag === 'input' || node.tag === 'select' || node.tag === 'button' || node.tag === 'textarea') {
+      recordUnsupported(ctx, node, 'element', node.tag,
+        'A form control keeps its text; the reader`s control box (border, fill, padding) is not reproduced');
+    }
+    // An embedded document or a canvas cannot be a line of words. Walking its (empty) children
+    // dropped it in silence: an <iframe> or <video> inside a paragraph left nothing at all and
+    // said nothing. Named here, where the reason is known.
+    if (['iframe', 'video', 'audio', 'object', 'embed', 'canvas', 'svg'].includes(node.tag)) {
+      recordUnsupported(ctx, node, 'element', node.tag, 'Element type has no native translation');
+      return;
+    }
     const style = ctx.styles.computed(node);
     // `<a href>` becomes a native run hyperlink, which also carries the underline the
     // browser draws; the URL is kept instead of being flattened into plain words.
@@ -2278,6 +2292,12 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
   if (declaresLength(style.width)) node.fixedWidth = true;
   if (hidden) node.hidden = true;
 
+  // A control that is a block in its own right (a textarea in a column, an input in a flex
+  // row) keeps its text and loses its box, the same claim the inline path makes.
+  if (domNode.tag === 'input' || domNode.tag === 'select' || domNode.tag === 'button' || domNode.tag === 'textarea') {
+    recordUnsupported(ctx, domNode, 'element', domNode.tag,
+      'A form control keeps its text; the reader`s control box (border, fill, padding) is not reproduced');
+  }
   if (kind === 'unsupported') {
     recordUnsupported(ctx, domNode, 'element', domNode.tag, 'Element type has no native translation');
     return null;

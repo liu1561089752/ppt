@@ -200,6 +200,11 @@ function textContent(node) {
     const checked = node.attrs && node.attrs.checked !== undefined;
     if (inputType === 'checkbox') return checked ? '\u2611' : '\u2610';
     if (inputType === 'radio') return checked ? '\u25C9' : '\u25CB';
+    // A filled input shows its value; the placeholder only stands in while it is empty.
+    // Reading the placeholder alone left a mock-up with `<input value="name@example.com">`
+    // empty where the browser shows the address.
+    const value = node.attrs && node.attrs.value;
+    if (value !== undefined && String(value).trim() !== '') return String(value);
     return String(node.attrs && node.attrs.placeholder || '');
   }
   if (node.tag === 'select') {

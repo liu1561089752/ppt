@@ -179,6 +179,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | embedded fonts | opt-in (`--embed-fonts`): every face the deck names is resolved on this machine and written as a `fntdata` part with `p:embeddedFontLst`; faces that are not installed, or are not TrueType (`.otf`, `.ttc`), are named instead |
 | the report baseline | `npm run audit:report` holds the nineteen example decks to `baselines/reports.json`: a name that appears is a silent loss the geometry gates cannot see, and a name that disappears has to be blessed with `--update` |
 | reader-flowed text | a columned body is judged on where its text starts and how much of it both readers found; the far edges follow each reader's own line breaks and are reported, not judged |
+| form controls | the words a reader shows, not the markup's children: an input's value (the placeholder only while it is empty), a select's chosen option, a checkbox's state glyph; the control's own box is named, never drawn |
+| an embedded document (`iframe`, `video`, `audio`, `object`, `embed`, `canvas`, `svg`) | named wherever it appears - inline included; it used to vanish in silence inside a paragraph |
 | `columns: 2` on a paragraph | native - one text box with `numCol`/`spcCol`, so the reader balances the columns itself; the element's own text counts, not only child paragraphs |
 | object-position crop focus | native - both axes at 1% granularity, kept fraction constant |
 | object-fit: none / scale-down | named - no native "natural size and clip" switch |

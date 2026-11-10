@@ -5652,6 +5652,43 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('a form control keeps the words the browser shows', () => {
+  // A filled input shows its value - the placeholder only stands in while it is empty. Reading
+  // the placeholder alone left a mock-up with `<input value="name@example.com">` empty where
+  // the browser shows the address, and an <iframe> inside a paragraph vanished without a word.
+  const build = (body) => pipeline.convertHtml([
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style>',
+    '</head><body><main class="slide">' + body + '</main></body></html>'
+  ].join('\n'));
+  const textsOf = (result) => (result.deck.slides[0].elements || [])
+    .map((element) => element.text)
+    .filter((value) => typeof value === 'string' && value.length);
+  const namesOf = (result) => result.report.unsupportedDetails.map((entry) => entry.property + '=' + entry.value);
+
+  const filled = build('<p><input value="name@example.com"></p>');
+  assert.deepEqual(textsOf(filled), ['name@example.com'], 'the value is what shows');
+  assert.deepEqual(namesOf(filled), ['element=input'], 'and the control box is named');
+
+  const both = build('<p><input value="显示值" placeholder="占位"></p>');
+  assert.deepEqual(textsOf(both), ['显示值'], 'a filled input does not show its placeholder');
+
+  const empty = build('<p><input placeholder="请输入"></p>');
+  assert.deepEqual(textsOf(empty), ['请输入'], 'an empty input shows the placeholder');
+
+  const checkbox = build('<p><input type="checkbox"> 同意条款</p>');
+  assert.deepEqual(textsOf(checkbox), ['\u2610 同意条款'], 'a checkbox draws its state glyph');
+
+  const select = build('<p><select><option>甲</option><option selected="selected">乙</option><option>丙</option></select></p>');
+  assert.deepEqual(textsOf(select), ['乙'], 'a closed select shows the chosen option only');
+
+  const embedded = build('<p>前 <iframe src="about:blank" width="100" height="50"></iframe> 后</p>');
+  assert.deepEqual(namesOf(embedded), ['element=iframe'], 'an inline document cannot be walked into silence');
+
+  const block = build('<textarea>多行文本</textarea>');
+  assert.deepEqual(textsOf(block), ['多行文本'], 'a textarea keeps its text');
+  assert.deepEqual(namesOf(block), ['element=textarea'], 'and its box is named');
+});
+
 test('the example decks lose nothing that the baseline does not already name', async () => {
   // The fixtures are the designs this engine claims to translate whole. Every declaration it
   // cannot translate is already listed in baselines/reports.json with the reason; a new name
