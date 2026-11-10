@@ -4794,7 +4794,13 @@ function readTableCell(cell, ctx, rowBackground) {
   };
   // A cell margin is the CSS padding. PowerPoint stores it in points as
   // top/right/bottom/left and PptxGenJS writes marT/marR/marB/marL from it.
-  if (paddingPt.some((value) => value > 0)) options.margin = paddingPt;
+  // A margin below one point is written 72x too large (asked directly: 0.75 comes back as
+  // marT=685800 EMU, which is 0.75 inches, and the row then grows to swallow the page).
+  // A sub-point inset is invisible anyway, so it is floored at one point - and a zero side
+  // stays zero, because a cell with no padding on that side must keep its text at the edge.
+  if (paddingPt.some((value) => value > 0)) {
+    options.margin = paddingPt.map((value) => (value > 0 && value < 1 ? 1 : value));
+  }
   const verticalAlign = String(style.verticalAlign || '').trim().toLowerCase();
   if (verticalAlign === 'middle' || verticalAlign === 'bottom' || verticalAlign === 'top') {
     options.valign = verticalAlign;
@@ -5104,13 +5110,28 @@ function readTable(domNode, ctx, contentWidth) {
   const measureWidths = Array.isArray(colWidths) && colWidths.length
     ? colWidths
     : Array.from({ length: Math.max(1, columns) }, () => contentWidth / Math.max(1, columns));
+  // A reader lays the row's text out with its own font metrics and grows any row that is
+  // short - which pushes every row below it down, and then the block that follows the table
+  // is drawn on top of the last row. Measured against LibreOffice: a row of 11pt text came
+  // out a point and a half taller than the estimate, so every row carries that much slack.
+  const ROW_SLACK_IN = 0.021;
+  /**
+   * A CJK face draws a much taller line box than its nominal size: 11pt Microsoft YaHei is
+   * measured by LibreOffice as 16.4pt of ink box, which is 1.49em, while the Latin face it
+   * sits beside is 1.2em. A row measured at the Latin ratio is drawn overflowing its own
+   * height, and the block after the table lands on the last row (measured: 9pt of overlap).
+   * Mixed runs keep the taller box, because the row is as tall as its tallest line.
+   */
+  const CJA_LINE_FLOOR = 1.5;
+  const hasCJK = (text) => /[\u2E80-\u9FFF\uF900-\uFAFF\u3000-\u303F\uFF00-\uFFEF]/u.test(String(text || ''));
   const cellHeight = (cell) => {
     const width = cellSpanWidth(measureWidths, cell.column, cell.colspan);
     const usable = Math.max(0.1, width - cell.paddingLeft - cell.paddingRight);
+    const lineHeight = hasCJK(cell.text) ? Math.max(cell.lineHeight, CJA_LINE_FLOOR) : cell.lineHeight;
     return estimateTextHeight(cell.text, usable, cell.fontSizePt, {
       marginIn: 0,
-      lineHeight: cell.lineHeight,
-      verticalInsetIn: cell.paddingTop + cell.paddingBottom
+      lineHeight,
+      verticalInsetIn: cell.paddingTop + cell.paddingBottom + ROW_SLACK_IN
     });
   };
   /**

@@ -5803,6 +5803,81 @@ test('an inset shadow is written as an inner effect, beside the outer one', asyn
   }
 });
 
+test('an unstyled document still reads as a document', () => {
+  // With no CSS at all, the browser's own block defaults are what make the page readable:
+  // a 32px bold h1, a 24px h2, a list with an indent, a table header that is bold and
+  // centred. They are UA declarations, so an author rule still wins.
+  const html = [
+    '<html><head><style>.slide { width: 1280px; height: 720px; }</style></head><body>',
+    '<main class="slide">',
+    '<h1>季度回顾</h1><p>正文。</p><h2>要点</h2><ul><li>一条</li><li>两条</li></ul>',
+    '<table><thead><tr><th>线</th><th>额</th></tr></thead><tbody><tr><td>甲</td><td>1</td></tr></tbody></table>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.errors, []);
+  const elements = result.deck.slides[0].elements;
+  const heading = elements.find((element) => element.text === '季度回顾');
+  assert.equal(heading.fontSize, 24, 'a UA h1 is 32px = 24pt, was ' + heading.fontSize);
+  assert.equal(heading.bold, true);
+  const second = elements.find((element) => element.text === '要点');
+  assert.equal(second.fontSize, 18, 'a UA h2 is 24px = 18pt, was ' + second.fontSize);
+  const body = elements.find((element) => typeof element.text === 'string' && element.text.startsWith('正文'));
+  assert.equal(body.fontSize, 12, 'body text stays 16px = 12pt');
+  const list = elements.find((element) => element.type === 'text' && element.bullet);
+  assert.ok(list, 'the list is still a bulleted text box');
+  const table = elements.find((element) => element.type === 'table');
+  assert.equal(table.rows[0][0].options.bold, true, 'a <th> is bold without any CSS');
+  assert.equal(table.rows[0][0].options.align, 'center', 'and centred');
+  // An author rule wins over the UA sheet, exactly as in a browser.
+  const styled = pipeline.convertHtml(html.replace(".slide { width: 1280px; height: 720px; }",
+    '.slide { width: 1280px; height: 720px; } h1 { font-size: 40px; font-weight: 400; }'));
+  const styledHeading = styled.deck.slides[0].elements.find((element) => element.text === '季度回顾');
+  assert.equal(styledHeading.fontSize, 30, '40px is 30pt when the author says so');
+  assert.ok(!styledHeading.bold, 'and the weight is the author\u2019s too');
+});
+
+test('a table row is tall enough for the reader that draws it', async () => {
+  // Two measurements that only a renderer knows: a cell margin below one point is written
+  // 72x too large, and a CJK line box is 1.5em where the Latin one is 1.2em. Both were
+  // found by rendering: 0.75pt of padding became 54pt of margin, and a row measured at the
+  // Latin ratio drew its text 9pt past the row, on top of the paragraph below the table.
+  const html = [
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }',
+    'td, th { padding: 1px; }</style></head><body><main class="slide">',
+    '<table><thead><tr><th>产品线</th><th>收入</th></tr></thead>',
+    '<tbody><tr><td>第一条</td><td>3,120</td></tr></tbody></table>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const table = result.deck.slides[0].elements.find((element) => element.type === 'table');
+  assert.equal(table.rows[0][0].options.margin[0], 1, 'a sub-point inset is floored at one point');
+  const rowPt = table.options.rowH[0] * 72;
+  assert.ok(rowPt >= 17, 'an 11pt CJK row needs its 1.5em line box, was ' + rowPt.toFixed(2) + 'pt');
+  assert.ok(table.options.rowH.every((height, index) => index === 0 || height > 0));
+
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const file = path.join(os.tmpdir(), 'table-row-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, file);
+    const zip = await JSZip.loadAsync(fs.readFileSync(file));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const top = Number((/marT="(\d+)"/u.exec(xml) || [0, 0])[1]);
+    assert.equal(top, 12700, 'one point of margin is 12700 EMU, not 685800');
+    const heights = [...xml.matchAll(/<a:tr h="(\d+)"/gu)].map((match) => Number(match[1]));
+    assert.equal(heights.length, 2, 'header and body row');
+    heights.forEach((height) => {
+      assert.ok(height >= 215900, 'a row of 11pt CJK text is at least 17pt tall, was ' + (height / 12700).toFixed(2) + 'pt');
+    });
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
 test('a picture filter becomes blip colour transforms, and the rest is named', async () => {
   // DrawingML spells three of CSS's filter functions on a picture: <a:grayscl/>, <a:lum
   // bright contrast/> and <a:alphaModFix/>. Contrast maps exactly (both scale about 0.5);

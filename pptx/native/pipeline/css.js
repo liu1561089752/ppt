@@ -139,12 +139,28 @@ function mediaMatches(query, viewport) {
 const UA_TAG_STYLES = {
   b: { fontWeight: 'bold' },
   strong: { fontWeight: 'bold' },
-  h1: { fontWeight: 'bold' },
-  h2: { fontWeight: 'bold' },
-  h3: { fontWeight: 'bold' },
-  h4: { fontWeight: 'bold' },
-  h5: { fontWeight: 'bold' },
-  h6: { fontWeight: 'bold' },
+  // The browser's own block defaults, which are what makes an unstyled document read as a
+  // document: a 32px bold h1 over 16px body text, a paragraph with air under it, a list with
+  // an indent and a marker. Sizes and margins are Chrome's at a 16px root, in px so no em
+  // chain has to be unrolled here. An author rule still wins, because these are merged
+  // before the matched rules are applied.
+  h1: { fontWeight: 'bold', fontSize: '32px' },
+  h2: { fontWeight: 'bold', fontSize: '24px' },
+  h3: { fontWeight: 'bold', fontSize: '18.72px' },
+  h4: { fontWeight: 'bold', fontSize: '16px' },
+  h5: { fontWeight: 'bold', fontSize: '13.28px' },
+  h6: { fontWeight: 'bold', fontSize: '10.72px' },
+
+  // The marker itself is not declared here: the list branch already knows `<ol type>`, `start`
+  // and the nested disc/circle/square chain, and a UA `list-style-type` would overwrite them.
+  ul: { paddingLeft: '40px' },
+  ol: { paddingLeft: '40px' },
+
+
+
+  th: { fontWeight: 'bold', textAlign: 'center', paddingTop: '1px', paddingRight: '1px', paddingBottom: '1px', paddingLeft: '1px' },
+  td: { paddingTop: '1px', paddingRight: '1px', paddingBottom: '1px', paddingLeft: '1px' },
+  caption: { textAlign: 'center' },
   i: { fontStyle: 'italic' },
   em: { fontStyle: 'italic' },
   cite: { fontStyle: 'italic' },
@@ -156,7 +172,7 @@ const UA_TAG_STYLES = {
   code: { fontFamily: 'Consolas, Menlo, monospace' },
   kbd: { fontFamily: 'Consolas, Menlo, monospace' },
   samp: { fontFamily: 'Consolas, Menlo, monospace' },
-  pre: { fontFamily: 'Consolas, Menlo, monospace' }
+  pre: { fontFamily: 'Consolas, Menlo, monospace', whiteSpace: 'pre' }
 };
 
 function parseStylesheet(cssText, options = {}) {
