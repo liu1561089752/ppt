@@ -18,8 +18,8 @@ generated from the source, so it cannot drift away from the code.
 
 <!-- generated:start -->
 
-Generated from `pipeline/analyzer.js`: **130 call sites**, **76 properties**,
-**117 distinct explanations**. Regenerate with `npm run limits:update`; a new report
+Generated from `pipeline/analyzer.js`: **132 call sites**, **76 properties**,
+**119 distinct explanations**. Regenerate with `npm run limits:update`; a new report
 without a line here fails the gate.
 
 | reported as | what the deck says it could not do |
@@ -39,7 +39,7 @@ without a line here fails the gate.
 | `clipPath` | clip-path clips the subtree; only this box's own paint is clipped, its children keep their shape<br>⟨explicitHeight === null ? 'A clip…⟩ |
 | `column-widths` | Fixed-layout columns are scaled into the table box instead of widening it |
 | `columns` | ⟨reason⟩ |
-| `data-chart` | A bubble needs three numbers per point: an x column, a y column and a size column<br>A bubble reads the columns after x in pairs (y, size); ⟨seriesCount⟩ leaves one of them unpaired<br>A chart needs data: add data-values="1,2,3" or put the numbers in a <table><br>A scatter needs an x column and at least one y series: two numeric columns<br>The first column of a bubble is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>The first column of a scatter is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>Unknown chart type; use bar or column, line, area, pie, doughnut or radar |
+| `data-chart` | A bubble needs three numbers per point: an x column, a y column and a size column<br>A bubble reads the columns after x in pairs (y, size); ⟨seriesCount⟩ leaves one of them unpaired<br>A chart needs data: add data-values="1,2,3" or put the numbers in a <table><br>A chart value has to be a number, and this cell holds no number, so it is plotted as 0⟨more(textValues.length)⟩<br>A scatter needs an x column and at least one y series: two numeric columns<br>An empty value cell is plotted as 0; use an explicit 0 if that is what the page means⟨more(blankValues.length)⟩<br>The first column of a bubble is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>The first column of a scatter is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>Unknown chart type; use bar or column, line, area, pie, doughnut or radar |
 | `data-chart-axis-titles` | Give at most two titles: "category\|value" |
 | `data-chart-cat-label-rotate` | Use an angle from -90 to 90 |
 | `data-chart-colors` | Chart colours must be #rrggbb values, one per series, in series order |

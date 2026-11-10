@@ -1083,15 +1083,22 @@ function lineSpacingOf(style, fontPx) {
   if (!raw || raw === 'normal') return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
   const length = parseLength(raw);
   if (!length) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
-  if (length.unit === '') return { multiple: Number(length.value) || 1.25, explicit: null };
+  if (length.unit === '') {
+    // CSS discards a `line-height` that is not positive and keeps `normal`. Accepting -1 made
+    // the line box negative and the text vanished from the deck without a word.
+    const value = Number(length.value);
+    if (!Number.isFinite(value) || value <= 0) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
+    return { multiple: value, explicit: null };
+  }
   // A percentage line-height is a multiple of the element's own font size
   // (150% of 16px = 24px = 1.5); it is not a box-relative percent.
   if (length.unit === '%') {
-    const multiple = Number((length.value / 100).toFixed(3));
-    return { multiple: Math.max(0.8, multiple), explicit: null };
+    const multiple = Number(length.value / 100);
+    if (!Number.isFinite(multiple) || multiple <= 0) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
+    return { multiple: Math.max(0.8, Number(multiple.toFixed(3))), explicit: null };
   }
   const inches = toInches(length, { fontSizePx: fontPx });
-  if (!inches) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
+  if (!inches || inches <= 0) return { multiple: normalLineMultiple(style.fontFamily), explicit: null };
   return { multiple: Math.max(0.8, Number((inches / (fontPx / 96)).toFixed(3))), explicit: inches };
 }
 
@@ -4576,6 +4583,25 @@ function readChart(domNode, ctx) {
           labels: body.map((row) => row[0] || ''),
           values: body.map((row) => numericOrZero(row[series + 1]))
         });
+      }
+      // A value cell with no number in it becomes 0 in the series - a data point the page
+      // never had. Scatter and bubble already refuse a text axis; every chart can say this.
+      const blankValues = [];
+      const textValues = [];
+      body.forEach((row) => row.slice(1).forEach((cell) => {
+        const text = String(cell === undefined || cell === null ? '' : cell).trim();
+        if (!text) { blankValues.push(1); return; }
+        const cleaned = text.replace(/[^0-9.\-]/gu, '');
+        if (!cleaned || !Number.isFinite(Number(cleaned))) textValues.push(text);
+      }));
+      const more = (count) => (count > 1 ? ' (' + (count - 1) + ' more like it)' : '');
+      if (textValues.length) {
+        recordUnsupported(ctx, domNode, 'data-chart', textValues[0],
+          'A chart value has to be a number, and this cell holds no number, so it is plotted as 0' + more(textValues.length));
+      }
+      if (blankValues.length) {
+        recordUnsupported(ctx, domNode, 'data-chart', '(empty cell)',
+          'An empty value cell is plotted as 0; use an explicit 0 if that is what the page means' + more(blankValues.length));
       }
       if (resolved === 'bubble') {
         // Three numbers per point: x, y and how big the dot is. A fourth and fifth column

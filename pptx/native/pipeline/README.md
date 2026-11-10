@@ -130,6 +130,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | building the corpus | `npm run pipeline:all` converts every example; the reader and package gates call it first, so a fresh clone needs no setup beyond `npm install` |
 | a picture's source | a `data:` URI or a readable file is drawn; a remote URL, a missing file, or a path with no base directory is named and the box keeps its place - never a silent hole, never an aborted write |
 | a source with no bytes | an empty `src`, a non-base64 or non-image data URI, a remote URL, a missing file: one helper decides, every caller names it, the box keeps its place, and the geometry degrades to a stretch rather than throwing |
+| a value that is not a number | `line-height` that is not positive is discarded as CSS discards it (the text is kept); a chart value cell with no number in it is named once and plotted as 0 |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |
 | q quotes | synthesized “ ” join the content (was bare words); declared pseudos win |

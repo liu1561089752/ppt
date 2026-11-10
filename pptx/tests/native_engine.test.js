@@ -5803,6 +5803,56 @@ test('every way of having no bytes for a picture is named', async () => {
   assert.ok(Array.isArray(written.droppedPictures), 'the writer reports what it could not read');
 });
 
+test('a line box that is not positive is dropped the way CSS drops it', () => {
+  // `line-height: -1` is not a valid declaration, so a browser discards it and keeps `normal`.
+  // This converter took the number literally: the line box came out negative and the text
+  // disappeared from the deck without a word - a silent loss of the only content on the slide.
+  const page = (value) => pipeline.convertHtml([
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .a { font-size: 14px; line-height: ' + value + '; }',
+    '</style></head><body><main class="slide"><p class="a">负行高也要出现</p></main></body></html>'
+  ].join('\n'));
+  const textOf = (result) => (result.deck.slides[0].elements || []).find((element) => element.type === 'text');
+  [-1, 0, '-3px', '-50%'].forEach((value) => {
+    const element = textOf(page(value));
+    assert.ok(element, 'line-height: ' + value + ' still draws the text');
+    assert.ok(element.h > 0, 'and the box has a height');
+  });
+  // A valid line box is still honoured, and a taller one takes more room than `normal`.
+  const loose = textOf(page('2.4'));
+  const normal = textOf(page('normal'));
+  assert.ok(loose.h > normal.h, 'a line-height of 2.4 is taller than normal');
+});
+
+test('a chart value with no number in it is named, not plotted as zero in silence', () => {
+  // A typo in a data cell used to become a real data point worth 0: the chart looked
+  // authoritative and said something the page never said. Scatter and bubble already refused
+  // a text axis; every chart can now say when a value cell holds no number.
+  const chartOf = (rows) => pipeline.convertHtml([
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .t { width: 420px; }</style></head><body><main class="slide">',
+    '<table class="t" data-chart="bar"><tr><th>季度</th><th>收入</th></tr>' + rows + '</table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const reportsOf = (result) => result.report.unsupportedDetails.filter((entry) => entry.property === 'data-chart');
+
+  const typo = chartOf('<tr><td>Q1</td><td>abc</td></tr><tr><td>Q2</td><td>30</td></tr>');
+  assert.equal(reportsOf(typo).length, 1, 'the text cell is named once');
+  assert.match(reportsOf(typo)[0].reason, /plotted as 0/u);
+  assert.equal(reportsOf(typo)[0].value, 'abc', 'and the value is quoted back');
+
+  const blank = chartOf('<tr><td>Q1</td><td></td></tr><tr><td>Q2</td><td>30</td></tr>');
+  assert.equal(reportsOf(blank).length, 1);
+  assert.match(reportsOf(blank)[0].reason, /empty value cell/u);
+
+  // Numbers written the way pages write them are numbers: a thousands separator, a sign, a
+  // decimal. Reporting those would be noise.
+  ['1,200', '-8', '0.5'].forEach((value) => {
+    const clean = chartOf('<tr><td>Q1</td><td>' + value + '</td></tr><tr><td>Q2</td><td>30</td></tr>');
+    assert.deepEqual(reportsOf(clean), [], value + ' is a number');
+  });
+});
+
 test('a picture with no alt text carries no alt text', async () => {
   // The writer fills `descr` with the image source when no alt is given, which put a build
   // machine's path into the alt text a screen reader reads out. A picture with no description
