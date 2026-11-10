@@ -20,6 +20,9 @@
  * no font shaping. Percentages resolve against the direct parent content box.
  */
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 const { parseHtml, elementChildren, normalizedText, walk, textContent } = require('./html_parser');
 const {
   parseStylesheet,
@@ -2784,6 +2787,26 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.x = x;
     node.h = height === null ? width * 0.5625 : height;
     node.src = domNode.attrs.src || null;
+    // A source the engine cannot turn into bytes is a hole in the slide, and it used to be a
+    // silent one: the spec claimed a picture, the package had none, and nothing was said. The
+    // box keeps its place - the layout already measured it - and the report explains the gap.
+    const sourceText = String(node.src || '');
+    if (/^(?:https?:)?\/\//iu.test(sourceText)) {
+      recordUnsupported(ctx, domNode, 'src', sourceText,
+        'A remote picture is not downloaded: this converter never touches the network, so the box keeps its place and stays unpainted - inline the image as a data URI or point at a local file');
+      node.undrawableSource = true;
+    } else if (sourceText && !/^data:/iu.test(sourceText)) {
+      // A file path: readable or not, decided now, where the report lives.
+      const base = ctx.options && ctx.options.baseDir;
+      const file = path.isAbsolute(sourceText) ? sourceText : (base ? path.resolve(base, sourceText) : null);
+      // Without a base directory the path may still resolve at write time (the caller's cwd),
+      // so the picture travels and the writer reports it if the bytes are really not there.
+      if (file && !fs.existsSync(file)) {
+        recordUnsupported(ctx, domNode, 'src', sourceText,
+          'The picture file named by the source could not be read, so the box keeps its place and stays unpainted - check the path, or inline the image as a data URI');
+        node.undrawableSource = true;
+      }
+    }
     node.alt = domNode.attrs.alt || '';
     // `srcset` lets the browser pick a source per density or art direction; the
     // static deck always draws `src`. Same-layout different-pixels is close, but a

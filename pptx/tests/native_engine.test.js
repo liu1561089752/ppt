@@ -5693,6 +5693,65 @@ test('the catalogue of what the engine cannot draw matches the code', () => {
   assert.equal(written, prose().trimEnd(), 'LIMITS.md is stale: run `npm run limits:update`');
 });
 
+test('a picture this engine cannot read is named, not silently missing', async () => {
+  // Three ways to have no bytes for a picture: a remote url (this converter never touches the
+  // network), a file that is not there, and a relative path with no base directory to resolve
+  // against. Each used to leave a hole in the slide and say nothing - the spec claimed a picture
+  // and the package had none; a missing local file was worse, failing the whole write at the last
+  // moment with a media error. All three are now one line in the report, and the box keeps its
+  // place so the composition around it does not move.
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAGQAAAAyCAIAAAC0m0JJAAAAWklEQVR4nO3NMQEAAAgDoC251a3gLzRgkjl3dgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOA1A3l0AAG8DQ0iAAAAAElFTkSuQmCC', 'base64');
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'native-src-'));
+  fs.writeFileSync(path.join(folder, 'real.png'), png);
+  const page = (src) => [
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style></head>',
+    '<body><main class="slide"><p style="font-size: 14px">前文</p>',
+    '<img src="' + src + '" width="200" height="100"></main></body></html>'
+  ].join('\n');
+  const convert = async (name, src) => {
+    const file = path.join(folder, name + '.html');
+    fs.writeFileSync(file, page(src));
+    return pipeline.convertFile(file, { pptx: path.join(folder, name + '.pptx') });
+  };
+  const kindsOf = (result) => (result.deck.slides[0].elements || []).map((element) => element.type);
+  const reportsOf = (result) => result.report.unsupportedDetails.filter((entry) => entry.property === 'src');
+
+  const real = await convert('real', 'real.png');
+  assert.ok(kindsOf(real).includes('image'), 'a file that is there is drawn');
+  assert.deepEqual(reportsOf(real), [], 'and nothing is said about it');
+
+  const missing = await convert('missing', 'nope.png');
+  assert.deepEqual(kindsOf(missing), ['text'], 'a file that is not there draws nothing');
+  assert.equal(reportsOf(missing).length, 1, 'and is named once');
+  assert.match(reportsOf(missing)[0].reason, /could not be read/u);
+
+  const remote = await convert('remote', 'https://example.com/a.png');
+  assert.deepEqual(kindsOf(remote), ['text'], 'a remote picture is not downloaded');
+  assert.match(reportsOf(remote)[0].reason, /never touches the network/u);
+
+  // The string API has no base directory, so the path travels unresolved: the writer decides, and
+  // says so. That is better than guessing - the caller's working directory might have the file.
+  const anonymous = pipeline.convertHtml(page('assets/photo.png'));
+  assert.ok(kindsOf(anonymous).includes('image'), 'the picture travels');
+  assert.deepEqual(reportsOf(anonymous), [], 'and nothing is claimed before the write');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const file = path.join(os.tmpdir(), 'native-src-' + process.pid + '.pptx');
+  const anonymousWrite = await generatePptx(anonymous.deck, file);
+  assert.equal(anonymousWrite.droppedPictures.length, 1, 'the writer names it at write time');
+  assert.match(anonymousWrite.droppedPictures[0].reason, /could not be read/u);
+
+  // And the package really has no phantom picture in it.
+  await generatePptx(missing.deck, file);
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+  fs.unlinkSync(file);
+  assert.equal((xml.match(/<p:pic>/gu) || []).length, 0, 'no picture element for a picture with no bytes');
+});
+
 test('a picture with no alt text carries no alt text', async () => {
   // The writer fills `descr` with the image source when no alt is given, which put a build
   // machine's path into the alt text a screen reader reads out. A picture with no description

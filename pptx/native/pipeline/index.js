@@ -97,7 +97,9 @@ async function convertFile(inputPath, options = {}) {
   if (!fs.existsSync(absolute)) throw new Error('HTML file not found: ' + absolute);
   const html = fs.readFileSync(absolute, 'utf8');
   const baseDirectory = path.dirname(absolute);
-  const result = convertHtml(html, options);
+  // The analyzer decides whether a relative picture path can be read, so it needs the folder the
+  // HTML came from.
+  const result = convertHtml(html, { ...options, baseDir: baseDirectory });
   resolveDeckImagePaths(result.deck, baseDirectory);
 
   if (options.out) {
@@ -117,6 +119,16 @@ async function convertFile(inputPath, options = {}) {
       embedFonts: options.embedFonts === true
     });
     result.output = { pptx: written.outputPath, slides: written.report.length };
+    // A picture the writer could not read is a hole in the slide, so it joins the same list
+    // the rest of the honest reporting uses.
+    (written.droppedPictures || []).forEach((entry) => {
+      result.report.unsupportedDetails.push({
+        slide: entry.slide, tag: 'img', property: 'src', value: entry.source, reason: entry.reason
+      });
+    });
+    if (written.droppedPictures && written.droppedPictures.length) {
+      result.output.droppedPictures = written.droppedPictures.length;
+    }
     if (written.embeddedFonts && written.embeddedFonts.length) {
       result.output.embeddedFonts = written.embeddedFonts.map((entry) => ({ face: entry.face, bytes: entry.bytes }));
     }

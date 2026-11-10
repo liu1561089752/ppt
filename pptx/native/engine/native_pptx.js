@@ -168,6 +168,19 @@ function addElement(slide, el, theme, pptx, context = {}) {
     });
   } else if (el.type === 'image') {
     const geometry = resolveImageGeometry(el, context.image || {});
+    // The writer reads media while it assembles the package, long after this call, so a source
+    // that cannot be read has to be caught here. It costs this picture and one line in the
+    // report; it used to abort the whole deck, every other slide included.
+    if (el.path && !pictureIsReadable(el.path, context.image)) {
+      if (Array.isArray(context.droppedPictures)) {
+        context.droppedPictures.push({
+          slide: (context.slideIndex || 0) + 1,
+          source: el.path,
+          reason: 'The picture file could not be read, so it is missing from the slide - check the path, or inline the image as a data URI'
+        });
+      }
+      return;
+    }
     const source = el.path ? { path: el.path } : { data: el.data };
     const imageOptions = Object.assign(source, {
       x: geometry.box.x, y: geometry.box.y, w: geometry.box.w, h: geometry.box.h,
@@ -177,7 +190,22 @@ function addElement(slide, el, theme, pptx, context = {}) {
     if (el.rotate !== undefined) imageOptions.rotate = el.rotate;
     if (el.flipH) imageOptions.flipH = true;
     if (el.flipV) imageOptions.flipV = true;
-    slide.addImage(imageOptions);
+    try {
+      slide.addImage(imageOptions);
+    } catch (error) {
+      // A picture whose bytes cannot be read used to abort the whole deck at the last moment,
+      // long after the report had been assembled and long after every other slide was fine.
+      // It costs this picture and one line in the report instead.
+      if (Array.isArray(context.droppedPictures)) {
+        context.droppedPictures.push({
+          slide: (context.slideIndex || 0) + 1,
+          source: el.path || '(inline data)',
+          reason: 'The picture could not be read, so it is missing from the slide: '
+            + String((error && error.message) || error).split('\n')[0]
+        });
+      }
+      return;
+    }
     if (Array.isArray(context.imagePlans)) context.imagePlans.push(buildImagePlan(el, geometry));
   } else if (el.type === 'chart') {
     const chartTypes = {
@@ -419,6 +447,7 @@ async function buildPresentation(deck, options = {}) {
 
   const report = [];
   const imagePlans = [];
+  const droppedPictures = [];
   // The patches below rewrite `slideN.xml` by walking the elements in order, so they need
   // the *laid out* list: a container contributes its background, its single-side border
   // strips and its overlays on top of the elements the spec lists.
@@ -437,13 +466,29 @@ async function buildPresentation(deck, options = {}) {
     const slidePlans = [];
     elements.forEach((element) => addElement(slide, element, theme, pptx, {
       image: { readFile: options.readImageFile },
-      imagePlans: slidePlans
+      imagePlans: slidePlans,
+      droppedPictures,
+      slideIndex: index
     }));
     if (spec.notes) slide.addNotes(spec.notes);
     imagePlans.push(slidePlans);
     report.push({ slide: index + 1, warnings });
   }
-  return { pptx, report, pageSize, fontReport: fontManager.inspect(), imagePlans, laidOut };
+  return { pptx, report, pageSize, fontReport: fontManager.inspect(), imagePlans, laidOut, droppedPictures };
+}
+
+/** Can the bytes behind this source be read? A `data:` source carries its own. */
+function pictureIsReadable(file, imageOptions) {
+  if (/^data:/iu.test(String(file))) return true;
+  try {
+    if (imageOptions && typeof imageOptions.readFile === 'function') {
+      const bytes = imageOptions.readFile(file);
+      return Boolean(bytes && bytes.length);
+    }
+    return fs.existsSync(file);
+  } catch (error) {
+    return false;
+  }
 }
 
 /**
@@ -1291,6 +1336,8 @@ async function generatePptx(deck, outputPath, options = {}) {
     report: result.report,
     pageSize: result.pageSize,
     fontReport: result.fontReport,
+    // Pictures the writer was asked to place but could not read: named, never silent.
+    droppedPictures: result.droppedPictures || [],
     embeddedFonts: fontEmbedding.embedded,
     skippedFonts: fontEmbedding.skipped,
     // The boxes the writer really used, containers already resolved to absolute

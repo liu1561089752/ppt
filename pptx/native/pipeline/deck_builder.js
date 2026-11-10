@@ -988,6 +988,9 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     return textElementFromNode(node, null, resolvedTheme);
   }
   if (node.kind === 'image') {
+    // No bytes to draw - a remote source or a file that is not there. The box stays reserved by
+    // the layout; the report says why it is empty.
+    if (node.undrawableSource) return null;
     // A background picture with an explicit `background-size` is drawn at that size; the
     // geometry is resolved before the element is built, because the element carries a box.
     if (node.backgroundSizeSpec && !node.backgroundNatural) {

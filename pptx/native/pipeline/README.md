@@ -128,6 +128,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | object-fit | a declared value is honoured (`cover`, `contain`, `fill`, `none`, `scale-down`); an undeclared one stretches to the box, which is what CSS does, and nothing is reported because the drawing agrees |
 | the catalogue of refusals | `LIMITS.md` is generated from the analyzer and drift-checked by `npm run limits` and by a test, so a report that is added but not documented fails the suite |
 | building the corpus | `npm run pipeline:all` converts every example; the reader and package gates call it first, so a fresh clone needs no setup beyond `npm install` |
+| a picture's source | a `data:` URI or a readable file is drawn; a remote URL, a missing file, or a path with no base directory is named and the box keeps its place - never a silent hole, never an aborted write |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |
 | q quotes | synthesized “ ” join the content (was bare words); declared pseudos win |
