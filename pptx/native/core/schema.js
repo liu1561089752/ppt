@@ -440,7 +440,10 @@ function validateElement(p, element, errors) {
           errors.push(p + '.bullet must be a boolean or options object');
         }
       }
-      validateEdge(p, element);
+      // `errors` is the whole point of calling it: without the array every check inside threw
+      // `Cannot read properties of undefined (reading 'push')` on the first malformed edge, so a
+      // spec that used the field exited 2 with a stack trace instead of 1 with a message.
+      validateEdge(p, element, errors);
       if (element.type === 'line' && element.transparency !== undefined &&
           (!Number.isFinite(element.transparency) || element.transparency < 0 || element.transparency > 100)) {
         errors.push(p + '.transparency must be between 0 and 100');
@@ -459,8 +462,7 @@ function validateElement(p, element, errors) {
           }
         });
         validateShadowOptions(p, element, errors);
-  validateShadowOptions(p, element, errors, 'innerShadow');
-    validateShadowOptions(p, element, errors, 'innerShadow');
+        validateShadowOptions(p, element, errors, 'innerShadow');
       }
       if (element.gradient !== undefined) {
         if (element.type !== 'shape') errors.push(p + '.gradient is only supported on shapes');

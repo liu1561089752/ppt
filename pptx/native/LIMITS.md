@@ -71,10 +71,10 @@ it did write.
 | `engine/image_fit.js:298` | Image element requires a positive w and h for fit resolution |
 | `core/units.js:13` | Unsupported unit: |
 | `core/units.js:20` | pageSize must be wide, standard, or { width, height } in inches |
-| `cli.js:65` | unknown option |
-| `cli.js:81` | spec not found: |
-| `cli.js:88` | spec is not valid JSON ( |
-| `cli.js:92` | spec must be .json, .js or .cjs (got |
+| `cli.js:68` | unknown option |
+| `cli.js:84` | spec not found: |
+| `cli.js:91` | spec is not valid JSON ( |
+| `cli.js:95` | spec must be .json, .js or .cjs (got |
 
 ## A spec is rejected before anything is written
 

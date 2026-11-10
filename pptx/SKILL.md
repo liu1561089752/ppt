@@ -369,6 +369,12 @@ node <engine>/cli.js deck.js out.pptx --report out.json --layout-out layout.json
     on it. A page whose text sits tight against its box is a suspect page: give such a box slack, or
     break the line yourself with an explicit `\n`, and re-render. Installing the face makes the
     measurement exact; nothing on this machine can tell you how PowerPoint will break the same line.
+  • **To make that uncertainty fatal, add `--require-face-metrics`.** The build then fails with
+    `FONT_UNMEASURED` unless at least one measurement came from a real face. Point the theme at the
+    file to make it pass: `theme.fontFiles = { 'Microsoft YaHei': 'C:/Windows/Fonts/msyh.ttc' }` —
+    a `.ttc` collection is fine — and the `metrics` line turns into
+    `fontkit: 74 of 74 measurements used real faces`. `--report` carries the same fact as
+    `fontsEstimated` for anything that reads JSON.
 
 **Step 4.7 — look at it.** A deck that passes the gates can still look wrong.
 
@@ -601,6 +607,7 @@ Read this once before writing your first spec. The authority is `<engine>/core/s
 | `--layout-out <file>` | every box the writer actually used (for the fit gate) |
 | `--check` | validate and stop; writes nothing |
 | `--strict` | layout warnings become failures (release condition) |
+| `--require-face-metrics` | also fail (`FONT_UNMEASURED`) when the wrap came from an estimate, not a real face |
 | `--json` / `--quiet` | machine-readable stdout / errors only |
 
 Exit codes: `0` written · `1` spec rejected (nothing written) · `2` writer failed.

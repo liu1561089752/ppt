@@ -3,11 +3,41 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+/**
+ * A metric face, from a single font file or from a collection (`.ttc`).
+ *
+ * A collection exposes its faces as `fonts` (or `getFonts()`); the collection object itself has no
+ * `layout`. Treating it as a face made every measurement throw, the throw was read as "no metrics",
+ * and a correctly declared `msyh.ttc` therefore measured nothing at all.
+ */
+function pickFace(opened) {
+  if (!opened) return null;
+  const usable = (candidate) => !!candidate
+    && typeof candidate.layout === 'function' && typeof candidate.glyphForCodePoint === 'function';
+  if (usable(opened)) return opened;
+  // fontkit exposes a collection's faces as `.fonts`; `getFonts()` exists on some builds and is
+  // empty on others, so take whichever actually yields faces instead of trusting the method name.
+  let faces = [];
+  if (Array.isArray(opened.fonts) && opened.fonts.length) faces = opened.fonts;
+  if (!faces.length && typeof opened.getFonts === 'function') {
+    const listed = opened.getFonts();
+    if (Array.isArray(listed)) faces = listed;
+  }
+  if (!Array.isArray(faces)) return null;
+  return faces.find(usable) || null;
+}
+
 class FontManager {
   constructor(options = {}) {
     this.fontFiles = options.fontFiles || {};
     this.fallbackFont = options.fallbackFont || null;
     this.cache = new Map();
+    // How many measurements came from a real face and how many fell back to the glyph-width
+    // estimate. `inspect()` used to report only that fontkit was installed, which reads like
+    // "metrics are exact" even on a machine that has no file for the declared face and measured
+    // nothing at all: that is how a cover title broke one line later than estimated, unseen.
+    this.measuredCalls = 0;
+    this.estimatedCalls = 0;
     this.fontkit = null;
     try { this.fontkit = require('fontkit'); } catch (_) { /* font metrics remain optional */ }
   }
@@ -18,7 +48,13 @@ class FontManager {
     if (this.cache.has(absolute)) return this.cache.get(absolute);
     if (!fs.existsSync(absolute)) return null;
     try {
-      const font = this.fontkit.openSync(absolute);
+      const opened = this.fontkit.openSync(absolute);
+      // A family on Windows ships as a `.ttc` collection more often than as a single `.ttf`, and
+      // fontkit hands a collection back as an object with no glyph API of its own. Taking it as a
+      // font made every `glyphForCodePoint` call throw, the throw was swallowed as "no metrics",
+      // and a correctly declared `msyh.ttc` silently fell back to the estimate. Pick a real face.
+      const font = pickFace(opened);
+      if (!font) return null;
       this.cache.set(absolute, font);
       return font;
     } catch (_) {
@@ -35,11 +71,11 @@ class FontManager {
   }
 
   measure(text, fontSizePt, requestedFace) {
-    if (!this.fontkit || !text) return null;
+    if (!this.fontkit || !text) { this.estimatedCalls += 1; return null; }
     const runs = [];
     for (const char of Array.from(String(text))) {
       const font = this.fontForCodePoint(char.codePointAt(0), requestedFace);
-      if (!font || font.glyphForCodePoint(char.codePointAt(0)).id === 0) return null;
+      if (!font || font.glyphForCodePoint(char.codePointAt(0)).id === 0) { this.estimatedCalls += 1; return null; }
       const previous = runs[runs.length - 1];
       if (previous && previous.font === font) previous.text += char;
       else runs.push({ font, text: char });
@@ -51,6 +87,7 @@ class FontManager {
       const advance = shaped.positions.reduce((sum, position) => sum + position.xAdvance, 0);
       width += (advance / run.font.unitsPerEm) * fontSizePt;
     }
+    this.measuredCalls += 1;
     return width;
   }
 
@@ -58,7 +95,9 @@ class FontManager {
     return {
       fontkitAvailable: !!this.fontkit,
       configuredFaces: Object.keys(this.fontFiles),
-      loadedFiles: Array.from(this.cache.keys())
+      loadedFiles: Array.from(this.cache.keys()),
+      measuredCalls: this.measuredCalls,
+      estimatedCalls: this.estimatedCalls
     };
   }
 }
@@ -175,4 +214,4 @@ function normalLineHeight(family, fontkit) {
   return value;
 }
 
-module.exports = { FontManager, normalLineHeight, fontFileForFamily: fontFileFor };
+module.exports = { FontManager, normalLineHeight, fontFileForFamily: fontFileFor, pickFace };

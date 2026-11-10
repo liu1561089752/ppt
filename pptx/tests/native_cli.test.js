@@ -144,3 +144,26 @@ test('a JS spec that uses the templates builds the flagship deck', async () => {
   assert.equal(parts.tables, 1);
   assert.equal(parts.workbooks, 1);
 });
+
+test('--require-face-metrics refuses a deck whose wrap is only an estimate', () => {
+  // `--strict` tolerates a missing metric file on purpose - a machine without the typeface is not a
+  // broken deck - which lets a run print `warnings none` while every line break came from a
+  // heuristic. The run that found this had a cover title break one line later than measured and push
+  // the page down 0.65 in, silently. The flag is the opt-in gate, and the report carries the fact.
+  const folder = workspace();
+  const report = path.join(folder, 'gated.json');
+
+  const loose = run([JSON_SPEC, path.join(folder, 'loose.pptx')]);
+  assert.equal(loose.code, 0, 'without the flag an estimate is still written: ' + loose.stderr);
+  assert.doesNotMatch(loose.stderr, /FONT_UNMEASURED/u, 'and it is not dressed up as a warning');
+
+  const gated = run([JSON_SPEC, path.join(folder, 'gated.pptx'), '--require-face-metrics', '--report', report]);
+  assert.equal(gated.code, 1, 'the gate fails the build: ' + gated.stdout + gated.stderr);
+  assert.match(gated.stdout, /FONT_UNMEASURED/u, 'the summary names the gate');
+  assert.match(gated.stderr, /\[FONT_UNMEASURED\] deck:/u, 'and the warning has no page number to blame');
+
+  const written = JSON.parse(fs.readFileSync(report, 'utf8'));
+  assert.equal(written.fontsEstimated, true, 'the report says the wrap was estimated');
+  assert.equal(written.fonts.measuredCalls, 0, 'no measurement came from a face');
+  assert.equal(written.warnings.filter((warning) => warning.code === 'FONT_UNMEASURED').length, 1);
+});

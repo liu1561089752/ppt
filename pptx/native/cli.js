@@ -45,13 +45,14 @@ const USAGE = [
   '  --layout-out <f>  write the boxes the writer used (for the text-fit gate)',
   '  --check          validate the spec and stop; writes nothing',
   '  --strict         layout warnings become failures',
+  '  --require-face-metrics  also fail when a declared font has no metric file here',
   '  --json           one JSON object instead of the human summary',
   '  --quiet          errors only',
   '  -h, --help       this text'
 ].join('\n');
 
 function parseArgs(argv) {
-  const options = { spec: null, out: null, report: null, layout: null, json: false, check: false, strict: false, quiet: false, help: false };
+  const options = { spec: null, out: null, report: null, layout: null, json: false, check: false, strict: false, quiet: false, faceMetrics: false, help: false };
   const positional = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -59,7 +60,9 @@ function parseArgs(argv) {
       options.report = argv[index += 1] || null;
     } else if (arg === '--layout-out') { options.layout = argv[index += 1] || null; } else if (arg === '--json') { options.json = true; } else if (arg === '--check') {
       options.check = true;
-    } else if (arg === '--strict') { options.strict = true; } else if (arg === '--quiet') {
+    } else if (arg === '--strict') { options.strict = true; } else if (arg === '--require-face-metrics') {
+      options.faceMetrics = true;
+    } else if (arg === '--quiet') {
       options.quiet = true;
     } else if (arg === '-h' || arg === '--help') { options.help = true; } else if (arg.startsWith('--')) {
       throw new Error('unknown option ' + arg + '\n\n' + USAGE);
@@ -211,12 +214,31 @@ async function main() {
       warnings.push(Object.assign({ slide: index + 1 }, warning));
     });
   });
-  const groups = groupWarnings(warnings);
   const bytes = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : 0;
   const fontReport = result.fontReport || {};
+  // A face file is how this machine measures text. Without one the wrap is a heuristic: the run
+  // that printed `no face files: wrap is estimated` had a cover title break one line later than
+  // measured, which pushed every block under it down 0.65 in, and no gate said a word. `--strict`
+  // deliberately tolerates that — a machine without the typeface is not a broken deck — so the
+  // refusal is a separate, opt-in flag.
+  const metricsEstimated = (fontReport.measuredCalls || 0) === 0;
+  const faceMetricFailure = options.faceMetrics && metricsEstimated;
   const themeFonts = (deck.theme && deck.theme.fonts) || {};
   const deckFonts = [themeFonts.heading, themeFonts.body].filter(Boolean).filter((face, index, all) => all.indexOf(face) === index)
     .join(' / ') || 'theme default';
+  if (faceMetricFailure) {
+    const configured = (fontReport.configuredFaces || []).length;
+    warnings.push({
+      slide: null,
+      code: 'FONT_UNMEASURED',
+      message: (configured
+        ? configured + ' face file(s) are configured for ' + deckFonts + ' but none could be opened'
+        : 'no metric file for ' + deckFonts)
+        + ': every text box is wrapped from an estimate, not from the face'
+        + ' (declare theme.fontFiles, install the face, or drop --require-face-metrics)'
+    });
+  }
+  const groups = groupWarnings(warnings);
 
   if (options.report) {
     const reportPath = path.resolve(options.report);
@@ -228,6 +250,9 @@ async function main() {
       objects: counts,
       warnings,
       fonts: fontReport,
+      // Readable without parsing the `fonts` line: a script can assert on these two.
+      fontsEstimated: metricsEstimated,
+      requestedFaces: deckFonts,
       droppedPictures: result.droppedPictures || [],
       embeddedFonts: result.embeddedFonts || [],
       skippedFonts: result.skippedFonts || []
@@ -255,6 +280,8 @@ async function main() {
       warnings: warnings.length,
       warningsByCode: Object.keys(groups).reduce((into, code) => Object.assign(into, { [code]: groups[code].length }), {}),
       fonts: fontReport,
+      fontsEstimated: metricsEstimated,
+      requestedFaces: deckFonts,
       droppedPictures: (result.droppedPictures || []).length,
       bytes
     }) + '\n');
@@ -264,12 +291,18 @@ async function main() {
       ['slides', String(result.laidOut ? result.laidOut.length : 0)],
       ['page', result.pageSize ? result.pageSize.width + ' x ' + result.pageSize.height + ' in' : 'unknown'],
       ['objects', describeCensus(counts)],
-      ['metrics', fontReport.fontkitAvailable ? 'fontkit: real face metrics' : 'fontkit: absent (estimates only)'],
+      ['metrics', metricsEstimated
+        ? (fontReport.fontkitAvailable
+          ? 'fontkit: present, but no glyph was measured from a face'
+          : 'fontkit: absent (estimates only)')
+        : 'fontkit: ' + fontReport.measuredCalls + ' of '
+          + (fontReport.measuredCalls + fontReport.estimatedCalls) + ' measurements used real faces'],
       // The faces the deck asks for, which is what a reader has to have; the metric files are
       // how this machine measured them, and their absence is worth knowing too.
       ['fonts', deckFonts + (fontReport.configuredFaces && fontReport.configuredFaces.length
         ? ' · metrics from ' + fontReport.configuredFaces.length + ' face file(s)'
-        : ' · no face files: wrap is estimated')],
+        : ' · no face files: wrap is estimated'
+          + (faceMetricFailure ? ' (FONT_UNMEASURED: --require-face-metrics)' : ''))],
       ['warnings', warnings.length ? Object.keys(groups).sort().map((code) => code + ' ' + groups[code].length).join(' · ') : 'none'],
       ['wrote', path.relative(process.cwd(), outputPath) + ' (' + Math.max(1, Math.round(bytes / 1024)) + ' KB)']
     ];
@@ -279,13 +312,17 @@ async function main() {
     process.stdout.write(humanSummary(lines) + '\n');
     Object.keys(groups).sort().forEach((code) => {
       groups[code].slice(0, 5).forEach((warning) => {
-        process.stderr.write('  [' + code + '] slide ' + warning.slide + ': ' + warning.message + '\n');
+        // A deck-level warning has no page number; naming it `slide null` would read like a bug.
+        process.stderr.write('  [' + code + '] ' + (warning.slide ? 'slide ' + warning.slide : 'deck')
+          + ': ' + warning.message + '\n');
       });
       if (groups[code].length > 5) process.stderr.write('  [' + code + '] … and ' + (groups[code].length - 5) + ' more\n');
     });
   }
 
-  if (options.strict && warnings.length) process.exitCode = 1;
+  // `--strict` still owns layout warnings. The metric gate fails on its own reason only, so a deck
+  // is never refused for a warning the caller did not ask to be fatal.
+  if (faceMetricFailure || (options.strict && warnings.length)) process.exitCode = 1;
 }
 
 main().catch((error) => {

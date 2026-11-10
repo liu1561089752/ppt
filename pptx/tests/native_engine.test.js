@@ -1144,3 +1144,55 @@ test('an opening quotation mark never ends a line', () => {
     assert.ok(!/[“‘«‹]$/u.test(line), 'line ' + index + ' ends with an opening mark: ' + line);
   });
 });
+
+test('a malformed edge is reported, not thrown', () => {
+  // `validateEdge` was called without its `errors` array, so the first thing it did with a malformed
+  // edge was `undefined.push`: the CLI exited 2 with a stack trace instead of naming the field and
+  // exiting 1. The feature itself was unusable, because validation runs before layout.
+  const bad = validateDeck({ slides: [{ elements: [
+    { type: 'shape', x: 0.5, y: 0.5, w: 2, h: 1, fill: '12283F', line: false, edge: { side: 'diagonal' } }
+  ] }] });
+  assert.ok(bad.length >= 3, 'side, width and color are all named: ' + JSON.stringify(bad));
+  bad.forEach((message) => assert.match(message, /\.edge\./u, message));
+
+  const good = validateDeck({ slides: [{ elements: [
+    { type: 'shape', x: 0.5, y: 0.5, w: 2, h: 1, fill: '12283F', line: false,
+      edge: { side: 'top', width: 4, color: 'D08C3A' } }
+  ] }] });
+  assert.deepEqual(good, [], 'a well-formed edge validates');
+});
+
+test('a declared edge is drawn as a strip along that side of the box', () => {
+  const laid = layoutSlide({ elements: [
+    { type: 'shape', x: 0.5, y: 1.2, w: 4, h: 1, fill: 'FFFFFF', line: false,
+      edge: { side: 'bottom', width: 7.2, color: 'D08C3A' } }
+  ] }, { width: 13.333, height: 7.5 });
+  assert.equal(laid.length, 2, 'the box and its edge strip');
+  const strip = laid[1];
+  assert.equal(strip.type, 'shape');
+  assert.equal(strip.fill, 'D08C3A');
+  assert.equal(strip.w, 4, 'the strip spans the box');
+  assert.ok(Math.abs(strip.h - 7.2 / 72) < 1e-9, 'thickness is the declared points: ' + strip.h);
+  assert.ok(Math.abs(strip.y - (1.2 + 1 - 7.2 / 72)) < 1e-9, 'and it sits on the bottom edge: ' + strip.y);
+});
+
+test('a bad inner shadow is named once', () => {
+  // The shadow validator ran twice for `innerShadow`, so every complaint about it arrived in pairs
+  // and an author went looking for a second, imaginary problem.
+  const errors = validateDeck({ slides: [{ elements: [
+    { type: 'shape', x: 0.5, y: 0.5, w: 2, h: 1, fill: 'FFFFFF', innerShadow: { blur: -1 } }
+  ] }] });
+  const inner = errors.filter((message) => /innerShadow/u.test(message));
+  assert.equal(inner.length, 1, 'one complaint: ' + JSON.stringify(errors));
+});
+
+test('a font collection is measured through one of its faces', () => {
+  // A Windows family ships as a `.ttc`; fontkit hands the collection back without `layout`, so a
+  // correctly declared `msyh.ttc` measured nothing and the wrap stayed an estimate for ever.
+  const { pickFace } = require('../native/engine/font_manager');
+  const face = { layout: () => ({ positions: [] }), glyphForCodePoint: () => ({ id: 1 }) };
+  assert.equal(pickFace(face), face, 'a single font is its own face');
+  assert.equal(pickFace({ fonts: [face] }), face, 'a collection yields its first real face');
+  assert.equal(pickFace({ fonts: [] }), null, 'an empty collection yields nothing, not a crash');
+  assert.equal(pickFace(null), null);
+});

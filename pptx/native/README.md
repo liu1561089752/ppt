@@ -25,11 +25,19 @@ spec      ..\examples\native_deck_spec.js
 slides    6
 page      13.333 x 7.5 in
 objects   chart 1 · line 10 · shape 19 · table 1 · text 52
-metrics   fontkit: real face metrics
+metrics   fontkit: present, but no glyph was measured from a face
 fonts     Microsoft YaHei · no face files: wrap is estimated
 warnings  none
 wrote     deck.pptx (184 KB)
 ```
+
+The two font lines always agree, which is the point: `fontkit` says how many measurements came
+from a real face, and `fonts` says which faces this machine could open. A machine with no file for
+the declared family prints `fontkit: present, but no glyph was measured from a face` next to
+`no face files: wrap is estimated` — every line break on that build is a heuristic, and `--strict`
+still passes, because a missing typeface is not a broken deck. `--require-face-metrics` is the
+opt-in that refuses it (`FONT_UNMEASURED`), and `theme.fontFiles` — a `.ttc` collection is fine —
+is how a face gets found.
 
 Layout warnings (a box outside the canvas, a text box whose measured text does not fit, two text
 boxes overlapping) print on stderr and do not stop the write; `--strict` makes them fatal. Exit
@@ -45,6 +53,7 @@ none, because the file looks finished), `2` the writer failed.
 | `--report <file>` | census, warnings, font situation, dropped pictures, as JSON |
 | `--check` | validate and stop; writes nothing |
 | `--strict` | layout warnings become failures |
+| `--require-face-metrics` | also fail when the wrap was estimated instead of measured |
 | `--json` | one JSON object for another program |
 | `--quiet` | errors only |
 
