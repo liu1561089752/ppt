@@ -970,6 +970,23 @@ function borderBandOutline(side, length, thickness, radius) {
   return points;
 }
 
+/**
+ * A CSS `text-decoration-style` keyword as the schema's underline type.
+ *
+ * The two vocabularies are close enough to look interchangeable and they are not: CSS says
+ * `double` and `dashed`, the schema says `dbl` and `dash`. Passing the CSS word through wrote
+ * `u="double"`, which no reader has to accept - and every reader on this machine opened the
+ * file anyway, which is exactly how such a value survives. The integrity gate now checks `u`.
+ */
+function underlineStyleOf(keyword) {
+  const value = String(keyword || '').trim().toLowerCase();
+  if (value === 'double') return 'dbl';
+  if (value === 'dashed') return 'dash';
+  if (value === 'dotted') return 'dotted';
+  if (value === 'wavy') return 'wavy';
+  return 'sng';
+}
+
 /** The one declared border side of an element, when it is a single-side accent. */
 function singleBorderSide(style) {
   if (uniformBorderSides(style)) return null;
@@ -1169,7 +1186,7 @@ function buildRuns(domNode, baseStyle, ctx) {
       // DrawingML spells the decoration style on the same u= attribute: dotted,
       // dashed, wavy, double. A plain underline stays the boolean.
       const style = /\b(dotted|dashed|wavy|double)\b/iu.exec(decoration);
-      options.underline = style ? style[1].toLowerCase() : true;
+      options.underline = style ? { style: underlineStyleOf(style[1]) } : true;
     }
     if (decoration.includes('line-through') || tag === 's' || tag === 'del' || tag === 'strike') {
       options.strike = true;
@@ -5127,7 +5144,7 @@ function readTableCell(cell, ctx, rowBackground) {
   if (cellDecoration.includes('underline')) {
     const shape = /\b(dotted|dashed|wavy|double)\b/iu.exec(cellDecoration);
     // The cell's run mapper reads the object form; a bare `true` wrote no `u` at all.
-    options.underline = { style: shape ? shape[1].toLowerCase() : 'sng' };
+    options.underline = { style: underlineStyleOf(shape ? shape[1] : 'sng') };
   }
   if (cellDecoration.includes('line-through')) options.strike = true;
   // Small caps is applied to a shape's runs by a patch that walks `p:sp`; a cell lives in
@@ -6178,5 +6195,6 @@ module.exports = {
   analyzeHtml,
   analyzeNode,
   assignRoles,
+  underlineStyleOf,
   pageSizeInches
 };

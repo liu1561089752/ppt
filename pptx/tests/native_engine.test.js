@@ -5652,6 +5652,32 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('a decoration style keeps the vocabulary the schema uses', async () => {
+  // CSS says `double` and `dashed`; the schema says `dbl` and `dash`. Passing the CSS word
+  // through wrote u="double", which no reader on this machine complained about - so the
+  // vocabulary is pinned here and checked against the schema's value set by the audit.
+  const cases = [['underline', 'sng'], ['underline wavy', 'wavy'], ['underline double', 'dbl'],
+    ['underline dotted', 'dotted'], ['underline dashed', 'dash']];
+  const body = cases.map(([value]) => '<p style="font-size:16px; text-decoration: ' + value + '">' + value + '</p>').join('');
+  const html = ['<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style>',
+    '</head><body><main class="slide">' + body + '</main></body></html>'].join('\n');
+  const result = pipeline.convertHtml(html);
+  // The decoration is a run property: a plain underline is the boolean, a styled one carries
+  // the schema's word for the style.
+  const styles = result.deck.slides[0].elements.map((element) => {
+    const runs = Array.isArray(element.text) ? element.text : [];
+    const underline = runs.length ? runs[0].options.underline : undefined;
+    return underline === true ? 'sng' : (underline && underline.style);
+  });
+  assert.deepEqual(styles, cases.map(([, style]) => style));
+
+  const { underlineStyleOf } = require('../native/pipeline/analyzer');
+  assert.equal(underlineStyleOf('double'), 'dbl');
+  assert.equal(underlineStyleOf('dashed'), 'dash');
+  assert.equal(underlineStyleOf('solid'), 'sng');
+  assert.equal(underlineStyleOf(''), 'sng');
+});
+
 test('the slide title is a title placeholder, not a text box'
   , async () => {
   // A heading written as a plain text box renders exactly right and is invisible to PowerPoint's

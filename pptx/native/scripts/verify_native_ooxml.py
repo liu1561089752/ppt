@@ -29,6 +29,13 @@ ENUM_VALUES = {
     ("grouping", "val"): {"standard", "stacked", "percentStacked", "clustered"},
     ("dLblPos", "val"): {"bestFit", "b", "ctr", "inBase", "inEnd", "l", "outEnd", "r", "t"},
     ("scatterStyle", "val"): {"lineMarker", "line", "marker", "smooth", "smoothMarker"},
+    # The run decoration family. `u="double"` shipped for a while: the CSS keyword went
+    # straight into the attribute, and the schema spells it `dbl`.
+    ("rPr", "u"): {"none", "words", "sng", "dbl", "heavy", "dotted", "dottedHeavy", "dash",
+                   "dashHeavy", "dashLong", "dashLongHeavy", "dotDash", "dotDashHeavy",
+                   "dotDotDash", "dotDotDashHeavy", "wavy", "wavyHeavy", "wavyDbl"},
+    ("rPr", "strike"): {"noStrike", "sngStrike", "dblStrike"},
+    ("rPr", "cap"): {"none", "small", "all"},
 }
 
 
@@ -388,6 +395,9 @@ def self_test() -> int:
         ("a fill after the line", "<a:spPr><a:ln/><a:solidFill/></a:spPr>", True),
         ("a valid anchor", "<a:bodyPr anchor='ctr'/>", False),
         ("an invalid anchor", "<a:bodyPr anchor='middle'/>", True),
+        ("a valid underline", "<a:rPr u='wavy'/>", False),
+        ("an underline spelled the CSS way", "<a:rPr u='double'/>", True),
+        ("an invalid strike", "<a:rPr strike='double'/>", True),
         # A table row has to fill its grid exactly once: short is as broken as long.
         ("a text body in order", "<a:txBody><a:bodyPr/><a:p/></a:txBody>", False),
         ("a paragraph before its body properties",
