@@ -156,7 +156,9 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `width: 100%`, a declared length, `<col width>` | unchanged - a declared width always wins over the content width |
 | adjacent sibling margins | collapse into one gap: `max(positive) + min(negative)` |
 | a margin through a padding-less parent | escapes: it becomes the parent's own margin, and the child sits flush with the content edge. Padding, a border, or a block formatting context (flex, grid, absolute, overflow, float) stops it |
-| UA block margins (`p`, headings, lists) | not applied yet - vertical rhythm is tighter than a browser |
+| a group that falls back to absolute placement | its `::before`/`::after` are still drawn (`emitLeafOverlays`), not just counted |
+| a flex column's children margins | carried as `boxMargin`; a row or a grid refuses them and falls back |
+| UA block margins (`p`, headings, lists) | applied (px from the 32px sheet, collapsed); an author's own `em` margin scales with the element's font size, the UA ones do not |
 | a table cell inset below 1pt | floored at 1pt (PptxGenJS writes a sub-point margin 72x too large) |
 | a row of CJK cell text | measured at a 1.5em line box, because a CJK face draws ~1.49em where the Latin face draws 1.2em |
 | `filter` on a picture: `grayscale(1)`, `contrast()`, `brightness()`, `opacity()` | `<a:blip>` colour transforms (`grayscl`, `lum`, `alphaModFix`); contrast is exact, brightness is an additive approximation and is named |

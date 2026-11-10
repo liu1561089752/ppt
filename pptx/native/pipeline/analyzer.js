@@ -2813,14 +2813,20 @@ function collapsesThroughParent(style) {
  * children's escaped margins folded in. Memoised on the node, because every ancestor asks.
  */
 function effectiveMargins(domNode, style, ctx, context) {
+  // The memo has to be per font size: an em margin resolves against the element's own size,
+  // so the same node asked for in a different font context has a different answer. Caching it
+  // by node alone let the first caller (a parent, asking at *its* size) win.
   if (!ctx.effectiveMargins) ctx.effectiveMargins = new WeakMap();
-  const cache = ctx.effectiveMargins;
-  if (cache.has(domNode)) return cache.get(domNode);
+  const bySize = ctx.effectiveMargins;
+  if (!bySize.has(domNode)) bySize.set(domNode, new Map());
+  const cache = bySize.get(domNode);
+  const key = Math.round((context.fontSizePx || 0) * 100);
+  if (cache.has(key)) return cache.get(key);
   const own = childMargins(style, context);
   const result = { top: own.top, bottom: own.bottom, right: own.right, left: own.left };
   // Marked before recursing: a guard against a cycle costs nothing and keeps a broken tree
   // from overflowing the stack.
-  cache.set(domNode, result);
+  cache.set(key, result);
   const flow = elementChildren(domNode).filter((child) => {
     const childStyle = ctx.styles.computed(child);
     if (childStyle.display === 'none' || childStyle.display === 'inline') return false;
@@ -2948,8 +2954,11 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
       }
       floatedBefore = false;
     }
+    // An em margin is a fraction of the element's *own* font size (CSS 2.1 4.3.4), and an h1
+    // that raises its own size raises its margin with it - Chrome: a 34px h1 has a 22.78px top
+    // margin, not the 32px-default 21.44px.
     const margins = effectiveMargins(child, childStyle, ctx,
-      { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
+      { parentWidth: contentBox.w, fontSizePx: fontPxOf(childStyle, inherited.fontPx) });
     // The first in-flow child's top margin has already escaped through a padding-less parent
     // (it is in that parent's own margin), so it must not be counted again here.
     if (firstInFlow && parentCollapsesTop) margins.top = 0;

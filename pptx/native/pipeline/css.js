@@ -144,23 +144,27 @@ const UA_TAG_STYLES = {
   // an indent and a marker. Sizes and margins are Chrome's at a 16px root, in px so no em
   // chain has to be unrolled here. An author rule still wins, because these are merged
   // before the matched rules are applied.
-  h1: { fontWeight: 'bold', fontSize: '32px' },
-  h2: { fontWeight: 'bold', fontSize: '24px' },
-  h3: { fontWeight: 'bold', fontSize: '18.72px' },
+  h1: { fontWeight: 'bold', fontSize: '32px', marginTop: '21.44px', marginBottom: '21.44px' },
+  h2: { fontWeight: 'bold', fontSize: '24px', marginTop: '19.92px', marginBottom: '19.92px' },
+  h3: { fontWeight: 'bold', fontSize: '18.72px', marginTop: '18.72px', marginBottom: '18.72px' },
   h4: { fontWeight: 'bold', fontSize: '16px' },
   h5: { fontWeight: 'bold', fontSize: '13.28px' },
   h6: { fontWeight: 'bold', fontSize: '10.72px' },
 
   // The marker itself is not declared here: the list branch already knows `<ol type>`, `start`
   // and the nested disc/circle/square chain, and a UA `list-style-type` would overwrite them.
-  ul: { paddingLeft: '40px' },
-  ol: { paddingLeft: '40px' },
+  ul: { paddingLeft: '40px', marginTop: '16px', marginBottom: '16px' },
+  ol: { paddingLeft: '40px', marginTop: '16px', marginBottom: '16px' },
 
 
 
   th: { fontWeight: 'bold', textAlign: 'center', paddingTop: '1px', paddingRight: '1px', paddingBottom: '1px', paddingLeft: '1px' },
   td: { paddingTop: '1px', paddingRight: '1px', paddingBottom: '1px', paddingLeft: '1px' },
   caption: { textAlign: 'center' },
+  p: { marginTop: '16px', marginBottom: '16px' },
+  dl: { marginTop: '16px', marginBottom: '16px' },
+  blockquote: { marginTop: '16px', marginBottom: '16px' },
+  figure: { marginTop: '16px', marginBottom: '16px' },
   i: { fontStyle: 'italic' },
   em: { fontStyle: 'italic' },
   cite: { fontStyle: 'italic' },

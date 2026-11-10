@@ -609,7 +609,10 @@ function containerPlan(node, state) {
     const undeclared = children.find((child) => !(child.style && child.style.width !== undefined));
     if (undeclared) return { ok: false, reason: 'wrapping column item has no declared width' };
   }
-  if (display === 'flex' || display === 'grid') {
+  // A child's flow margin travels as `boxMargin`, which a column container honours on all four
+  // sides - but the row model has none, and a grid track must stay aligned to its cell. So a
+  // margin is fatal only where the engine cannot carry it: a row or a grid, not a column.
+  if (display === 'grid' || (display === 'flex' && direction === 'row')) {
     const spaced = children.find((child) => hasMargin(child));
     if (spaced) return { ok: false, reason: display + ' child declares margins' };
   }
@@ -1284,6 +1287,11 @@ function emitAbsolute(node, context) {
     flushDeferredPaint();
     (node.children || []).forEach((child) =>
       emitAbsolute(child, Object.assign({}, context, { ownerId: node.id })));
+    // A group that cannot be a container still has its decorations: they are absolutely
+    // positioned children of the group's own box, so they are drawn where they are instead
+    // of only being counted as dropped. Without this a card that fell back lost its ::before
+    // accent bar - the words moved, the design did not.
+    emitLeafOverlays(node, context, elements);
     return;
   }
 

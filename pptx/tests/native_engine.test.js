@@ -1915,7 +1915,11 @@ test('html pipeline resolves @media blocks against the slide viewport', () => {
   assert.equal(title.fontSize, 25.5, 'font size came from ' + title.fontSize);
   assert.equal(title.color, 'F2A24C');
   assert.ok(Math.abs(title.x - 40 / 96) < 0.01);
-  assert.ok(Math.abs(title.y - 40 / 96) < 0.01);
+  // `top: 40px` plus the UA h1 margin, because a margin offsets an absolutely positioned box
+  // too: Chrome draws this h1 at 62.77px (its UA margin is 0.67em of the element's own 34px);
+  // ours is the 32px sheet's 21.44px, so 61.44 - the 1.33px residual is the em-vs-px note in
+  // SKILL.md, not a lost margin.
+  assert.ok(Math.abs(title.y - (40 + 21.44) / 96) < 0.01, 'title y=' + title.y);
 
   // A query that cannot match the 1280x720 slide is reported, not silently lost.
   const reported = result.report.unsupportedDetails
@@ -3325,7 +3329,9 @@ test('floats pack into a wrapping row and say where that stops being CSS', () =>
   assert.deepEqual(beside.report.unsupportedDetails, [], 'a fitted pair needs no report');
   const besideText = boxes(beside).find((node) => node.kind === 'text');
   assert.ok(besideText.x >= 40 / 96 + 400 / 96 - 0.005, 'the text sits beside the float: ' + besideText.x);
-  assert.ok(Math.abs(besideText.y - 40 / 96) < 0.005, 'and at the top of the band: ' + besideText.y);
+  // Chrome puts this paragraph at 56px: 40px of slide padding plus the 16px UA margin, which a
+  // float does not suppress. Only the lines shift beside the float, not the box.
+  assert.ok(Math.abs(besideText.y - (40 + 16) / 96) < 0.005, 'and at the top of the band: ' + besideText.y);
 
   // Text taller than the band cannot be one box: that is still reported, and the
   // block goes below the float rather than on top of it.
@@ -5862,13 +5868,13 @@ test('a margin escapes a padding-less parent, and a flex box keeps it inside', (
   // The padded card's child sits inside the container (not a top-level box); the flex card's
   // child does not, because a flex child with margins is a fallback the container model does
   // not carry - reported, and drawn at its own coordinates.
-  assert.deepEqual(tops, [0, 0, 42, 124, 144], 'tops: ' + JSON.stringify(tops));
-  assert.equal(elements.length, 5);
+  // The flex card is a column, and a column carries its children's margins as `boxMargin`, so
+  // it stays a container: its child is placed by the engine, not emitted beside it.
+  assert.deepEqual(tops, [0, 0, 42, 124], 'tops: ' + JSON.stringify(tops));
+  assert.equal(elements.length, 4);
   const heights = elements.map((element) => Math.round(element.h * 96 * 10) / 10);
-  assert.deepEqual(heights, [30, 30, 70, 50, 30], 'heights: ' + JSON.stringify(heights));
-  const fallbacks = result.report.containerFallbacks.map((entry) => entry.reason);
-  assert.ok(fallbacks.some((reason) => reason === 'flex child declares margins'),
-    'the fallback is named: ' + JSON.stringify(fallbacks));
+  assert.deepEqual(heights, [30, 30, 70, 50], 'heights: ' + JSON.stringify(heights));
+  assert.ok(elements.some((element) => element.type === 'container'), 'the flex column is a container');
 });
 
 test('two margins between blocks become one gap, and a negative one keeps its pull', () => {
