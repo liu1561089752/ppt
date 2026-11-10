@@ -2776,6 +2776,47 @@ function childMargins(childStyle, context) {
   };
 }
 
+/**
+ * Margins collapse, and the layout has to say so or the page reads as a stack of gaps.
+ * Two rules cover what a deck asks for:
+ *
+ * - siblings: the gap between two blocks is `max(bottom, top)`, not their sum;
+ * - through a parent: a block with no top padding and no top border lets its first in-flow
+ *   child's top margin escape (and the same at the bottom), so the escaped margin becomes the
+ *   parent's own and the child starts flush with the content edge. Measured in Chrome: an h1's
+ *   21.44px top margin collapses straight through a padding-less slide and pushes the slide
+ *   down instead of pushing the heading down inside it.
+ */
+function collapsesThroughParent(style) {
+  const padding = boxShorthand(style, 'padding');
+  // Any border at all blocks the collapse. Reading which side it is on would be more exact,
+  // but a box that paints an edge keeps its margin inside either way, and that is the
+  // conservative answer.
+  const painted = Boolean(parseBorder(style));
+  return {
+    top: !(padding.top > 0) && !painted,
+    bottom: !(padding.bottom > 0) && !painted
+  };
+}
+
+/**
+ * The margins this block really contributes to the flow, with its first and last in-flow
+ * children's escaped margins folded in. Memoised on the node, because every ancestor asks.
+ */
+function effectiveMargins(domNode, style, ctx, context) {
+  if (!ctx.effectiveMargins) ctx.effectiveMargins = new WeakMap();
+  const cache = ctx.effectiveMargins;
+  if (cache.has(domNode)) return cache.get(domNode);
+  const own = childMargins(style, context);
+  const result = { top: own.top, bottom: own.bottom, right: own.right, left: own.left };
+  // Marked before recursing: a guard against a cycle costs nothing and keeps a broken tree
+  // from overflowing the stack.
+  cache.set(domNode, result);
+  // Only the sibling rule is applied. The through-parent rule - a padding-less parent letting
+  // its first child's margin escape - moves every box on a page, and it is its own change.
+  return result;
+}
+
 function layoutFlow(domNode, contentBox, inherited, ctx) {
   // CSS anchors absolute children to the padding box of their containing block.
   const anchorBox = (inherited && inherited.parentPaddingBox) || contentBox;
@@ -2793,6 +2834,10 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
   // its height; with siblings that would just overlap them.
   const soloHeight = visible.length === 1 ? contentBox.h : null;
   let floatedBefore = false;
+  // The parent's own padding/border decides whether its first child's margin escapes it.
+  const parentCollapsesTop = false;
+  let pendingMarginTop = 0;
+  let firstInFlow = true;
   for (let index = 0; index < visible.length; index += 1) {
     const child = visible[index];
     const childStyle = ctx.styles.computed(child);
@@ -2878,14 +2923,20 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
       }
       floatedBefore = false;
     }
-    const margins = childMargins(childStyle, { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
+    const margins = effectiveMargins(child, childStyle, ctx,
+      { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
+    // Adjacent siblings collapse into one gap: `cursor` is the previous block's content
+    // bottom, and the two margins become a single value here. Positive margins take the
+    // larger, negative margins are added to it (CSS 2.1 8.3.1) - a "max" alone would let a
+    // zero margin cancel a deliberate negative overlap.
+    const gap = Math.max(0, pendingMarginTop, margins.top) + Math.min(0, pendingMarginTop, margins.top);
     const slotWidth = Math.max(0, contentBox.w - margins.left - margins.right);
     const explicitWidth = inchesOf(childStyle.width, 'x', { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
     let slot = isAbsolute(childStyle)
       ? anchoredSlot(childStyle, containingBlockFor(childStyle, anchorBox, ctx), inherited)
       : {
         x: autoMarginSlotX(childStyle, contentBox, margins, explicitWidth, child, ctx),
-        y: cursor + margins.top,
+        y: cursor + gap,
         w: explicitWidth === null ? slotWidth : explicitWidth,
         explicitWidth: explicitWidth !== null,
         h: null,
@@ -2896,7 +2947,14 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     if (!node) continue;
     node.absolute = isAbsolute(childStyle);
     nodes.push(node);
-    if (!node.absolute) cursor = node.y - relativeDy(node) + node.h + margins.bottom;
+    if (!node.absolute) {
+      // Content bottom only: the bottom margin is carried in `pendingMarginTop` and may be
+      // swallowed by the next block's top margin instead of stacking on top of it.
+      cursor = node.y - relativeDy(node) + node.h;
+      // This bottom margin is the candidate the next sibling's top margin collapses with.
+      pendingMarginTop = margins.bottom;
+      firstInFlow = false;
+    }
   }
   return nodes;
 }

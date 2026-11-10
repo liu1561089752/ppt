@@ -5837,6 +5837,29 @@ test('an unstyled document still reads as a document', () => {
   assert.ok(!styledHeading.bold, 'and the weight is the author\u2019s too');
 });
 
+test('two margins between blocks become one gap, and a negative one keeps its pull', () => {
+  // Chrome, measured on this exact markup: tops 40 / 104 / 134. The gap after the first block
+  // is max(24px bottom, 16px top) = 24 - not 40 - and the third block is pulled up 10px by its
+  // own negative margin, because a zero and a negative add instead of taking the larger.
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .a { height: 40px; margin: 0 0 24px; background: #EEEEEE; }',
+    '  .b { height: 40px; margin: 16px 0 0; background: #DDDDDD; }',
+    '  .c { height: 40px; margin: -10px 0 0; background: #CCCCCC; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="a"></div><div class="b"></div><div class="c"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const elements = pipeline.convertHtml(html).deck.slides[0].elements;
+  const tops = elements.map((element) => Math.round(element.y * 96 * 10) / 10);
+  assert.deepEqual(tops, [40, 104, 134], 'collapsed tops: ' + JSON.stringify(tops));
+  // A zero margin does not cancel the pull: positive margins take the larger, negatives add.
+  const pulled = pipeline.convertHtml(html.replace('margin: 16px 0 0;', 'margin: 0;'));
+  const pulledTops = pulled.deck.slides[0].elements.map((element) => Math.round(element.y * 96 * 10) / 10);
+  assert.deepEqual(pulledTops, [40, 104, 134], 'the -10px still pulls: ' + JSON.stringify(pulledTops));
+});
+
 test('a table with no declared width is as wide as its content', () => {
   // Chrome draws such a table at 98px inside a 1280px slide, not across the whole page.
   const html = (tableStyle) => [
