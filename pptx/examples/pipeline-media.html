@@ -58,6 +58,14 @@
   .tone.punch img { filter: contrast(1.25) brightness(0.85); }
   .tone.faded img { filter: opacity(0.55); }
   .tone .cap { margin-top: 10px; }
+  .scaled-row { display: flex; gap: 28px; margin-top: 34px; align-items: flex-start; }
+  .scale-card { width: 300px; background: #FFFFFF; border-radius: 14px; padding: 20px 22px;
+    box-shadow: 0 1px 2px rgba(23,51,47,.06); border-left: 4px solid #2F5D50; }
+  .scale-card .k { font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase; color: #6B7674; }
+  .scale-card h3 { font-size: 15px; margin: 10px 0 6px; color: #17332F; }
+  .scale-card p { font-size: 12.5px; line-height: 1.7; color: #6B7674; margin: 0; }
+  .scale-card.up { transform: scale(1.18); border-left-color: #C2703F; }
+  .scale-card.down { transform: scale(0.86); border-left-color: #F2A24C; }
 </style>
 </head>
 <body>
@@ -159,6 +167,30 @@
     </div>
   </div>
   <p class="foot">对比度是精确换算（两边都绕 0.5 缩放）；亮度是近似——CSS 乘、DrawingML 加，中间调一致、两端分开，报告里会写明。</p>
+</main>
+
+<main class="slide">
+  <div class="kicker">transform · scale</div>
+  <h1>同一个盒子，三种尺寸</h1>
+  <p class="lede">CSS 的 <code>scale()</code> 不改变布局，只改变画面：下面三个卡片占据的是同样的槽位，画出来却一个比一个大。原生对象里这就是「盒子按中心放大，盒子里的字号、圆角、内边距、描边一起放大」。1.0 是参照，1.18 是强调，0.86 是退后。</p>
+  <div class="scaled-row">
+    <div class="scale-card">
+      <div class="k">scale(1)</div>
+      <h3>参照</h3>
+      <p>原尺寸，用来对齐另外两个。</p>
+    </div>
+    <div class="scale-card up">
+      <div class="k">scale(1.18)</div>
+      <h3>强调</h3>
+      <p>字号 15 → 17.7，内边距 20 → 23.6。</p>
+    </div>
+    <div class="scale-card down">
+      <div class="k">scale(0.86)</div>
+      <h3>退后</h3>
+      <p>字号 15 → 12.9，槽位没动。</p>
+    </div>
+  </div>
+  <p class="foot">均匀缩放有原生答案；scale(50%, 150%) 这种把字形拉扁的比例，报告里会点名，不会只画一半。</p>
 </main>
 
 </body>

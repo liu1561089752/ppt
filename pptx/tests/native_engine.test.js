@@ -1792,14 +1792,16 @@ test('html pipeline maps transform: rotate() to native shape rotation', () => {
   const quarter = rotated.find((element) => element.rotate === 90);
   assert.ok(quarter, 'rotate(0.25turn) must become 90 degrees');
 
-  // A transform that also scales has no native equivalent, so it is reported and
-  // must not be silently half-applied.
-  // `scale()` has no native equivalent, so it is reported. The rotation in the same list is
-  // exact, so it is applied: a reported omission plus an exact remainder beats dropping both.
+  // A uniform scale is native now: the box grows about its centre and so does its type, so a
+  // `scale(1.5) rotate(10deg)` box carries both and reports neither.
   const transformReports = result.report.unsupportedDetails.filter((entry) => entry.property === 'transform');
-  assert.equal(transformReports.length, 1);
-  assert.equal(transformReports[0].value, 'scale(1.5)');
-  assert.equal(elements.filter((element) => element.rotate === 10).length, 1, 'the exact rotate still lands');
+  assert.deepEqual(transformReports.map((entry) => entry.value), [], 'nothing to name: ' + JSON.stringify(transformReports));
+  const spun = elements.filter((element) => element.rotate === 10);
+  assert.equal(spun.length, 1, 'the rotation lands');
+  // 100x40 at (100,100) about its centre, scaled by 1.5: 150x60 at (75,90).
+  assert.ok(Math.abs(spun[0].w * 96 - 150) < 0.5, 'scaled width: ' + (spun[0].w * 96).toFixed(2));
+  assert.ok(Math.abs(spun[0].h * 96 - 60) < 0.5, 'scaled height: ' + (spun[0].h * 96).toFixed(2));
+  assert.ok(Math.abs(spun[0].x * 96 - 75) < 0.5, 'scaled x: ' + (spun[0].x * 96).toFixed(2));
 
   // rotate(0deg) is a no-op, not a rotation.
   const flat = elements.filter((element) => element.rotate === 0);
@@ -5608,6 +5610,89 @@ test('border-radius: 50% is the inscribed ellipse, smaller percentages are named
 });
 
 
+test('a single-side border reaches the slide as a strip, scaled or not', async () => {
+  // `border-left` is not a shape edge in DrawingML: it is a thin filled rectangle on the box's
+  // own edge. It travelled as far as the spec and stopped - a container's accent bar was never
+  // drawn, and a group that fell back to absolute placement lost it too.
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; background: #FBFAF7; }',
+    '  .card { width: 400px; padding: 20px; background: #FFFFFF; border-left: 4px solid #2F5D50; }',
+    '  .card h3 { font-size: 16px; margin: 0; }',
+    '  .loud { width: 400px; padding: 20px; background: #FFFFFF; border-left: 4px solid #C2703F;',
+    '    transform: scale(1.2); }',
+    '</style></head><body><main class="slide">',
+    '  <div class="card"><h3>对齐的一条</h3></div>',
+    '  <div class="loud"><h3>放大的一条</h3></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const surface = result.deck.slides[0].elements.find((element) => element.fill === 'FFFFFF');
+  assert.ok(surface && surface.edge, 'the box that fell back still carries its edge');
+  const file = path.join(os.tmpdir(), 'native-edge-' + process.pid + '.pptx');
+  await generatePptx(result.deck, file);
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+  fs.unlinkSync(file);
+  const strips = (colour) => (xml.match(new RegExp('<a:srgbClr val="' + colour + '"', 'gu')) || []).length;
+  assert.equal(strips('2F5D50'), 1, 'the container accent is drawn');
+  assert.equal(strips('C2703F'), 1, 'and so is the scaled group accent');
+  // 4px of CSS is 3pt of DrawingML: 3 * 12700 = 38100 EMU across.
+  const widths = [...xml.matchAll(/<a:ext cx="(\d+)" cy="(\d+)"/gu)]
+    .map((match) => Number(match[1]))
+    .filter((value) => value > 20000 && value < 60000);
+  assert.ok(widths.length >= 2, 'two strips, each about 4px across: ' + JSON.stringify(widths));
+  assert.ok(widths.every((value) => Math.abs(value - 38100) < 2000), 'strip width: ' + JSON.stringify(widths));
+});
+
+test('a uniform scale grows the box and everything drawn inside it', () => {
+  // Chrome, measured on this markup, slide-relative: the 200x100 box scaled 1.5 about its
+  // centre sits at 10,35 and is 300x150; the 300x80 box scaled 0.5 sits at 135,220 and is
+  // 150x40 (its layout box, 200..280, is untouched, so the box after it stays at 280).
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  .pop { width: 200px; height: 100px; background: #2F5D50; transform: scale(1.5); }',
+    '  .shrink { width: 300px; height: 80px; background: #C2703F; transform: scale(0.5); margin-top: 40px; }',
+    '  .after { width: 100px; height: 40px; background: #F2A24C; }',
+    '</style></head><body><main class="slide">',
+    '  <div class="pop"></div><div class="shrink"></div><div class="after"></div>',
+    '</main></body></html>'
+  ].join('\n');
+  const elements = pipeline.convertHtml(html).deck.slides[0].elements;
+  const box = (fill) => elements.find((element) => element.fill === fill);
+  const near = (actual, expected) => Math.abs(actual * 96 - expected) < 0.5;
+  const pop = box('2F5D50');
+  assert.deepEqual([pop.x, pop.y, pop.w, pop.h].map((value) => Math.round(value * 96)), [10, 35, 300, 150]);
+  const shrink = box('C2703F');
+  assert.deepEqual([shrink.x, shrink.y, shrink.w, shrink.h].map((value) => Math.round(value * 96)), [135, 220, 150, 40]);
+  const after = box('F2A24C');
+  assert.ok(near(after.y, 280), 'layout ignores the transform: after y=' + (after.y * 96).toFixed(1));
+  assert.ok(near(after.w, 100), 'the following box is not scaled');
+});
+test('a scaled text box carries its type and its padding with it', () => {
+  // 20px type inside 12px padding, scaled 1.2: 24px type and 14.4px padding. Chrome draws the
+  // glyphs 1.2x larger inside a box 1.2x larger, which is what a bigger font in a bigger box is.
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  .bubble { width: 300px; height: 90px; background: #17332F; color: #FFFFFF;',
+    '    font-size: 20px; padding: 12px; transform: scale(1.2); }',
+    '</style></head><body><main class="slide"><div class="bubble">放大的标注</div></main></body></html>'
+  ].join('\n');
+  const container = pipeline.convertHtml(html).deck.slides[0].elements[0];
+  assert.equal(container.type, 'container');
+  assert.ok(Math.abs(container.padding.top * 96 - 14.4) < 0.2, 'padding=' + (container.padding.top * 96).toFixed(2));
+  assert.ok(Math.abs(container.w * 96 - 360) < 0.5, 'w=' + (container.w * 96).toFixed(1));
+  const words = container.children[0];
+  assert.equal(words.fontSize, 18, '20px type at 1.2 is 18pt');
+});
+
 test('a transform: translate() is a shift, and it composes with rotate', () => {
   const build = (css) => {
     const result = pipeline.convertHtml([
@@ -5633,10 +5718,15 @@ test('a transform: translate() is a shift, and it composes with rotate', () => {
   assert.equal(turned.element.x, 0.4167, 'the horizontal anchor does not move');
   assert.equal(turned.element.y, 1.4167, 'the 96px offset becomes vertical');
 
-  // scale() changes the glyphs inside a text box, so it is named and not applied.
+  // A uniform scale is native: the box is twice as big and centred where it was.
   const scaled = build('.box { width: 100px; height: 50px; background: #ccc; transform: scale(2); }');
-  assert.deepEqual(scaled.reported, ['transform']);
-  assert.equal(scaled.element.w, 1.0417, 'the box keeps its declared size');
+  assert.deepEqual(scaled.reported, [], 'a uniform scale needs no apology');
+  assert.ok(Math.abs(scaled.element.w * 96 - 200) < 0.5, 'w=' + (scaled.element.w * 96).toFixed(1));
+  assert.ok(Math.abs(scaled.element.h * 96 - 100) < 0.5, 'h=' + (scaled.element.h * 96).toFixed(1));
+  // scale(50%, 150%) stretches the glyphs, which no native shape can do: named, not half-applied.
+  const stretched = build('.box { width: 100px; height: 50px; background: #ccc; transform: scale(50%, 150%); }');
+  assert.deepEqual(stretched.reported, ['transform']);
+  assert.ok(Math.abs(stretched.element.w * 96 - 100) < 0.5, 'the box keeps its declared size');
 });
 
 test('a positioned child paints above the in-flow boxes it sits on', () => {

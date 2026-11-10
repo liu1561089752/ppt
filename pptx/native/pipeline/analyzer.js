@@ -183,7 +183,7 @@ function angleDegrees(argument) {
  * so they are named instead of approximated.
  */
 function transformPlanOf(value, widthIn, heightIn, origin) {
-  const plan = { rotate: 0, dx: 0, dy: 0, unsupported: [] };
+  const plan = { rotate: 0, dx: 0, dy: 0, scale: 1, unsupported: [] };
   const functions = transformFunctions(value);
   if (!functions.length) return plan;
   const originValue = String(origin === undefined || origin === null ? '' : origin).trim();
@@ -196,6 +196,29 @@ function transformPlanOf(value, widthIn, heightIn, origin) {
       if (degrees === null) { plan.unsupported.push(entry.name + '(' + entry.args + ')'); continue; }
       plan.rotate += degrees;
       steps.push({ rotate: degrees });
+      continue;
+    }
+    // `scale()` scales about the same centre a rotation turns about, so a uniform factor needs
+    // no separate matrix: the box grows and everything inside it grows with it. A non-uniform
+    // factor stretches the glyphs, which no native shape can do, so it is named.
+    if (entry.name === 'scale' || entry.name === 'scalex' || entry.name === 'scaley') {
+      const parts = String(entry.args || '').split(/[,\s]+/u).filter(Boolean);
+      const factor = (text) => {
+        const raw = String(text === undefined || text === '' ? '1' : text).trim();
+        const percent = raw.endsWith('%');
+        const parsed = Number(percent ? raw.slice(0, -1) / 100 : raw);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+      };
+      const sx = entry.name === 'scaley' ? 1 : factor(parts[0]);
+      const sy = entry.name === 'scalex'
+        ? 1
+        : factor(parts.length > 1 ? parts[1] : parts[0]);
+      if (sx === null || sy === null) { plan.unsupported.push(entry.name + '(' + entry.args + ')'); continue; }
+      if (Math.abs(sx - sy) > 1e-6) {
+        plan.unsupported.push('a non-uniform scale(' + sx + ', ' + sy + ')');
+        continue;
+      }
+      plan.scale *= sx;
       continue;
     }
     const movesX = entry.name === 'translatex' || entry.name === 'translate';
@@ -235,6 +258,60 @@ function transformPlanOf(value, widthIn, heightIn, origin) {
   plan.dy = Number(y.toFixed(4));
   plan.rotate = Number((plan.rotate % 360).toFixed(2));
   return plan;
+}
+
+/**
+ * A uniform `scale()` scales the painted box about its centre, and everything inside it.
+ * CSS lays the subtree out unscaled and paints it scaled, so the children keep their layout
+ * boxes (`layoutX/Y/W/H`) and every length that draws - type size, radii, edge widths, padding,
+ * a table's tracks, a decoration's local offsets - is multiplied with them.
+ */
+function applyUniformScale(node, factor) {
+  const rescale = (target, centreX, centreY) => {
+    if (!target) return;
+    const width = Number(target.w) || 0;
+    const height = Number(target.h) || 0;
+    target.layoutX = target.x;
+    target.layoutY = target.y;
+    target.layoutW = width;
+    target.layoutH = height;
+    target.x = Number((centreX + ((Number(target.x) || 0) - centreX) * factor).toFixed(4));
+    target.y = Number((centreY + ((Number(target.y) || 0) - centreY) * factor).toFixed(4));
+    target.w = Number((width * factor).toFixed(4));
+    target.h = Number((height * factor).toFixed(4));
+    if (Number.isFinite(target.fontSizePt)) target.fontSizePt = Number((target.fontSizePt * factor).toFixed(2));
+    if (Number.isFinite(target.radius)) target.radius = Number((target.radius * factor).toFixed(3));
+    if (Number.isFinite(target.textHeight)) target.textHeight = Number((target.textHeight * factor).toFixed(4));
+    if (target.border && Number.isFinite(target.border.width)) {
+      target.border = Object.assign({}, target.border, { width: Number((target.border.width * factor).toFixed(2)) });
+    }
+    if (target.padding) {
+      const scaled = {};
+      Object.keys(target.padding).forEach((side) => {
+        scaled[side] = Number(((Number(target.padding[side]) || 0) * factor).toFixed(4));
+      });
+      target.padding = scaled;
+    }
+    ['colWidths', 'rowHeights'].forEach((field) => {
+      if (Array.isArray(target[field])) {
+        target[field] = target[field].map((value) => Number(((Number(value) || 0) * factor).toFixed(4)));
+      }
+    });
+    (target.overlays || []).forEach((overlay) => {
+      ['x', 'y', 'w', 'h', 'radius'].forEach((field) => {
+        if (Number.isFinite(overlay[field])) overlay[field] = Number((overlay[field] * factor).toFixed(4));
+      });
+    });
+  };
+  const centreX = (Number(node.x) || 0) + (Number(node.w) || 0) / 2;
+  const centreY = (Number(node.y) || 0) + (Number(node.h) || 0) / 2;
+  rescale(node, centreX, centreY);
+  const walk = (child) => {
+    rescale(child, centreX, centreY);
+    (child.children || []).forEach(walk);
+  };
+  (node.children || []).forEach(walk);
+  node.scale = factor;
 }
 
 /** `transform: rotate(-4deg)` → degrees, clockwise positive like DrawingML. */
@@ -1615,10 +1692,13 @@ function analyzeNode(domNode, slot, inherited, ctx) {
     node.x = Number(((Number(node.x) || 0) + transformPlan.dx).toFixed(4));
     node.y = Number(((Number(node.y) || 0) + transformPlan.dy).toFixed(4));
   }
+  // CSS lays out the unscaled box and paints the scaled one, so the flow keeps what it measured
+  // (`layoutH`) while `h` is what a reader sees.
+  if (transformPlan.scale !== 1) applyUniformScale(node, transformPlan.scale);
   if (transformPlan.unsupported.length) {
     recordUnsupported(ctx, domNode, 'transform', transformPlan.unsupported.join(', '),
-      'rotate() and translate() have native answers; scale()/skew() and a non-centre'
-        + ' transform-origin do not');
+      'rotate(), translate() and a uniform scale() have native answers; skew(), a'
+        + ' non-uniform scale() and a non-centre transform-origin do not');
   }
   attachDecorations(domNode, node, ctx);
   // A percentage radius that is not a full ellipse is an elliptical corner, and the shape is
@@ -3008,7 +3088,10 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     if (!node.absolute) {
       // Content bottom only: the bottom margin is carried in `pendingMarginTop` and may be
       // swallowed by the next block's top margin instead of stacking on top of it.
-      cursor = node.y - relativeDy(node) + node.h;
+      // A scaled box paints bigger than it lays out, so the cursor reads the layout box back:
+    // `layoutY`/`layoutH` are the size CSS gave the element, `y`/`h` the size it paints.
+    cursor = (Number.isFinite(node.layoutY) ? node.layoutY : node.y) - relativeDy(node)
+      + (Number.isFinite(node.layoutH) ? node.layoutH : node.h);
       // This bottom margin is the candidate the next sibling's top margin collapses with.
       pendingMarginTop = margins.bottom;
       firstInFlow = false;

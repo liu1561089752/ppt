@@ -690,10 +690,15 @@ function layoutSlide(slide, pageSize, theme = {}, options = {}) {
       const staticX = source.x === undefined ? margin : source.x;
       const staticY = source.y === undefined ? cursorY : source.y;
       const w = source.w === undefined ? contentWidth : source.w;
+      const frameX = staticX + (shift ? shift.dx || 0 : 0);
+      const frameY = staticY + (shift ? shift.dy || 0 : 0);
       const { elements, height } = layoutContainer(source,
-        { x: staticX + (shift ? shift.dx || 0 : 0), y: staticY + (shift ? shift.dy || 0 : 0), w, h: source.h },
-        theme, options);
+        { x: frameX, y: frameY, w, h: source.h }, theme, options);
       elements.forEach((element) => resolved.push(element));
+      // A container's own single-side border: the strip is drawn after the surface so the
+      // accent stays on top. Without this the edge travelled as far as the spec and stopped.
+      edgeElements(source, { x: frameX, y: frameY, w, h: height })
+        .forEach((strip) => resolved.push(strip));
       if (source.y === undefined) cursorY = Math.max(cursorY, staticY + height + gap);
       return;
     }
@@ -704,6 +709,8 @@ function layoutSlide(slide, pageSize, theme = {}, options = {}) {
     if (topShift) { element.x += topShift.dx || 0; element.y += topShift.dy || 0; }
     if (!explicitPosition) cursorY = Math.max(cursorY, element.y - (topShift ? topShift.dy || 0 : 0) + element.h + gap);
     resolved.push(element);
+    edgeElements(element, { x: element.x, y: element.y, w: element.w, h: element.h })
+      .forEach((strip) => resolved.push(strip));
   });
 
   return resolved.map((element, index) => {

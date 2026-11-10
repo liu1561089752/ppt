@@ -1279,6 +1279,9 @@ function emitAbsolute(node, context) {
     const surface = surfaceElementFromNode(node, resolvedTheme);
     if (surface) {
       surface._probe = node.id;
+      // The group's own single-side border travels with its surface: the engine draws the
+      // strip once it has the box, exactly as it does for a container it laid out itself.
+      attachBoxFacts(surface, node);
       probes.set(node.id, boxOf(node));
       owners.set(node.id, ownerId);
       elements.push(surface);
