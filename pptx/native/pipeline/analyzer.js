@@ -5035,6 +5035,16 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
       'A named area has to cover one rectangle of whole cells and every row needs the same number of'
         + ' cells; this map has neither, so no item is placed by name');
   }
+  // A map that names fewer columns than `grid-template-columns` declares is what CSS wants:
+  // the declared tracks stay and the map covers the first ones. A map that names *more* asks
+  // for implicit tracks, which the browser sizes to their content - and a track here has only
+  // the width the design declared, so those items would share the last column. Named rather
+  // than drawn on top of each other in silence.
+  if (areas && areas.columns > columns) {
+    recordUnsupported(ctx, domNode, 'gridTemplateAreas', declaredAreas,
+      'The map names more columns than the grid declares tracks; their columns would be sized by'
+        + ' their content, which a declared width cannot do, so those items share the last one');
+  }
   // A negative row line counts back from the last line, which only exists once the
   // explicit row tracks are known - and the area map names rows of its own.
   const explicitRows = gridRowTracksOf(style, contentBox.h, inherited.fontPx).length;
@@ -5494,6 +5504,14 @@ function readChart(domNode, ctx) {
   }
 
   const shareChart = resolved === 'pie' || resolved === 'doughnut';
+  // How many series there are is only known once the table is read, so a list that outruns
+  // them is caught here rather than in the styling pass.
+  if (Array.isArray(options.seriesLineStyles) && Array.isArray(data)
+    && options.seriesLineStyles.length > data.length) {
+    recordUnsupported(ctx, domNode, 'data-chart-series-line', attrs['data-chart-series-line'],
+      'One dash per series, in series order: a token past the last series has nothing to dash');
+    options.seriesLineStyles = options.seriesLineStyles.slice(0, data.length);
+  }
   if (options.showLegend === undefined) options.showLegend = data.length > 1 || shareChart;
   if (shareChart && options.showPercent === undefined) options.showPercent = true;
   if (title) {
@@ -5522,6 +5540,10 @@ const CHART_LABEL_POSITION_ALIASES = {
   top: 't', bottom: 'b', left: 'l', right: 'r'
 };
 const CHART_GROUPINGS = new Set(['clustered', 'stacked', 'percentStacked']);
+// The dash values `a:prstDash` spells. A line's width and colour are the design's business
+// elsewhere; this attribute carries the dash only, which is what the engine writes per series.
+const CHART_DASH_TOKENS = new Set(['solid', 'dashed', 'dotted', 'dashDot', 'lgDash', 'lgDashDot',
+  'sysDash', 'sysDot']);
 
 /**
  * Chart styling is declared, never guessed: every attribute below names exactly the
@@ -5556,7 +5578,8 @@ function applyChartStyling(attrs, options, domNode, ctx, chartType) {
     'data-chart-dir', 'data-chart-text-color', 'data-values', 'data-labels',
     'data-chart-gap-width', 'data-chart-smooth', 'data-chart-cat-label-rotate',
     'data-chart-hole-size', 'data-chart-legend-font-size', 'data-chart-y-min',
-    'data-chart-y-max', 'data-chart-label-format', 'data-chart-secondary-axis']);
+    'data-chart-y-max', 'data-chart-label-format', 'data-chart-secondary-axis',
+    'data-chart-series-line']);
   Object.keys(attrs).filter((name) => name.startsWith('data-chart-') && !KNOWN_CHART_ATTRS.has(name))
     .forEach((name) => {
       recordUnsupported(ctx, domNode, name, String(attrs[name]),
@@ -5577,6 +5600,21 @@ function applyChartStyling(attrs, options, domNode, ctx, chartType) {
         'Chart colours must be #rrggbb values, one per series, in series order');
     }
     if (list.length) options.chartColors = list;
+  }
+
+  // One dash per series, in the order the series appear - the order the colour list above
+  // uses, so the two can be read together. A wrong token cannot be half-applied: the whole
+  // list would shift onto the wrong series, so it is named and dropped.
+  const seriesLines = attrs['data-chart-series-line'];
+  if (seriesLines !== undefined) {
+    const tokens = String(seriesLines).split(',').map((token) => token.trim()).filter(Boolean);
+    const unknown = tokens.filter((token) => !CHART_DASH_TOKENS.has(token));
+    if (unknown.length) {
+      recordUnsupported(ctx, domNode, 'data-chart-series-line', unknown[0],
+        'Use solid, dashed, dotted, dashDot, lgDash, lgDashDot, sysDash or sysDot, one per series');
+    } else if (tokens.length) {
+      options.seriesLineStyles = tokens;
+    }
   }
 
   const labels = attrs['data-chart-labels'];
@@ -6143,26 +6181,171 @@ function readTableCell(cell, ctx, rowBackground) {
   // would be measured as its source text. One line per paragraph is what is drawn, so the
   // measurement sees every item.
   const measuredText = Array.isArray(text) ? text.map((paragraph) => paragraph.text).join('\n') : text;
-  return {
-    node: cell,
-    style,
-    text,
-    options,
+  // An inline span used to be flattened into the cell's one string: the words survived and
+  // their styling did not. A cell that is already a list keeps its paragraphs - a list item's
+  // own runs are a separate job, and half-drawing them would be worse than naming it.
+  const runs = Array.isArray(text)
+    ? null
+    : cellInlineRuns(cell, style, cellRunBase(style, options), ctx, cellTransform, text);
+  const cellResult = { node: cell, style, text, options, colspan, rowspan };
+  if (runs) cellResult.runs = runs;
+  cellResult.metrics = {
+    column: 0,
     colspan,
     rowspan,
-    metrics: {
-      column: 0,
-      colspan,
-      rowspan,
-      text: measuredText,
-      fontSizePt,
-      lineHeight: lineSpacingOf(style, fontSizePt).multiple,
-      paddingTop: padding.top,
-      paddingBottom: padding.bottom,
-      paddingLeft: padding.left,
-      paddingRight: padding.right
-    }
+    text: measuredText,
+    fontSizePt,
+    lineHeight: lineSpacingOf(style, fontSizePt).multiple,
+    paddingTop: padding.top,
+    paddingBottom: padding.bottom,
+    paddingLeft: padding.left,
+    paddingRight: padding.right
   };
+  return cellResult;
+}
+
+/** A computed style's text decoration, lowercase, empty when it has none. */
+function decorationOf(style) {
+  return String(style.textDecorationLine || style.textDecoration || '').trim().toLowerCase();
+}
+
+/**
+ * What a cell already draws, so a run inside it only has to spell out the differences. The
+ * size is the one the cell's options carry - rounded the same way - and falls back to the
+ * writer's own cell default, which is what an undeclared size is drawn at.
+ */
+function cellRunBase(style, options) {
+  return {
+    bold: options.bold === true,
+    italic: options.italic === true,
+    underline: options.underline !== undefined,
+    strike: options.strike === true,
+    color: options.color,
+    fontSize: options.fontSize === undefined ? 11 : options.fontSize,
+    charSpacing: options.charSpacing || 0,
+    fontFace: runFontFamily(style.fontFamily)
+  };
+}
+
+/**
+ * The options one inline run has to carry. The names are PptxGenJS's own because the builder
+ * hands the object straight to the writer; a value the cell already draws is left out, so a
+ * span that styles nothing costs nothing.
+ */
+function inlineRunOptions(style, base) {
+  const options = {};
+  const weight = String(style.fontWeight || '').toLowerCase();
+  const bold = weight === 'bold' || weight === 'bolder' || Number(weight) >= 600;
+  if (bold !== base.bold) options.bold = bold;
+  const italic = String(style.fontStyle || '').toLowerCase() === 'italic';
+  if (italic !== base.italic) options.italic = italic;
+  const decoration = decorationOf(style);
+  if (decoration.includes('underline') && !base.underline) {
+    const shape = /\b(dotted|dashed|wavy|double)\b/iu.exec(decoration);
+    options.underline = { style: underlineStyleOf(shape ? shape[1] : 'sng') };
+  }
+  // A cell's strike is the cell's own; a span that adds one is a different mark on the same
+  // words and the writer carries it per run.
+  if (decoration.includes('line-through') && !base.strike) options.strike = true;
+  const colour = parseColor(style.color);
+  if (colour && colour.hex && colour.hex !== base.color) options.color = colour.hex;
+  const sizePt = parseLength(style.fontSize);
+  if (sizePt) {
+    const points = Number((toInches(sizePt, {}) * 72).toFixed(1));
+    if (Math.abs(points - base.fontSize) > 0.05) options.fontSize = points;
+  }
+  const spacing = letterSpacingPtOf(style);
+  if (Math.abs(spacing - base.charSpacing) > 1e-6) options.charSpacing = spacing;
+  const face = runFontFamily(style.fontFamily);
+  if (face && face !== base.fontFace) options.fontFace = face;
+  return options;
+}
+
+// A cell's words can be split into runs only while they are one run of text. A break, a
+// control, a nested table or a box of its own (`inline-block` and friends) places words by
+// geometry rather than by the paragraph, and the flat string is the honest reading of those.
+const CELL_RUN_BLOCKERS = new Set(['br', 'input', 'select', 'textarea', 'dl', 'pre']);
+
+/**
+ * A cell's inline runs, or null when the cell is not a plain run of words.
+ *
+ * `cell.text` stays the flat string: the column width, the row height and the engine's bullet
+ * patches all measure it, so a spec cell whose words changed shape would move every one of
+ * them. This is a second view of the same characters for the writer, and it is only offered
+ * when the two agree exactly - runs that said something the string does not would make the
+ * measured width and the drawn words disagree about the cell.
+ */
+function cellInlineRuns(cell, style, base, ctx, transform, cellText) {
+  const segments = [];
+  let plain = true;
+  const visit = (node, nodeStyle) => {
+    (node.children || []).forEach((child) => {
+      if (!plain) return;
+      if (child.type === 'text') {
+        segments.push({ text: String(child.text), style: nodeStyle });
+        return;
+      }
+      if (child.type !== 'element') {
+        plain = false;
+        return;
+      }
+      // A block box, a list or a replaced element takes the flat path: its words are placed
+      // by geometry and the string already merged its paragraphs, so runs would claim a line
+      // the cell does not draw.
+      if (BLOCK_TAGS.has(child.tag) || CELL_RUN_BLOCKERS.has(child.tag)) {
+        plain = false;
+        return;
+      }
+      const childStyle = ctx.styles.computed(child);
+      if (String(childStyle.display || 'inline').trim().toLowerCase() !== 'inline') {
+        plain = false;
+        return;
+      }
+      visit(child, childStyle);
+    });
+  };
+  visit(cell, style);
+  if (!plain) return null;
+  // The words are normalized exactly as `normalizedText` normalizes them, including across a
+  // run boundary: a space that closes one span and opens the next is one space in the string
+  // the cell is measured by, and the runs have to add up to that same string.
+  const pieces = [];
+  let openSpace = false;
+  segments.forEach((segment) => {
+    let text = segment.text.replace(/[ \t\u00A0]+/gu, ' ').replace(/\s*\n\s*/gu, '\n');
+    if (openSpace && text.startsWith(' ')) text = text.slice(1);
+    if (!text) return;
+    openSpace = text.endsWith(' ') || text.endsWith('\n');
+    if (transform) text = transformText(text, transform);
+    pieces.push({ text, style: segment.style });
+  });
+  if (!pieces.length) return null;
+  pieces[0].text = pieces[0].text.replace(/^\s+/u, '');
+  const last = pieces[pieces.length - 1];
+  last.text = last.text.replace(/\s+$/u, '');
+  const kept = pieces.filter((piece) => piece.text);
+  if (!kept.length || kept.map((piece) => piece.text).join('') !== cellText) return null;
+  const runs = [];
+  kept.forEach((piece) => {
+    const options = inlineRunOptions(piece.style, base);
+    const previous = runs[runs.length - 1];
+    if (previous && JSON.stringify(previous.options || {}) === JSON.stringify(options)) {
+      previous.text += piece.text;
+      return;
+    }
+    runs.push(Object.keys(options).length ? { text: piece.text, options } : { text: piece.text });
+  });
+  return runs.some((run) => run.options) ? runs : null;
+}
+
+/**
+ * The spec cell. `text` stays the string every measurement reads; `runs` is the same words
+ * with the styling an inline span gave them, and is only there when a run carried any.
+ */
+function cellSpec(cell) {
+  const spec = { text: cell.text, options: cell.options };
+  if (cell.runs) spec.runs = cell.runs;
+  return spec;
 }
 
 // A list item's marker comes from the list it sits in: the author's declaration there if
@@ -6520,7 +6703,7 @@ function readTable(domNode, ctx, contentWidth, options) {
       }
       const cell = placed[next];
       if (cell && cell.column === cursor) {
-        emitted.push({ text: cell.text, options: cell.options });
+        emitted.push(cellSpec(cell));
         rowMetrics.push(cell.metrics);
         cursor += cell.colspan;
         next += 1;
@@ -6531,7 +6714,7 @@ function readTable(domNode, ctx, contentWidth, options) {
     }
     // Any cell that never found its column still has to be drawn.
     while (next < placed.length) {
-      emitted.push({ text: placed[next].text, options: placed[next].options });
+      emitted.push(cellSpec(placed[next]));
       rowMetrics.push(placed[next].metrics);
       next += 1;
     }

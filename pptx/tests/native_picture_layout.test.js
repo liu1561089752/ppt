@@ -837,3 +837,154 @@ test('data-chart-label-pos reaches the chart as a label position', async () => {
   assert.equal(reportsOf(longName.result, 'data-chart-label-pos').length, 0);
 });
 
+
+// ---------------------------------------------------------------------------------------------
+// Item 2: a run inside a table cell carries its own styling, beside the flat string.
+// ---------------------------------------------------------------------------------------------
+
+test('a run inside a cell keeps its own styling, and the cell keeps its flat string', () => {
+  const result = convert('<table class="t"><tr><td>前缀<span class="thin">间距</span>后缀</td></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; color: #22333B; }'
+    + ' .thin { letter-spacing: 6px; font-weight: 700; color: #AA0000; }');
+  const cell = firstTable(result).rows[0][0];
+  // The column width and the row height are measured from this string, so it does not move.
+  assert.equal(cell.text, '前缀间距后缀');
+  assert.deepEqual(cell.runs, [
+    { text: '前缀' },
+    { text: '间距', options: { bold: true, color: 'AA0000', charSpacing: 4.5 } },
+    { text: '后缀' }
+  ]);
+  assert.equal(cell.runs.map((run) => run.text).join(''), cell.text, 'the runs add up to the string');
+  // The span declares no size of its own, so it inherits the cell's and says nothing about it.
+  assert.equal(cell.runs[1].options.fontSize, undefined);
+  assert.deepEqual(reportsOf(result), [], 'this is drawn, not named');
+});
+
+test('a plain cell and a span that inherits everything emit no runs', () => {
+  const plain = convert('<table class="t"><tr><td>plain words</td></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; }');
+  assert.equal(firstTable(plain).rows[0][0].runs, undefined);
+  const inherited = convert('<table class="t"><tr><td>a<span>b</span>c</td></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; }');
+  const cell = firstTable(inherited).rows[0][0];
+  assert.equal(cell.text, 'abc');
+  assert.equal(cell.runs, undefined, 'a span that styles nothing leaves the cell byte-identical');
+});
+
+test('a list cell keeps its paragraphs, a block child keeps the flat path, and a run can clear its cell', () => {
+  const list = convert('<table class="t"><tr><td><ul><li>one</li><li>two <b>bold</b></li></ul></td></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; }');
+  const listed = firstTable(list).rows[0][0];
+  assert.ok(Array.isArray(listed.text), 'a list stays a paragraph array');
+  assert.equal(listed.text.length, 2);
+  assert.equal(listed.runs, undefined, 'a list item runs are a separate job, not half of this one');
+
+  const block = convert('<table class="t"><tr><td><p>para <b>bold</b></p></td></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; }');
+  assert.equal(firstTable(block).rows[0][0].runs, undefined, 'a block box is not one run of words');
+
+  // A run can also take styling away: a header cell's bold span that turns it back off.
+  const header = convert('<table class="t"><tr><th>head <span class="light">light</span></th></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; }'
+    + ' th { font-weight: 700; } .light { font-weight: 400; font-style: italic; }');
+  const head = firstTable(header).rows[0][0];
+  assert.equal(head.options.bold, true);
+  assert.deepEqual(head.runs, [
+    { text: 'head ' },
+    { text: 'light', options: { bold: false, italic: true } }
+  ]);
+});
+
+test('the runs of a cell hold exactly the words the cell is measured by', () => {
+  const result = convert('<table class="t"><tr><td>foo   <b>bar</b>\n   baz</td></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; }');
+  const cell = firstTable(result).rows[0][0];
+  assert.equal(cell.text, 'foo bar\nbaz');
+  assert.equal(cell.runs.map((run) => run.text).join(''), cell.text,
+    'a collapsed space at a run boundary is one space, not two');
+});
+
+test('the runs reach the deck and the spec keeps its string', () => {
+  const result = convert('<table class="t"><tr><td>前缀<span class="thin">间距</span>后缀</td></tr></table>',
+    '.t { border-collapse: collapse; font-size: 12px; }'
+    + ' .thin { letter-spacing: 6px; font-weight: 700; }');
+  const table = flatElements(result.deck.slides[0].elements).find((element) => element.type === 'table');
+  assert.ok(table, 'the table reaches the page');
+  const cell = table.rows[0][0];
+  assert.equal(typeof cell.text, 'string', 'the spec cell still carries the string the engine measures');
+  assert.equal(cell.text, '前缀间距后缀');
+  assert.deepEqual(cell.runs, [
+    { text: '前缀' },
+    { text: '间距', options: { bold: true, charSpacing: 4.5 } },
+    { text: '后缀' }
+  ]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Item 3: one dash per series, in the order the series appear.
+// ---------------------------------------------------------------------------------------------
+
+test('per-series dashes reach the spec, and a wrong token or an over-long list is named', () => {
+  const chartOf = (attributes) => {
+    const result = convert('<table data-chart="line" ' + attributes
+      + '><tr><th>月</th><th>甲</th><th>乙</th><th>丙</th></tr>'
+      + '<tr><td>1</td><td>3</td><td>5</td><td>2</td></tr>'
+      + '<tr><td>2</td><td>4</td><td>1</td><td>6</td></tr></table>');
+    return { result, options: firstOfKind(result, 'chart').chartOptions };
+  };
+
+  const three = chartOf('data-chart-series-line="solid,dashed,dotted"');
+  assert.deepEqual(three.options.seriesLineStyles, ['solid', 'dashed', 'dotted']);
+  assert.deepEqual(reportProperties(three.result), [], 'a known attribute and known tokens say nothing');
+
+  // A short list leaves the rest of the series to the design.
+  const short = chartOf('data-chart-series-line="dashed"');
+  assert.deepEqual(short.options.seriesLineStyles, ['dashed']);
+
+  // A wrong token cannot be half-applied: the rest of the list would land on the wrong series.
+  const wrong = chartOf('data-chart-series-line="solid,dashd,dotted"');
+  assert.equal(wrong.options.seriesLineStyles, undefined);
+  const wrongReports = reportsOf(wrong.result, 'data-chart-series-line');
+  assert.equal(wrongReports.length, 1);
+  assert.match(wrongReports[0], /^dashd :: /u);
+  assert.match(wrongReports[0], /solid, dashed, dotted, dashDot/u);
+
+  // A list longer than the data is named rather than trimmed in silence.
+  const long = chartOf('data-chart-series-line="solid,dashed,dotted,sysDot"');
+  assert.deepEqual(long.options.seriesLineStyles, ['solid', 'dashed', 'dotted']);
+  assert.equal(reportsOf(long.result, 'data-chart-series-line').length, 1);
+  assert.match(reportsOf(long.result, 'data-chart-series-line')[0], /nothing to dash/u);
+
+  // Every token `a:prstDash` spells is accepted, including the long dashes.
+  const all = chartOf('data-chart-series-line="lgDash,lgDashDot,sysDash"');
+  assert.deepEqual(all.options.seriesLineStyles, ['lgDash', 'lgDashDot', 'sysDash']);
+  assert.deepEqual(reportProperties(all.result), []);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Item 4: a named-area map that does not fill the declared tracks.
+// ---------------------------------------------------------------------------------------------
+
+test('a grid map narrower than the declared tracks keeps them, and a wider one is named', () => {
+  const box = (result, name) => allNodes(result)
+    .find((node) => (node.classes || []).includes(name));
+  const narrower = convert('<div class="g"><div class="a">a</div><div class="b">b</div></div>',
+    ".g { display: grid; grid-template-columns: 100px 100px 100px; gap: 0; width: 300px;"
+    + " grid-template-areas: 'a b'; } .a { grid-area: a; } .b { grid-area: b; }");
+  // CSS keeps all three tracks and the map covers the first two.
+  close(box(narrower, 'a').x, 0.4167, 'a starts at the first track');
+  close(box(narrower, 'b').x, 1.4583, 'b starts at the second');
+  assert.deepEqual(reportProperties(narrower), [], 'a map inside the declared tracks says nothing');
+
+  // A map that names a fourth column asks for a track the design never sized: the browser
+  // gives it the content's width, and a declared track cannot.
+  const wider = convert('<div class="g"><div class="a">a</div><div class="b">b</div>'
+    + '<div class="c">c</div><div class="d">d</div></div>',
+    ".g { display: grid; grid-template-columns: 100px 100px 100px; gap: 0; width: 300px;"
+    + " grid-template-areas: 'a b c d'; } .a { grid-area: a; } .b { grid-area: b; }"
+    + ' .c { grid-area: c; } .d { grid-area: d; }');
+  const widerReports = reportsOf(wider, 'gridTemplateAreas');
+  assert.equal(widerReports.length, 1, 'the extra column is named: ' + JSON.stringify(reportProperties(wider)));
+  assert.match(widerReports[0], /more columns than the grid declares tracks/u);
+  assert.match(widerReports[0], /share the last one/u);
+});

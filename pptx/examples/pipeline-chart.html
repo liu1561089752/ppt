@@ -161,5 +161,27 @@
   <p class="note">气泡的大小写进 c:bubbleSize，雷达图的每个维度占一列；两者都是可以在 PowerPoint 里改数的原生图表。</p>
 </main>
 
+<main class="slide">
+  <div class="kicker">native chart / line styles</div>
+  <h1 class="title">每条系列自己的线型</h1>
+  <p class="lead">data-chart-series-line 一个系列一个词：虚线、实线、点线写进每条系列的 a:ln，图例的色块也跟着走——写入器本身只有整张图一个线型。</p>
+  <div class="panel">
+    <table class="chart" data-chart="line" data-chart-title="三条产品线的月度留存（%）"
+           data-chart-colors="#F2A24C,#4FB3A8,#9FB2B4" data-chart-series-line="dashed,solid,dotted"
+           data-chart-legend="bottom" data-chart-text-color="#3F5450" data-chart-grid="y">
+      <thead><tr><th>月份</th><th>基础版</th><th>专业版</th><th>团队版</th></tr></thead>
+      <tbody>
+        <tr><td>1月</td><td>62</td><td>71</td><td>40</td></tr>
+        <tr><td>2月</td><td>64</td><td>73</td><td>44</td></tr>
+        <tr><td>3月</td><td>61</td><td>76</td><td>49</td></tr>
+        <tr><td>4月</td><td>66</td><td>78</td><td>52</td></tr>
+        <tr><td>5月</td><td>68</td><td>81</td><td>58</td></tr>
+        <tr><td>6月</td><td>70</td><td>84</td><td>63</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">每条系列是一段 a:prstDash；图例色块用的是同一条线，所以三种节奏在图例里也看得出。</p>
+</main>
+
 </body>
 </html>

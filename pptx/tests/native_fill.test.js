@@ -16,7 +16,10 @@ const {
   patchTiledFills,
   applyDataLabelPosition,
   patchDataLabelPositions,
-  dataLabelPositionToken
+  dataLabelPositionToken,
+  applySeriesLineStyle,
+  patchSeriesLineStyles,
+  seriesDashToken
 } = require('../native/engine/native_pptx');
 const pipeline = require('../native/pipeline/index');
 const {
@@ -499,10 +502,11 @@ test('a cell keeps its own line spacing and letter spacing', async () => {
   }
 });
 
-test('a run inside a cell loses its own letter spacing (today\'s shape)', async () => {
-  // The cell is read as one string, so an inline `<span style="letter-spacing">` has nowhere to
-  // go: the writer can carry per-run spacing in a cell (cell.text as a run array), the analyzer
-  // never emits it. Named in the report; asserted here so a fix flips this test.
+test('a run inside a cell keeps its own letter spacing now', async () => {
+  // This test used to assert the loss: the cell was read as one string, so an inline
+  // `<span style="letter-spacing">` had nowhere to go and the cell wrote one `a:r`. The run now
+  // rides in `cell.runs`, the builder hands it to the writer as `rowsPayload`, and the cell is
+  // three runs with the tracking on the middle one.
   const converted = pipeline.convertHtml([
     '<html><head><style>',
     '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 16px; }',
@@ -519,9 +523,174 @@ test('a run inside a cell loses its own letter spacing (today\'s shape)', async 
     const slide = await output.slide();
     const rows = (/<a:tbl>[\s\S]*?<\/a:tbl>/u.exec(slide) || [''])[0].match(/<a:tr[\s\S]*?<\/a:tr>/gu) || [];
     const cell = ((rows[1] || '').match(/<a:tc>[\s\S]*?<\/a:tc>/gu) || [''])[0];
-    assert.equal((cell.match(/<a:r>/gu) || []).length, 1, 'the cell is one run');
-    assert.equal(/<a:rPr[^>]*spc="/u.test(cell), false, 'and the tracking is not on it');
-    assert.match(cell, /前缀间距后缀/u, 'the text itself is kept');
+    assert.equal((cell.match(/<a:r>/gu) || []).length, 3, 'the cell is three runs');
+    const runs = cell.match(/<a:r>[\s\S]*?<\/a:r>/gu) || [];
+    assert.equal(/spc="/u.test(runs[0] || ''), false, 'the first run keeps the cell spacing');
+    assert.match(runs[1] || '', /<a:rPr[^>]*spc="450"/u, 'the middle run carries 6px as 4.5pt: ' + (runs[1] || '').slice(0, 120));
+    // Each run carries its own words; the three together are the cell's string.
+    ['前缀', '间距', '后缀'].forEach((word, index) => {
+      assert.match(runs[index] || '', new RegExp('<' + 'a:t>' + word + '</a:t>', 'u'),
+        'run ' + index + ' carries ' + word);
+    });
+  } finally {
+    output.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------------------
+// A dash per series is `<c:ser><c:spPr><a:ln><a:prstDash/>`. The writer only offers a
+// chart-wide `lineDash`, so a design that asks for one rhythm per series gets the element
+// written after the file exists. The analyzer side of the contract is
+// `chart.options.seriesLineStyles` - handed to the spec directly here, which is the only way
+// to test this half while the attribute is being added.
+
+const threeSeriesDeck = (type) => pipeline.convertHtml([
+  '<html><head><style>',
+  '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+  '  .chart { width: 900px; height: 420px; }',
+  '</style></head><body><main class="slide">',
+  '  <table class="chart" data-chart="' + type + '" data-chart-colors="#2F5D50,#4FB3A8,#F2A24C"',
+  '         data-chart-legend="bottom" data-chart-grid="false">',
+  '    <thead><tr><th>季度</th><th>收入</th><th>成本</th><th>利润</th></tr></thead>',
+  '    <tbody><tr><td>Q1</td><td>320</td><td>210</td><td>110</td></tr>',
+  '    <tr><td>Q2</td><td>418</td><td>246</td><td>172</td></tr></tbody>',
+  '  </table>',
+  '</main></body></html>'
+].join('\n'));
+
+/** The dash of each series' OWN line, in series order (the marker's line is skipped). */
+const seriesDashes = (part) => (part.match(/<c:ser>[\s\S]*?<\/c:ser>/gu) || []).map((series) => {
+  const own = /<c:spPr>[\s\S]*?<\/c:spPr>/u.exec(series);
+  if (!own) return '(no spPr)';
+  const line = /<a:ln\b[^>]*>[\s\S]*?<\/a:ln>/u.exec(own[0]);
+  if (!line) return '(no ln)';
+  const dash = /<a:prstDash val="([^"]*)"\/>/u.exec(line[0]);
+  return dash ? dash[1] : '(none)';
+});
+
+const markerDashes = (part) => (part.match(/<c:marker>[\s\S]*?<\/c:marker>/gu) || []).map((marker) => {
+  const line = /<a:ln\b[^>]*>[\s\S]*?<\/a:ln>/u.exec(marker);
+  const dash = line ? /<a:prstDash val="([^"]*)"\/>/u.exec(line[0]) : null;
+  return dash ? dash[1] : '(none)';
+});
+
+test('one dash per series lands in the part, in series order', async () => {
+  const converted = threeSeriesDeck('line');
+  const [chart] = chartElements(converted.deck);
+  assert.equal(chart.data.length, 3, 'three series in the spec');
+  chart.options.seriesLineStyles = ['dashed', 'solid', 'dotted'];
+  const output = await writePptx(converted.deck);
+  try {
+    const [partName] = await chartParts(output);
+    const part = await output.xml(partName);
+    assert.deepEqual(seriesDashes(part), ['dash', 'solid', 'dot'], 'one rhythm per series');
+    // The series' own line keeps what the writer put there: its width and its colour.
+    const first = /<c:ser>[\s\S]*?<\/c:ser>/u.exec(part)[0];
+    assert.match(first, /<a:ln w="25400" cap="flat"><a:solidFill><a:srgbClr val="2F5D50"\/><\/a:solidFill><a:prstDash val="dash"\/><a:round\/><\/a:ln>/u,
+      'the line was added to, not rewritten: ' + first.slice(first.indexOf('<a:ln'), first.indexOf('<a:ln') + 160));
+    // A marker's line is its own `c:spPr`, and it keeps the chart-wide dash.
+    assert.deepEqual(markerDashes(part), ['solid', 'solid', 'solid'], 'markers are left alone');
+    // Idempotent: the second pass finds every dash already right.
+    assert.equal(await patchSeriesLineStyles(output.output, converted.deck, output.result.laidOut), false);
+    assert.equal(await output.xml(partName), part, 'byte-identical on a second run');
+  } finally {
+    output.cleanup();
+  }
+});
+
+test('a bar series gets an a:ln created for its dash, in schema order', async () => {
+  const converted = threeSeriesDeck('bar');
+  const [chart] = chartElements(converted.deck);
+  chart.options.seriesLineStyles = ['dashed', 'solid', 'dotted'];
+  const output = await writePptx(converted.deck);
+  try {
+    const [partName] = await chartParts(output);
+    const part = await output.xml(partName);
+    assert.deepEqual(seriesDashes(part), ['dash', 'solid', 'dot']);
+    // A bar has no line at all, so the element is created: after the fill, before the effects.
+    const first = /<c:ser>[\s\S]*?<\/c:ser>/u.exec(part)[0];
+    const spPr = /<c:spPr>[\s\S]*?<\/c:spPr>/u.exec(first)[0];
+    assert.match(spPr, /<a:solidFill>[\s\S]*?<\/a:solidFill><a:ln><a:prstDash val="dash"\/><\/a:ln><a:effectLst\/>/u,
+      'the line sits between the fill and the effects: ' + spPr);
+  } finally {
+    output.cleanup();
+  }
+});
+
+test('a short dash list leaves the rest of the series alone', async () => {
+  const converted = threeSeriesDeck('line');
+  const [chart] = chartElements(converted.deck);
+  chart.options.seriesLineStyles = ['dashed'];
+  const output = await writePptx(converted.deck);
+  try {
+    const [partName] = await chartParts(output);
+    assert.deepEqual(seriesDashes(await output.xml(partName)), ['dash', 'solid', 'solid'],
+      'a series with no token keeps the writer default');
+  } finally {
+    output.cleanup();
+  }
+});
+
+test('a dash is added to an a:ln that has none, and replaced rather than doubled', () => {
+  // A line with a fill and a join but no dash: the dash goes in before the join.
+  const bare = '<c:ser><c:spPr><a:solidFill><a:srgbClr val="112233"/></a:solidFill>'
+    + '<a:ln w="12700"><a:solidFill><a:srgbClr val="445566"/></a:solidFill><a:round/></a:ln>'
+    + '<a:effectLst/></c:spPr></c:ser>';
+  const inserted = applySeriesLineStyle(bare, 'dot');
+  assert.match(inserted.text, /<a:prstDash val="dot"\/><a:round\/>/u, 'dash before join: ' + inserted.text);
+  assert.equal(inserted.changed, true);
+
+  // An `a:ln` that already carries a dash: the value is replaced, and there is still one.
+  const dashed = applySeriesLineStyle(inserted.text, 'lgDash');
+  assert.equal((dashed.text.match(/<a:prstDash /gu) || []).length, 1, 'never two dashes');
+  assert.match(dashed.text, /<a:prstDash val="lgDash"\/>/u);
+
+  // A self-closing line keeps its attributes and is given a body.
+  const selfClosing = applySeriesLineStyle(
+    '<c:ser><c:spPr><a:ln w="9525" cap="flat"/></c:spPr></c:ser>', 'sysDash');
+  assert.match(selfClosing.text, /<a:ln w="9525" cap="flat"><a:prstDash val="sysDash"\/><\/a:ln>/u);
+
+  // Already right: nothing to change, which is what makes a second run a no-op.
+  assert.equal(applySeriesLineStyle(inserted.text, 'dot').changed, false);
+});
+
+test('a dash the schema does not know, or more dashes than series, is an error', async () => {
+  assert.equal(seriesDashToken('dashed'), 'dash');
+  assert.equal(seriesDashToken('dotted'), 'dot');
+  assert.equal(seriesDashToken('dashDot'), 'dashDot');
+  assert.equal(seriesDashToken('lgDashDot'), 'lgDashDot');
+  assert.equal(seriesDashToken('dash'), 'dash', 'the schema word is accepted too');
+  assert.equal(seriesDashToken('dot'), 'dot');
+  assert.equal(seriesDashToken('wobbly'), null);
+  assert.equal(seriesDashToken(''), null);
+  assert.equal(seriesDashToken('toString'), null, 'a prototype key is not a dash');
+
+  const converted = threeSeriesDeck('line');
+  const [chart] = chartElements(converted.deck);
+  chart.options.seriesLineStyles = ['dashed', 'solid'];
+  const output = await writePptx(converted.deck);
+  try {
+    // A token that is not a dash: refused with the value, never defaulted.
+    chart.options.seriesLineStyles = ['dashed', 'nonsense'];
+    await assert.rejects(
+      () => patchSeriesLineStyles(output.output, converted.deck, output.result.laidOut),
+      /Series line style patch: unknown dash "nonsense"/u
+    );
+    // Four dashes for three series: a list that would style a series that does not exist.
+    chart.options.seriesLineStyles = ['solid', 'solid', 'solid', 'solid'];
+    await assert.rejects(
+      () => patchSeriesLineStyles(output.output, converted.deck, output.result.laidOut),
+      /4 dash\(es\) declared for 3 series/u
+    );
+    // A spec that disagrees with the part about how many series there are is not guessed at.
+    // Read from the deck itself: the laid-out elements are shallow copies, so they share the
+    // options object but keep the series array they were built with.
+    chart.options.seriesLineStyles = ['solid', 'solid'];
+    chart.data = chart.data.slice(0, 2);
+    await assert.rejects(
+      () => patchSeriesLineStyles(output.output, converted.deck, null),
+      /alignment mismatch on chart part 1: the spec declares 2 series but the part holds 3/u
+    );
   } finally {
     output.cleanup();
   }

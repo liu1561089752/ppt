@@ -3153,7 +3153,7 @@ test('a multi-slide HTML keeps every page inside the canvas', () => {
   const pathSync = require('node:path');
   const html = fs.readFileSync(pathSync.join(__dirname, '..', 'examples', 'pipeline-stress.html'), 'utf8');
   const result = pipeline.convertHtml(html);
-  // The stress fixture grew to seven pages: cover, columns, gradient/shadow cards,
+  // The stress fixture grew to nine pages: cover, columns, gradient/shadow cards,
   // chart + table, flow + timeline, image cover crop.
   assert.equal(result.deck.slides.length, 9);
   assert.equal(result.report.layout.total, 0, JSON.stringify(result.report.layout.slides));
@@ -4103,17 +4103,23 @@ test('a wrapping column that cannot be translated is reported, not guessed', () 
 
 test('a generated multi-page deck keeps every layout invariant', () => {
   const stress = require('../native/scripts/stress_html');
-  const html = stress.generate({ slides: 9, seed: 3 });
+  // Ten archetypes cycle now that a named-area dashboard joined them, so a ten-page deck is the
+  // shortest one that reaches all of them - nine would silently drop the last.
+  const html = stress.generate({ slides: 10, seed: 3 });
   // Deterministic by construction: the same seed has to reproduce a failure exactly.
-  assert.equal(html, stress.generate({ slides: 9, seed: 3 }));
-  assert.notEqual(html, stress.generate({ slides: 9, seed: 4 }));
+  assert.equal(html, stress.generate({ slides: 10, seed: 3 }));
+  assert.notEqual(html, stress.generate({ slides: 10, seed: 4 }));
   const started = Date.now();
   const result = pipeline.convertHtml(html);
   const elapsed = Date.now() - started;
-  const problems = stress.checkDeck(result, { slides: 9 });
+  const problems = stress.checkDeck(result, { slides: 10 });
   assert.deepEqual(problems, [], 'generated deck problems: ' + JSON.stringify(problems, null, 1));
-  assert.equal(result.deck.slides.length, 9);
-  // Nine archetypes cycle, so a nine-page deck exercises all of them - including the two
+  assert.equal(result.deck.slides.length, 10);
+  // hard ones: a card holding a merged-cell table with a rotated badge and a cropped
+  // picture, and a ten-row table with a striped body.
+  // Ten archetypes cycle, so a ten-page deck exercises all of them - including the three
+  // hard ones: a card holding a merged-cell table with a rotated badge and a cropped
+  // picture, a ten-row table with a striped body, and a dashboard placed by a grid map.
   // hard ones: a card holding a merged-cell table with a rotated badge and a cropped
   // picture, and a ten-row table with a striped body.
   const kinds = new Set(result.deck.slides.map((slide) => (slide.elements || []).length));
@@ -4130,6 +4136,11 @@ test('a generated multi-page deck keeps every layout invariant', () => {
     'the cropped picture is a native cover crop');
   assert.ok(result.report.unsupportedDetails.length === 0, 'the generated CSS stays inside the supported subset');
   assert.ok(result.report.declarativeContainers > 20, 'containers stayed declarative: ' + result.report.declarativeContainers);
+  // The named-area page is the one archetype that must stay declarative: if its start lines ever
+  // stop reaching the engine it falls back to absolute boxes and draws the same picture, so the
+  // counter is the only witness.
+  assert.deepEqual(result.report.containerFallbacks, [], 'the grid map stayed declarative');
+  assert.equal(result.report.absoluteGroups, 0, 'and nothing fell back to a group');
   assert.ok(elapsed < 20000, 'nine pages should convert in well under 20s, took ' + elapsed + 'ms');
 });
 

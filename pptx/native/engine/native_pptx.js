@@ -273,7 +273,10 @@ function addElement(slide, el, theme, pptx, context = {}) {
       legendFontFace: theme.fonts.body
     }, el.options || {}));
   } else if (el.type === 'table') {
-    slide.addTable(el.rows || [], Object.assign({
+    // A cell whose words carry their own styling arrives as `rowsPayload`: the same rows, with
+    // the writer's run array in place of the string. The spec keeps `rows` because the row-height
+    // estimate and the cell patches read one paragraph per string there.
+    slide.addTable(el.rowsPayload || el.rows || [], Object.assign({
       x: el.x, y: el.y, w: el.w, h: el.h,
       border: { type: 'solid', color: theme.colors.border, pt: 0.8 },
       color: theme.colors.foreground,
@@ -1922,13 +1925,248 @@ async function patchDataLabelPositions(outputPath, deck, laidOut) {
   return touched > 0;
 }
 
+/** `a:prstDash` values for the dash names a deck can ask for. A Map: a plain object answers
+ * `SERIES_DASH['toString']` with a function, and that would be written into the part. */
+const SERIES_DASH = new Map(Object.entries({
+  solid: 'solid', dashed: 'dash', dotted: 'dot', dashDot: 'dashDot',
+  lgDash: 'lgDash', lgDashDot: 'lgDashDot', sysDash: 'sysDash', sysDot: 'sysDot'
+}));
+
+/**
+ * The schema token for one declared dash. The writer's own vocabulary is the camelCase form
+ * (`dashDot`), the schema spells it the same way, and `dash`/`dot` - the OOXML words - are
+ * accepted so a hand-written spec is not a typo.
+ */
+function seriesDashToken(value) {
+  const raw = String(value === undefined || value === null ? '' : value).trim();
+  if (!raw) return null;
+  if (SERIES_DASH.has(raw)) return SERIES_DASH.get(raw);
+  if (raw === 'dash' || raw === 'dot') return raw;
+  const folded = raw.toLowerCase();
+  const match = [...SERIES_DASH.keys()].find((name) => name.toLowerCase() === folded);
+  return match ? SERIES_DASH.get(match) : null;
+}
+
+/**
+ * The element `tag` inside `content` with its offsets, matching nested elements of the same
+ * name (there are none in a chart part, but an unbalanced search is the kind of thing that
+ * silently eats half a document). Depth is why this exists: a series carries its own `c:spPr`,
+ * and its marker and label block each carry one too - styling the wrong one is invisible in
+ * the XML and obvious in the render.
+ */
+function elementSpan(content, tag, startAt = 0) {
+  const openAt = content.indexOf('<' + tag, startAt);
+  if (openAt < 0) return null;
+  const openEnd = content.indexOf('>', openAt);
+  if (openEnd < 0) return null;
+  if (content[openEnd - 1] === '/') {
+    return { start: openAt, openEnd, closeStart: openEnd, end: openEnd + 1, inner: '', selfClosing: true };
+  }
+  let depth = 1;
+  let cursor = openEnd + 1;
+  while (depth > 0) {
+    const nextOpen = content.indexOf('<' + tag, cursor);
+    const nextClose = content.indexOf('</' + tag + '>', cursor);
+    if (nextClose < 0) return null;
+    if (nextOpen >= 0 && nextOpen < nextClose) {
+      depth += 1;
+      cursor = nextOpen + tag.length + 1;
+      continue;
+    }
+    depth -= 1;
+    cursor = nextClose + tag.length + 3;
+    if (depth === 0) {
+      return {
+        start: openAt,
+        openEnd,
+        closeStart: nextClose,
+        end: nextClose + tag.length + 3,
+        inner: content.slice(openEnd + 1, nextClose)
+      };
+    }
+  }
+  return null;
+}
+
+/** The offset of the first of `tags` in `content`, or -1. */
+function firstTagOffset(content, tags) {
+  let best = -1;
+  tags.forEach((tag) => {
+    const at = content.indexOf(tag);
+    if (at >= 0 && (best < 0 || at < best)) best = at;
+  });
+  return best;
+}
+
+/** `a:ln`'s children are ordered: fill, prstDash, join, headEnd, tailEnd. */
+const LINE_AFTER_DASH = ['<a:round', '<a:bevel', '<a:miter', '<a:headEnd', '<a:tailEnd', '<a:extLst'];
+/** ...and an `a:ln` goes after the fill of its `c:spPr`, before the effects. */
+const SHAPE_AFTER_LINE = ['<a:effectLst', '<a:effectDag', '<a:scene3d', '<a:sp3d', '<a:extLst'];
+
+/** Put one `a:prstDash` into an `a:ln`, keeping whatever else the line already carries. */
+function dashInLine(lnInner, token) {
+  const node = '<a:prstDash val="' + token + '"/>';
+  const existing = elementSpan(lnInner, 'a:prstDash');
+  if (existing) {
+    if (lnInner.slice(existing.start, existing.end) === node) return { inner: lnInner, changed: false };
+    return { inner: lnInner.slice(0, existing.start) + node + lnInner.slice(existing.end), changed: true };
+  }
+  const at = firstTagOffset(lnInner, LINE_AFTER_DASH);
+  const cut = at < 0 ? lnInner.length : at;
+  return { inner: lnInner.slice(0, cut) + node + lnInner.slice(cut), changed: true };
+}
+
+/**
+ * One series' own dash: `<c:ser><c:spPr><a:ln><a:prstDash val="…"/></a:ln></c:spPr>`. The
+ * writer writes the `c:spPr` (it carries the series fill) but an `a:ln` only for the chart
+ * types that draw a line, so a bar needs the `a:ln` created - and an existing `a:ln` is not
+ * rewritten, only added to, because it holds the series' line colour and width.
+ */
+function applySeriesLineStyle(serBlock, token) {
+  const spPr = elementSpan(serBlock, 'c:spPr');
+  if (!spPr) throw new Error('Series line style patch: the series holds no c:spPr to carry a line');
+  const node = '<a:prstDash val="' + token + '"/>';
+  if (spPr.selfClosing) {
+    const text = serBlock.slice(0, spPr.start) + '<c:spPr><a:ln>' + node + '</a:ln></c:spPr>' + serBlock.slice(spPr.end);
+    return { text, changed: true };
+  }
+  const ln = elementSpan(spPr.inner, 'a:ln');
+  let inner;
+  let changed;
+  if (!ln) {
+    // No line yet (a bar has none): the schema puts `a:ln` after the fill and before the effects.
+    changed = true;
+    const at = firstTagOffset(spPr.inner, SHAPE_AFTER_LINE);
+    const cut = at < 0 ? spPr.inner.length : at;
+    inner = spPr.inner.slice(0, cut) + '<a:ln>' + node + '</a:ln>' + spPr.inner.slice(cut);
+  } else if (ln.selfClosing) {
+    // `<a:ln w="…"/>` keeps its attributes; only the body is given.
+    changed = true;
+    const attributes = spPr.inner.slice(ln.start + 5, ln.openEnd - 1).replace(/\/\s*$/u, '');
+    inner = spPr.inner.slice(0, ln.start) + '<a:ln' + attributes + '>' + node + '</a:ln>'
+      + spPr.inner.slice(ln.end);
+  } else {
+    const dashed = dashInLine(ln.inner, token);
+    changed = dashed.changed;
+    inner = spPr.inner.slice(0, ln.openEnd + 1) + dashed.inner + '</a:ln>' + spPr.inner.slice(ln.end);
+  }
+  if (!changed) return { text: serBlock, changed: false };
+  const text = serBlock.slice(0, spPr.openEnd + 1) + inner + '</c:spPr>' + serBlock.slice(spPr.end);
+  return { text, changed: true };
+}
+
+/** Every `<c:ser>` element of a chart part, in series order, with its offsets. */
+function seriesBlocks(xml) {
+  const blocks = [];
+  let cursor = 0;
+  for (;;) {
+    const open = xml.indexOf('<c:ser>', cursor);
+    if (open < 0) break;
+    const close = xml.indexOf('</c:ser>', open);
+    if (close < 0) break;
+    blocks.push({ start: open, end: close + '</c:ser>'.length });
+    cursor = close + '</c:ser>'.length;
+  }
+  return blocks;
+}
+
+/**
+ * One dash per series, in series order. Rebuilt from the last series backwards so the earlier
+ * offsets stay valid; a series whose dash is already what the deck asks for is left alone,
+ * which is what makes a second run a no-op.
+ */
+function applySeriesLineStyles(xml, tokens) {
+  const blocks = seriesBlocks(xml);
+  if (blocks.length !== tokens.length) {
+    throw new Error('Series line style patch alignment mismatch: ' + tokens.length +
+      ' style(s) for ' + blocks.length + ' series in the part');
+  }
+  let next = xml;
+  let changed = 0;
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index];
+    if (!token) continue;
+    const block = blocks[index];
+    const applied = applySeriesLineStyle(next.slice(block.start, block.end), token);
+    if (!applied.changed) continue;
+    next = next.slice(0, block.start) + applied.text + next.slice(block.end);
+    changed += 1;
+  }
+  return { xml: next, changed };
+}
+
+/**
+ * A design that says "this series is dashed" is asking for something the writer only offers for
+ * the whole chart (`lineDash` paints every series the same). The part can hold a dash per
+ * series, so it is written here, after the file exists.
+ *
+ * The count of `<c:ser>` blocks is checked against the number of series the spec declares:
+ * a chart whose series list is shorter than the part's would otherwise style the wrong series
+ * and look plausible. Markers keep whatever the chart-level setting gave them - a marker's line
+ * is its own `c:spPr` and a design that wants a different marker rhythm can ask for it.
+ */
+async function patchSeriesLineStyles(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const charts = [];
+  supplied(laidOut, slides).forEach((elements) => {
+    (elements || []).forEach((element) => {
+      if (element && element.type === 'chart') charts.push(element);
+    });
+  });
+  if (!charts.some((chart) => Array.isArray(chart.options && chart.options.seriesLineStyles)
+    && chart.options.seriesLineStyles.length)) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  const names = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/u.test(name))
+    .sort((left, right) => Number(/(\d+)\.xml$/u.exec(left)[1]) - Number(/(\d+)\.xml$/u.exec(right)[1]));
+  if (names.length !== charts.length) {
+    throw new Error('Series line style patch alignment mismatch: the Deck Spec has ' + charts.length +
+      ' chart element(s) but the PPTX has ' + names.length + ' chart part(s)');
+  }
+  let touched = 0;
+  for (let index = 0; index < names.length; index += 1) {
+    const options = charts[index].options || {};
+    const declared = Array.isArray(options.seriesLineStyles) ? options.seriesLineStyles : [];
+    if (!declared.length) continue;
+    const xml = await zip.file(names[index]).async('string');
+    const blocks = seriesBlocks(xml);
+    const specSeries = Array.isArray(charts[index].data) ? charts[index].data.length : blocks.length;
+    if (specSeries !== blocks.length) {
+      throw new Error('Series line style patch alignment mismatch on chart part ' + (index + 1) +
+        ': the spec declares ' + specSeries + ' series but the part holds ' + blocks.length);
+    }
+    if (declared.length > blocks.length) {
+      throw new Error('Series line style patch: ' + declared.length + ' dash(es) declared for ' +
+        blocks.length + ' series on chart part ' + (index + 1));
+    }
+    // A short list means the rest inherit the writer's solid line.
+    const tokens = new Array(blocks.length).fill(null);
+    declared.forEach((value, position) => {
+      const token = seriesDashToken(value);
+      if (!token) {
+        throw new Error('Series line style patch: unknown dash "' + value + '" for series ' +
+          (position + 1) + ' of chart part ' + (index + 1));
+      }
+      tokens[position] = token;
+    });
+    const applied = applySeriesLineStyles(xml, tokens);
+    if (applied.changed > 0) {
+      zip.file(names[index], applied.xml);
+      touched += 1;
+    }
+  }
+  if (touched) {
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    fs.writeFileSync(outputPath, buffer);
+  }
+  return touched > 0;
+}
+
 /**
  * The writer spells one scatter style: `lineMarker`, which draws a line between points
  * that a scatter never claimed to connect. `marker` is what the word scatter means -
  * points on two numeric axes - so the file is corrected after it is written.
  */
-async function patchScatterStyle(outputPath) {
-  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+async function patchScatterStyle(outputPath) {  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
   const names = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/u.test(name));
   let touched = 0;
   for (const name of names) {
@@ -2155,6 +2393,9 @@ async function generatePptx(deck, outputPath, options = {}) {
   // chart types its own validator refuses (a doughnut, an area, a radar). After the scatter
   // style, because both rewrite the same chart parts and this one only inserts an element.
   await patchDataLabelPositions(outputPath, deck, result.laidOut);
+  // A dash per series, which the writer only offers for the whole chart. Last of the chart
+  // patches: it works inside a `c:ser` that the two above only read.
+  await patchSeriesLineStyles(outputPath, deck, result.laidOut);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
   // A picture's hyperlink target is written raw where a text run's is escaped, so the rels part
@@ -2186,6 +2427,7 @@ module.exports = {
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects,
   applyTileFill, patchTiledFills, pictureFrameInches, applyTextColumns, patchTextColumns,
   applyDataLabelPosition, patchDataLabelPositions, dataLabelPositionToken,
+  applySeriesLineStyle, applySeriesLineStyles, patchSeriesLineStyles, seriesDashToken,
   cellBulletMarker, applyCellBullets, patchCellBullets, bulletParagraphIndent, cellBulletIndentBase,
   applyRelsEscapes, patchHyperlinkRelEscapes,
   applyShapeClick, patchShapeHyperlinks, hyperlinkRegistry, hyperlinkId, spHyperlinkUrl,

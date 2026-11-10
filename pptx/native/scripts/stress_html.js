@@ -17,7 +17,7 @@
  * reproducible from the numbers in the message.
  */
 
-const ARCHETYPES = ['cover', 'cards', 'steps', 'grid', 'data', 'columns', 'metrics', 'nested', 'dense'];
+const ARCHETYPES = ['cover', 'cards', 'steps', 'grid', 'areas', 'data', 'columns', 'metrics', 'nested', 'dense'];
 
 /** A tiny deterministic PRNG (numerical recipes LCG) - no randomness across runs. */
 function makeRandom(seed) {
@@ -281,11 +281,43 @@ function denseSlide(index, total, random) {
   ].join('\n');
 }
 
+// A dashboard whose layout is a MAP, not a sequence: each panel names a cell of
+// grid-template-areas, so placement cannot depend on which panel comes first in the source.
+// The class names are prefixed because the page-level sheet already owns `.foot`, `.head` and
+// friends - a cell that borrows one of those names inherits its margins, and a grid child with
+// a margin is exactly where the replay and the measurement start to disagree.
+function areasSlide(index, total, random) {
+  const revenue = (1.4 + random() * 2.6).toFixed(2);
+  const margin = String(34 + Math.round(random() * 24));
+  const channels = ['直销', '分销', '线上'];
+  const lines = channels.map((name, position) => {
+    const pct = String(52 - position * 9 + Math.round(random() * 6));
+    return '      <p class="zone-line">' + name + ' · ' + pct + '%</p>';
+  });
+  return [
+    '<main class="slide">',
+    '  <div class="kicker accent">' + String(index + 1).padStart(2, '0') + ' · 命名网格</div>',
+    '  <h2 class="title">单元格先有名字，元素再按名字落位</h2>',
+    '  <p class="sub">这张画布用 grid-template-areas 画出地图：标题跨两列，图表跨两列，右栏纵跨两行，注释与脚注各占一格。名字声明之后，落位与源码顺序无关。</p>',
+    '  <div class="mapgrid">',
+    '    <div class="zone zone-head"><h3>季度摘要</h3><p>标题横跨前两条轨道，右栏同时从这一行开始。</p></div>',
+    '    <div class="zone zone-chart"><div class="zone-figure">' + revenue + '<span class="zone-unit"> 亿元</span></div><p>图表区同样跨两列，高度来自轨道而不是自己声明的高度。</p></div>',
+    '    <div class="zone zone-rail"><h3>渠道构成</h3>',
+    ...lines,
+    '      <p class="zone-tail">右栏的名字在纵向出现两次，于是它拿到两行的高度。</p></div>',
+    '    <div class="zone zone-note"><h3>注释</h3><p>与图表同宽，落在第三行。</p></div>',
+    '    <div class="zone zone-foot"><h3>' + margin + '%</h3><p>脚注只占一格。</p></div>',
+    '  </div>',
+    '  <p class="foot">第 ' + (index + 1) + ' 页 · 每个格子带着起点与跨度交给引擎，容器保持声明式。</p>',
+    '</main>'
+  ].join('\n');
+}
 const RENDERERS = {
   cover: coverSlide,
   cards: cardsSlide,
   steps: stepsSlide,
   grid: gridSlide,
+  areas: areasSlide,
   data: dataSlide,
   columns: columnsSlide,
   metrics: metricsSlide,
@@ -294,6 +326,35 @@ const RENDERERS = {
 };
 
 const STYLE = `
+  .mapgrid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 0.9fr;
+    grid-template-rows: 92px 200px 92px;
+    grid-template-areas: "zone-head zone-head zone-rail" "zone-chart zone-chart zone-rail" "zone-note zone-note zone-foot";
+    gap: 16px;
+    width: 1168px;
+  }
+  .mapgrid .zone-head { grid-area: zone-head; }
+  .mapgrid .zone-chart { grid-area: zone-chart; }
+  .mapgrid .zone-rail { grid-area: zone-rail; }
+  .mapgrid .zone-note { grid-area: zone-note; }
+  .mapgrid .zone-foot { grid-area: zone-foot; }
+  .mapgrid .zone { border-radius: 12px; padding: 16px 18px; background: #FFFFFF; }
+  .mapgrid h3 { margin: 0; padding-bottom: 6px; font-size: 15px; color: #1D2A2E; }
+  .mapgrid p { margin: 0; font-size: 12px; line-height: 1.6; color: #5E6E72; }
+  .mapgrid .zone-head { background: #1F4B45; }
+  .mapgrid .zone-head h3 { color: #EAF1F0; }
+  .mapgrid .zone-head p { color: #A9C6C0; }
+  .mapgrid .zone-rail { background: #16272C; }
+  .mapgrid .zone-rail h3 { color: #EAF1F0; }
+  .mapgrid .zone-rail p { color: #A9C6C0; }
+  .mapgrid .zone-foot { background: #D98A4B; }
+  .mapgrid .zone-foot h3 { color: #2A1A0C; font-size: 22px; padding-bottom: 2px; }
+  .mapgrid .zone-foot p { color: #4A3018; }
+  .mapgrid .zone-figure { font-size: 34px; font-weight: 600; color: #D98A4B; padding: 4px 0 6px; }
+  .mapgrid .zone-unit { font-size: 15px; color: #7C8F93; }
+  .mapgrid .zone-line { padding-top: 8px; }
+  .mapgrid .zone-tail { padding-top: 10px; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
   .slide { position: relative; width: 1280px; height: 720px; padding: 44px 56px; background: #F7F5F1; }

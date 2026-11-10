@@ -140,6 +140,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `background-repeat` | one picture whose fill repeats: `a:tile` with the cell as a fraction of the frame; PowerPoint draws it, LibreOffice and WPS draw one stretched cell and `LIMITS.md` says so |
 | `clip-path: inset()` on a picture | a source-rectangle crop with the drawn box shrunk to the visible rectangle and the layout slot kept; it composes with the picture's own fit, and anything but one rectangle is named |
 | `grid-template-areas` + `grid-area: <name>` | the map is the explicit grid: a named cell keeps its start lines and spans, and a map that is not rectangles of whole cells is named |
+| a styled run inside a table cell | each fragment becomes its own `a:r` with its tracking, weight, colour and size; a run that inherits everything stays part of its neighbour |
+| `data-chart-series-line` | one `a:prstDash` per series; a bar's dash needs an outline colour to be visible, which is named rather than invented |
 | `object-position` / `background-position` lengths | an offset from the near edge; a gap the format cannot draw is clamped and named. Background layers start at `0% 0%`, pictures at `50% 50%` |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |

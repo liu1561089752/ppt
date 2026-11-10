@@ -18,8 +18,8 @@ generated from the source, so it cannot drift away from the code.
 
 <!-- generated:start -->
 
-Generated from `pipeline/analyzer.js`: **154 call sites**, **86 properties**,
-**137 distinct explanations**. Regenerate with `npm run limits:update`; a new report
+Generated from `pipeline/analyzer.js`: **157 call sites**, **87 properties**,
+**140 distinct explanations**. Regenerate with `npm run limits:update`; a new report
 without a line here fails the gate.
 
 | reported as | what the deck says it could not do |
@@ -57,6 +57,7 @@ without a line here fails the gate.
 | `data-chart-legend` | Use true, false, none, top, bottom, left, right or top-right |
 | `data-chart-legend-font-size` | Use a font size in points |
 | `data-chart-secondary-axis` | The writer draws one value axis only: a second scale would need hand-written chart XML - split the series into a second chart instead<br>Use true or false |
+| `data-chart-series-line` | One dash per series, in series order: a token past the last series has nothing to dash<br>Use solid, dashed, dotted, dashDot, lgDash, lgDashDot, sysDash or sysDot, one per series |
 | `data-chart-smooth` | Smoothing bends a line, and a ⟨chartType⟩ chart draws none<br>Use true or false |
 | `data-chart-text-color` | Chart text colour must be a #rrggbb value |
 | `data-chart-y-max` | Use a number |
@@ -70,7 +71,7 @@ without a line here fails the gate.
 | `fontVariant` | A table cell has no small-caps switch: the letters draw at their own size<br>Only small-caps has a native run property; this value has none<br>Small caps on an inline span is not carried: declare it on the block so the whole box can be patched |
 | `fontWeight` | A weight below 400 draws as regular: the format has bold or not, no light axis - name a Light family in font-family to get the cut<br>A weight between 501 and 599 draws as regular: no native spelling exists for intermediate weights |
 | `gridColumn` | Named grid lines and areas are not modelled; the item is auto-placed with its span width |
-| `gridTemplateAreas` | A named area has to cover one rectangle of whole cells and every row needs the same number of cells; this map has neither, so no item is placed by name |
+| `gridTemplateAreas` | A named area has to cover one rectangle of whole cells and every row needs the same number of cells; this map has neither, so no item is placed by name<br>The map names more columns than the grid declares tracks; their columns would be sized by their content, which a declared width cannot do, so those items share the last one |
 | `href` | A link around a whole table cannot be drawn: the file format gives a table no click target, so its cells stay unlinked<br>A link around part of a cell cannot be drawn: a table cell has no runs, so linking it would make the whole cell clickable and the link is dropped<br>An in-page anchor has no slide to jump to in the deck; the link draws but does not navigate |
 | `inlineBox` | An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped |
 | `length` | This ⟨entry.property⟩ is not a length this shape can resolve, so the box falls back to the layout default instead of the declared value |

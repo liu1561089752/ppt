@@ -27,6 +27,9 @@
     color: var(--ink);
     overflow: hidden;
   }
+  /* A cell is not one string: an inline run keeps its own tracking, weight and colour. */
+  .cell-run .tracked { letter-spacing: 5px; font-weight: 700; color: #B4552A; }
+  .cell-run .small { font-size: 10px; color: #4FB3A8; }
   .kicker {
     font-size: 12px;
     letter-spacing: 3px;
@@ -251,5 +254,42 @@
 
   <div class="foot">行高写在 tr 上是行盒高度；写在 td 上是内容高度，内边距另外加上。</div>
 </main>
+<main class="slide cell-run">
+  <div class="kicker">Table · 单元格内的行内文本</div>
+  <h1>一格里可以有好几种字</h1>
+  <p class="lede">单元格里的 <code>&lt;span&gt;</code> 不再被压成一串：字距、粗细、颜色各自落到对应的 a:r 上，同一行的另一格保持原样，可以直接对比。</p>
+  <div class="rule"></div>
+
+  <table class="data" style="width: 100%">
+    <thead>
+      <tr><th>写法</th><th>渲染</th><th>文件里</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>字距</td>
+        <td>前缀<span class="tracked">间距</span>后缀</td>
+        <td>三段 a:r，中间一段带 spc</td>
+      </tr>
+      <tr>
+        <td>字号与颜色</td>
+        <td>常规文字<span class="small">小字注脚</span>继续</td>
+        <td>一段 10px、一段本色</td>
+      </tr>
+      <tr>
+        <td>对照</td>
+        <td>前缀间距后缀</td>
+        <td>一段 a:r，没有 spc</td>
+      </tr>
+      <tr>
+        <td>混合</td>
+        <td>常规<span class="tracked">强调</span><span class="small">尾注</span></td>
+        <td>三段，各带各的属性</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="foot">行内文本按片段写进单元格；一段里没有声明的属性仍然继承这一格。</div>
+</main>
+
 </body>
 </html>

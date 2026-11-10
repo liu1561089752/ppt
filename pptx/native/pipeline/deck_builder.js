@@ -527,6 +527,53 @@ function captionElementFromNode(node, resolvedTheme) {
   return element;
 }
 
+/**
+ * The rows a writer can draw, built from the rows a reader measures.
+ *
+ * A table cell is measured, patched and reported from one string - `cell.text` - while a styled
+ * run needs the writer to receive a run array for that same cell. Both are true at once, so the
+ * spec keeps the string (with `cell.runs` beside it) and this builds a *separate* payload for
+ * `addTable`. Fresh cells and fresh option objects on purpose: PptxGenJS rewrites every cell it
+ * is handed (`valign`, an expanded `border`, `_lineIdx`), and the spec has to survive a write.
+ *
+ * Shape, measured against pptxgenjs 3.12 rather than assumed: a cell's `text` array is read as a
+ * list of `{ text, options }` objects, so a bare string in it has no `.text` and is dropped
+ * silently; and the items without `breakLine` become separate runs of ONE paragraph. That is why
+ * every run goes in as an object, never as a string.
+ *
+ * Returns null when no cell declares a run, so a table without runs keeps the exact element it
+ * has today - same keys, same values, same order.
+ */
+function tablePayloadRows(rows) {
+  if (!Array.isArray(rows)) return null;
+  let styled = false;
+  const payload = rows.map((row) => {
+    if (!Array.isArray(row)) return row;
+    return row.map((cell) => {
+      if (!cell || typeof cell !== 'object') return cell;
+      // A list cell already draws one paragraph per item, and the analyzer sends a list or runs,
+      // never both; if they ever collide the list wins, because its paragraphs are the shape the
+      // bullet patch aligns against.
+      const hasRuns = Array.isArray(cell.runs) && cell.runs.length > 0 && !Array.isArray(cell.text);
+      const copy = Object.assign({}, cell);
+      // PptxGenJS writes into the options object it is given, so the copy gets its own.
+      if (cell.options && typeof cell.options === 'object') copy.options = Object.assign({}, cell.options);
+      if (!hasRuns) return copy;
+      styled = true;
+      copy.text = cell.runs.map((run) => {
+        if (typeof run === 'string') return { text: run };
+        const item = { text: run && run.text !== undefined && run.text !== null ? String(run.text) : '' };
+        // The run's own options travel verbatim - they are already PptxGenJS's names - but in a
+        // copy, for the same reason the cell's options are copied.
+        if (run && run.options && typeof run.options === 'object') item.options = Object.assign({}, run.options);
+        return item;
+      });
+      return copy;
+    });
+  });
+  return styled ? payload : null;
+}
+
 function tableElementFromNode(node, resolvedTheme) {
   if (!node.rows || !node.rows.length) return null;
   const columns = Math.max(
@@ -536,7 +583,7 @@ function tableElementFromNode(node, resolvedTheme) {
   );
   const width = Math.max(0.2, node.w);
   const captionHeight = node.caption ? node.caption.height : 0;
-  return {
+  const element = {
     type: 'table',
     x: Number(xOf(node).toFixed(4)),
     y: Number((yOf(node) + captionHeight).toFixed(4)),
@@ -560,6 +607,11 @@ function tableElementFromNode(node, resolvedTheme) {
       valign: 'middle'
     }
   };
+  // The writer's rows, when (and only when) a cell carries styled runs. The engine prefers this
+  // array over `rows` for `addTable`; `rows` stays the spec every patch and probe reads.
+  const payload = tablePayloadRows(node.rows);
+  if (payload) element.rowsPayload = payload;
+  return element;
 }
 
 function lineElementFromNode(node, resolvedTheme) {
@@ -1598,6 +1650,12 @@ function splitOverflowingTable(built, pageSize, report) {
       rows,
       options: Object.assign({}, table.options, { rowH })
     });
+    // The writer's rows have to be cut the same way as the spec's: a continuation page that kept
+    // the whole payload would draw every row of the table on it, under a box sized for a slice.
+    if (Array.isArray(table.rowsPayload)) {
+      element.rowsPayload = (first ? [] : table.rowsPayload.slice(0, headerCount))
+        .concat(table.rowsPayload.slice(chunk.start, chunk.end));
+    }
     if (!headerCount) delete element.headerRows;
     return element;
   };
@@ -1730,6 +1788,7 @@ module.exports = {
   anchorLinkFits,
   anchorLinkObjects,
   tableElementFromNode,
+  tablePayloadRows,
   containerPlan,
   containerElement,
   verifySlide,
