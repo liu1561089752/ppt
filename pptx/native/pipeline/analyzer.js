@@ -319,11 +319,27 @@ function inchesOf(value, axis, context) {
   return dimensionInches(value, axis, context);
 }
 
-function boxShorthand(style, prefix) {
+/** The base an `em` resolves against: the element's own declared size, else the page's 16px. */
+function emBaseOf(style) {
+  const declared = String(style.fontSize === undefined ? '' : style.fontSize).trim().toLowerCase();
+  const value = parseFloat(declared);
+  if (!Number.isFinite(value) || value <= 0) return 16;
+  if (declared.endsWith('px')) return value;
+  if (declared.endsWith('pt')) return (value * 4) / 3;
+  return 16;
+}
+
+function boxShorthand(style, prefix, options) {
   const read = (side) => {
     const value = style[prefix + side];
     if (value === undefined) return 0;
-    const inches = toInches(parseLength(value) || { value: 0, unit: 'px' }, {});
+    // An em inset is a fraction of the element's own font size. Resolving it against a
+    // hard-coded 16px made an absolute box's 0.67em margin 10.72px where the element asked
+    // for 22.78px, and it made `padding: 0.5em` on 40px text 8px instead of 20px. The caller
+    // can say which size; otherwise the element's own declared size is the base, and only a
+    // box that declares none falls back to the page's 16.
+    const inches = toInches(parseLength(value) || { value: 0, unit: 'px' },
+      Object.assign({}, options || {}, { fontSizePx: options && Number.isFinite(options.fontSizePx) ? options.fontSizePx : emBaseOf(style) }));
     return inches === null ? 0 : inches;
   };
   return {
@@ -1957,7 +1973,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     // A margin offsets the box from its offset position; negative values pull it
     // back toward the edge it came from. CSS resolves an absolute margin here,
     // after the inset position, before layout continues.
-    const absMargin = boxShorthand(style, 'margin');
+    const absMargin = boxShorthand(style, 'margin', { parentWidth: absoluteParentWidth, fontSizePx });
     if (absMargin.left || absMargin.top) {
       x += absMargin.left;
       y += absMargin.top;
@@ -2762,10 +2778,15 @@ function autoMarginSlotX(style, contentBox, margins, explicitWidth, child, ctx) 
 }
 
 function childMargins(childStyle, context) {
+  // The context carries the *inherited* size, which is the right base for a box that declares
+  // no size of its own and the wrong one for a box that does: `margin: 1em` on a 20px h3 is
+  // 20px, not 16px. Every caller here is reading a child's margins, so the child's own size is
+  // the base, and `fontPxOf` falls back to the inherited one when the child declares nothing.
+  const base = Object.assign({}, context, { fontSizePx: fontPxOf(childStyle, context.fontSizePx) });
   const read = (side, axis) => {
     const value = childStyle['margin' + side];
     if (value === undefined) return 0;
-    const inches = inchesOf(value, axis, context);
+    const inches = inchesOf(value, axis, base);
     return inches === null ? 0 : inches;
   };
   return {
@@ -4861,7 +4882,9 @@ function readTableCell(cell, ctx, rowBackground) {
   }
   const colspan = spanOf(cell, 'colspan', 12);
   const rowspan = spanOf(cell, 'rowspan', 64);
-  const padding = boxShorthand(style, 'padding');
+  // An em padding is a fraction of the cell's own font size, so the cell has to be read
+  // before its padding is.
+  const padding = boxShorthand(style, 'padding', { fontSizePx: (fontSizePt * 4) / 3 });
   const paddingPt = [padding.top, padding.right, padding.bottom, padding.left]
     .map((value) => Number((value * 72).toFixed(2)));
   // `text-transform` reaches the characters on a block; a cell took the raw text, so the

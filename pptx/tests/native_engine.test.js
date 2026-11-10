@@ -1916,10 +1916,9 @@ test('html pipeline resolves @media blocks against the slide viewport', () => {
   assert.equal(title.color, 'F2A24C');
   assert.ok(Math.abs(title.x - 40 / 96) < 0.01);
   // `top: 40px` plus the UA h1 margin, because a margin offsets an absolutely positioned box
-  // too: Chrome draws this h1 at 62.77px (its UA margin is 0.67em of the element's own 34px);
-  // ours is the 32px sheet's 21.44px, so 61.44 - the 1.33px residual is the em-vs-px note in
-  // SKILL.md, not a lost margin.
-  assert.ok(Math.abs(title.y - (40 + 21.44) / 96) < 0.01, 'title y=' + title.y);
+  // too. The UA margin is 0.67em of the element's *own* 34px, which is what Chrome measures:
+  // 62.77px. The engine lands on 62.78.
+  assert.ok(Math.abs(title.y - (40 + 0.67 * 34) / 96) < 0.01, 'title y=' + title.y);
 
   // A query that cannot match the 1280x720 slide is reported, not silently lost.
   const reported = result.report.unsupportedDetails
@@ -5841,6 +5840,45 @@ test('an unstyled document still reads as a document', () => {
   const styledHeading = styled.deck.slides[0].elements.find((element) => element.text === '季度回顾');
   assert.equal(styledHeading.fontSize, 30, '40px is 30pt when the author says so');
   assert.ok(!styledHeading.bold, 'and the weight is the author\u2019s too');
+});
+
+test('an em inset belongs to the element that wrote it, not to its parent', () => {
+  // Chrome: an h1 raised to 34px has a 22.78px UA top margin (0.67em of its own size), and the
+  // same h1 placed with position:absolute at top: 40px draws at 62.77px. Both were wrong while
+  // the em was resolved against a hard-coded 16px: 10.72px of margin instead of 22.78.
+  const html = (position) => [
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .title { ' + position + ' font-size: 34px; }',
+    '</style></head><body><main class="slide"><h1 class="title">标题</h1>',
+    '<div class="pad">盒子<br>文字</div></main></body></html>'
+  ].join('\n');
+  const own = pipeline.convertHtml(html(''));
+  const title = own.deck.slides[0].elements.find((element) => element.text === '标题');
+  assert.ok(Math.abs(title.y * 96 - (40 + 0.67 * 34)) < 0.6, 'static h1 y=' + (title.y * 96).toFixed(2));
+  const absolute = pipeline.convertHtml(html('position: absolute; left: 40px; top: 40px;'));
+  const pinned = absolute.deck.slides[0].elements.find((element) => element.text === '标题');
+  assert.ok(Math.abs(pinned.y * 96 - (40 + 0.67 * 34)) < 0.6, 'absolute h1 y=' + (pinned.y * 96).toFixed(2));
+});
+test('em padding is the element\u2019s own font size, not the page\u2019s', () => {
+  // A 40px box with `padding: 0.5em` holds its text 20px in on every side. Resolved at the
+  // page's 16px it would have been 8px, and the text would sit inside the edge of the fill.
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .pad { padding: 0.5em; font-size: 40px; background: #EEEEEE; width: 400px; }',
+    '</style></head><body><main class="slide"><div class="pad">盒子文字</div></main></body></html>'
+  ].join('\n');
+  const elements = pipeline.convertHtml(html).deck.slides[0].elements;
+  const box = elements.find((element) => element.type === 'container' && element.background);
+  assert.ok(box, 'the padded div is a container with a surface');
+  assert.equal(box.background.fill, 'EEEEEE');
+  // 0.5em of the box's own 40px on every side; the page's 16px would have given 8.
+  ['top', 'right', 'bottom', 'left'].forEach((side) => {
+    assert.ok(Math.abs(box.padding[side] * 96 - 20) < 0.5,
+      side + ' padding: ' + (box.padding[side] * 96).toFixed(2) + 'px');
+  });
+  const words = (box.children || []).find((child) => typeof child.text === 'string');
+  assert.ok(words && words.text.startsWith('盒子'), 'the words live inside the padded box');
 });
 
 test('a margin escapes a padding-less parent, and a flex box keeps it inside', () => {
