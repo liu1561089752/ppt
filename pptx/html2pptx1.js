@@ -1,4 +1,8 @@
 /**
+ *
+ * LEGACY HTML COMPATIBILITY PATH. New work belongs in native/ (see native/README.md): a Deck Spec
+ * goes straight to native objects, while this module has to reconstruct boxes from CSS and rasterises
+ * SVG artwork and gradient canvases on the way. Kept for existing HTML projects.
  * html2pptx v4 — Convert HTML slide to pptxgenjs slide with positioned elements
  *
  * v4 Changes (2026-05-07) — broader & more faithful HTML coverage:

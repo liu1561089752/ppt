@@ -19,6 +19,15 @@
 const path = require('path');
 const fs = require('fs');
 const pptxgen = require('pptxgenjs');
+
+// LEGACY PATH. This script draws an existing HTML deck into a .pptx and keeps a raster fallback
+// for SVG artwork and CSS gradient canvases. New decks do not come from HTML: author a Deck Spec
+// and run the native tool instead -
+//
+//   node native/cli.js <spec.json|spec.js> out.pptx
+//
+// which writes every word, panel, table and chart as a PowerPoint object and never rasterises a
+// page. See native/README.md and native/LIMITS.md.
 const html2pptx = require(path.join(__dirname, 'html2pptx1.js'));
 const { createOrderedSlideTasks, removeFailedSlideTasks } = require('./slide_order');
 

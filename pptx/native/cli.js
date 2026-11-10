@@ -1,0 +1,283 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * The native deck tool: a Deck Spec in, a native .pptx out.
+ *
+ * Nothing on this path parses HTML and nothing rasterises a page. A spec is either a JSON
+ * document or a CommonJS module that exports a deck (or a function returning one, which is how a
+ * spec can be built from data), and the writer turns every word into a text run, every panel into
+ * a shape, every table into a table, and every chart into a chart whose data lives in the
+ * workbook embedded beside it.
+ *
+ *   node cli.js <spec> [out.pptx]
+ *   node cli.js ../examples/native-cover.spec.json native-cover.pptx
+ *   node cli.js ../examples/native_deck_spec.js native-deck.pptx --report native-deck.json
+ *
+ * Options
+ *   --out <file>     output path (the positional argument does the same)
+ *   --report <file>  write the generation report as JSON
+ *   --check          validate the spec and stop; writes nothing
+ *   --strict         exit non-zero on layout warnings as well as on errors
+ *   --json           print one JSON object instead of the human summary
+ *   --quiet          print errors only
+ *   -h, --help       this text
+ *
+ * Exit codes: 0 written, 1 the spec was rejected, 2 the writer failed.
+ */
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { generatePptx, validateDeck } = require('./index');
+const { validateSlide } = require('./engine/validation');
+
+const USAGE = [
+  'The native deck tool: a Deck Spec in, a native .pptx out.',
+  '',
+  '  node cli.js <spec> [out.pptx] [options]',
+  '',
+  '  <spec>      a .json document, or a .js/.cjs module exporting a deck',
+  '              (or a function that returns one, or { deck })',
+  '  [out.pptx]  where to write; defaults to the spec name beside the spec',
+  '',
+  '  --out <file>     output path, same as the positional argument',
+  '  --report <file>  write the generation report as JSON',
+  '  --check          validate the spec and stop; writes nothing',
+  '  --strict         layout warnings become failures',
+  '  --json           one JSON object instead of the human summary',
+  '  --quiet          errors only',
+  '  -h, --help       this text'
+].join('\n');
+
+function parseArgs(argv) {
+  const options = { spec: null, out: null, report: null, json: false, check: false, strict: false, quiet: false, help: false };
+  const positional = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--out') { options.out = argv[index += 1] || null; } else if (arg === '--report') {
+      options.report = argv[index += 1] || null;
+    } else if (arg === '--json') { options.json = true; } else if (arg === '--check') {
+      options.check = true;
+    } else if (arg === '--strict') { options.strict = true; } else if (arg === '--quiet') {
+      options.quiet = true;
+    } else if (arg === '-h' || arg === '--help') { options.help = true; } else if (arg.startsWith('--')) {
+      throw new Error('unknown option ' + arg + '\n\n' + USAGE);
+    } else { positional.push(arg); }
+  }
+  options.spec = positional[0] || null;
+  options.out = options.out || positional[1] || null;
+  return options;
+}
+
+/**
+ * Load the spec. JSON stays JSON - that is the portable contract, and a spec that needs no code
+ * is one a human can review in a diff. A module is allowed because a deck built from a database
+ * or a research pass should not have to be serialised first; it may export the deck, a function
+ * that returns it, or an object with a `deck` field.
+ */
+function loadSpec(file) {
+  const resolved = path.resolve(file);
+  if (!fs.existsSync(resolved)) throw new Error('spec not found: ' + file);
+  const extension = path.extname(resolved).toLowerCase();
+  if (extension === '.json') {
+    const text = fs.readFileSync(resolved, 'utf8');
+    try {
+      return { deck: JSON.parse(text), source: resolved };
+    } catch (error) {
+      throw new Error('spec is not valid JSON (' + file + '): ' + error.message);
+    }
+  }
+  if (extension !== '.js' && extension !== '.cjs') {
+    throw new Error('spec must be .json, .js or .cjs (got ' + extension + '): ' + file);
+  }
+  const loaded = require(resolved);
+  const value = typeof loaded === 'function' ? loaded() : loaded;
+  const deck = value && typeof value === 'object' && value.deck ? value.deck : value;
+  return { deck, source: resolved };
+}
+
+function defaultOutput(source) {
+  const parsed = path.parse(source);
+  return path.join(parsed.dir, parsed.name.replace(/\.spec$/u, '') + '.pptx');
+}
+
+/** Every element that will be drawn, including the children of a container. */
+function flatten(elements, into = []) {
+  (elements || []).forEach((element) => {
+    into.push(element);
+    if (element && Array.isArray(element.children)) flatten(element.children, into);
+  });
+  return into;
+}
+
+function census(elements) {
+  const counts = {};
+  flatten(elements).forEach((element) => {
+    const type = (element && element.type) || 'unknown';
+    counts[type] = (counts[type] || 0) + 1;
+  });
+  return counts;
+}
+
+function describeCensus(counts) {
+  return Object.keys(counts).sort().map((type) => type + ' ' + counts[type]).join(' · ');
+}
+
+function groupWarnings(warnings) {
+  const groups = {};
+  warnings.forEach((warning) => {
+    const code = warning.code || 'OTHER';
+    groups[code] = groups[code] || [];
+    groups[code].push(warning);
+  });
+  return groups;
+}
+
+function humanSummary(lines) {
+  const width = lines.reduce((widest, [label]) => Math.max(widest, label.length), 0);
+  return lines.map(([label, value]) => label.padEnd(width) + '  ' + value).join('\n');
+}
+
+async function main() {
+  let options;
+  try {
+    options = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(String(error.message) + '\n');
+    process.exitCode = 1;
+    return;
+  }
+  if (options.help) {
+    process.stdout.write(USAGE + '\n');
+    return;
+  }
+  if (!options.spec) {
+    process.stderr.write(USAGE + '\n');
+    process.exitCode = 1;
+    return;
+  }
+
+  let loaded;
+  try {
+    loaded = loadSpec(options.spec);
+  } catch (error) {
+    process.stderr.write(String(error.message) + '\n');
+    process.exitCode = 1;
+    return;
+  }
+  const { deck, source } = loaded;
+
+  // A spec that fails validation is not written at all: a partial deck is worse than none,
+  // because the file looks finished.
+  const errors = validateDeck(deck);
+  if (errors.length) {
+    process.stderr.write('spec rejected (' + errors.length + ' error(s)): ' + options.spec + '\n');
+    errors.slice(0, 20).forEach((message) => process.stderr.write('  - ' + message + '\n'));
+    if (errors.length > 20) process.stderr.write('  … and ' + (errors.length - 20) + ' more\n');
+    process.exitCode = 1;
+    return;
+  }
+
+  // A slide is not an element: count what the slides contain, children included.
+  const counts = census(deck.slides.flatMap((slide) => (slide && Array.isArray(slide.elements) ? slide.elements : [])));
+  if (options.check) {
+    const summary = humanSummary([
+      ['spec', path.relative(process.cwd(), source) || source],
+      ['slides', String(deck.slides.length)],
+      ['objects', describeCensus(counts)],
+      ['page', String(deck.pageSize || 'wide')],
+      ['result', 'spec is valid; nothing written (--check)']
+    ]);
+    process.stdout.write((options.json ? JSON.stringify({ ok: true, source, slides: deck.slides.length, objects: counts }) : summary) + '\n');
+    return;
+  }
+
+  const outputPath = path.resolve(options.out || defaultOutput(source));
+  let result;
+  try {
+    result = await generatePptx(deck, outputPath);
+  } catch (error) {
+    process.stderr.write('the writer failed: ' + (error && error.stack ? error.stack : String(error)) + '\n');
+    process.exitCode = 2;
+    return;
+  }
+
+  // The engine reports what it had to guess. Bounds and overflow come from the boxes it really
+  // used (`laidOut`), not from the spec, so they describe the file that was written.
+  const warnings = [];
+  (result.laidOut || []).forEach((elements, index) => {
+    validateSlide(elements, result.pageSize).forEach((warning) => {
+      warnings.push(Object.assign({ slide: index + 1 }, warning));
+    });
+  });
+  const groups = groupWarnings(warnings);
+  const bytes = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : 0;
+  const fontReport = result.fontReport || {};
+  const themeFonts = (deck.theme && deck.theme.fonts) || {};
+  const deckFonts = [themeFonts.heading, themeFonts.body].filter(Boolean).filter((face, index, all) => all.indexOf(face) === index)
+    .join(' / ') || 'theme default';
+
+  if (options.report) {
+    const reportPath = path.resolve(options.report);
+    fs.writeFileSync(reportPath, JSON.stringify({
+      spec: source,
+      outputPath,
+      slides: result.laidOut ? result.laidOut.length : 0,
+      pageSize: result.pageSize,
+      objects: counts,
+      warnings,
+      fonts: fontReport,
+      droppedPictures: result.droppedPictures || [],
+      embeddedFonts: result.embeddedFonts || [],
+      skippedFonts: result.skippedFonts || []
+    }, null, 2) + '\n', 'utf8');
+  }
+
+  if (options.json) {
+    process.stdout.write(JSON.stringify({
+      ok: true,
+      spec: source,
+      outputPath,
+      slides: result.laidOut ? result.laidOut.length : 0,
+      pageSize: result.pageSize,
+      objects: counts,
+      warnings: warnings.length,
+      warningsByCode: Object.keys(groups).reduce((into, code) => Object.assign(into, { [code]: groups[code].length }), {}),
+      fonts: fontReport,
+      droppedPictures: (result.droppedPictures || []).length,
+      bytes
+    }) + '\n');
+  } else if (!options.quiet) {
+    const lines = [
+      ['spec', path.relative(process.cwd(), source) || source],
+      ['slides', String(result.laidOut ? result.laidOut.length : 0)],
+      ['page', result.pageSize ? result.pageSize.width + ' x ' + result.pageSize.height + ' in' : 'unknown'],
+      ['objects', describeCensus(counts)],
+      ['metrics', fontReport.fontkitAvailable ? 'fontkit: real face metrics' : 'fontkit: absent (estimates only)'],
+      // The faces the deck asks for, which is what a reader has to have; the metric files are
+      // how this machine measured them, and their absence is worth knowing too.
+      ['fonts', deckFonts + (fontReport.configuredFaces && fontReport.configuredFaces.length
+        ? ' · metrics from ' + fontReport.configuredFaces.length + ' face file(s)'
+        : ' · no face files: wrap is estimated')],
+      ['warnings', warnings.length ? Object.keys(groups).sort().map((code) => code + ' ' + groups[code].length).join(' · ') : 'none'],
+      ['wrote', path.relative(process.cwd(), outputPath) + ' (' + Math.max(1, Math.round(bytes / 1024)) + ' KB)']
+    ];
+    if ((result.droppedPictures || []).length) {
+      lines.push(['dropped', (result.droppedPictures || []).length + ' picture(s) could not be read; named in the report']);
+    }
+    process.stdout.write(humanSummary(lines) + '\n');
+    Object.keys(groups).sort().forEach((code) => {
+      groups[code].slice(0, 5).forEach((warning) => {
+        process.stderr.write('  [' + code + '] slide ' + warning.slide + ': ' + warning.message + '\n');
+      });
+      if (groups[code].length > 5) process.stderr.write('  [' + code + '] … and ' + (groups[code].length - 5) + ' more\n');
+    });
+  }
+
+  if (options.strict && warnings.length) process.exitCode = 1;
+}
+
+main().catch((error) => {
+  process.stderr.write(String(error && error.stack ? error.stack : error) + '\n');
+  process.exitCode = 2;
+});

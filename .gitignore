@@ -15,6 +15,7 @@ pipeline-converted/
 native-theme-profile/
 native-image-assets/
 native-stress-assets/
+pptx/native/native-*.json
 
 # Python
 __pycache__/

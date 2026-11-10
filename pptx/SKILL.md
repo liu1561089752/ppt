@@ -62,18 +62,26 @@ python ooxml/scripts/unpack.py <office_file> <output_dir>
 When user upload pptx and ask for to use it as template ,do not follow this section routine! follow ## Editing an existing PowerPoint presentation（pptx）instead
 ### Renderer selection — highest-priority rule
 
-For **new presentations**, use **Native PowerPoint mode by default**. Do not create HTML slide files and do not run `batch_html2pptx.js` for a new deck unless the user explicitly requests HTML output or needs exact reproduction of an existing HTML/CSS slide source that the native components cannot represent.
+**The product is the native generator: a Deck Spec in, a native .pptx out.** For every new deck,
+author a Deck Spec and run
+
+```bash
+cd pptx/native
+node cli.js <spec.json|spec.js> out.pptx --report out.json   # the tool (see native/README.md)
+```
+
+Do not create HTML slide files for a new deck, and do not run `batch_html2pptx.js`. The HTML
+converter still exists for decks that were authored as HTML: it reconstructs boxes from CSS and
+keeps a raster fallback for SVG artwork and gradient canvases, so it is a migration path, not a
+renderer. Never present its output as the native tool's.
 
 Native workflow:
 1. Keep the content work in Stages 1–3 below: clarify the brief, research, build the story, and plan slide-by-slide design.
-2. For a reference PPTX, run `python pptx/scripts/extract_native_design.py <reference.pptx> <design_dir>` and use its design tokens and geometry patterns. For an HTML/CSS design reference, run `python pptx/scripts/extract_html_design_tokens.py <reference.html-or-css> <design_dir>`, inspect `theme.json` and `design-tokens.json`, and use the reviewed theme as `deck.theme`. Keep `source.css` as the fidelity reference; token extraction is best-effort, not a full CSS renderer.
-3. Create a structured Deck Spec (JSON-compatible data) with ordered slides and semantic elements. Treat the visual design as a first-class input: preserve the reference's palette, typography, spacing rhythm, hierarchy, card treatment, image composition, and distinctive layout patterns. Pass the shared theme into templates/components rather than relying on their defaults. Do not reduce expressive source designs to generic title-plus-divider slides. Use native text, shapes, tables, charts, and connectors for editable content; use SVG/image assets selectively for complex illustration, texture, or browser-only effects—not as a rasterized full-slide substitute.
-3a. Prefer expressive Native layout patterns where they fit the story: `templates.hero()` for asymmetric launch/cover pages and `templates.editorial()` for evidence-led two-column pages. These templates consume the shared theme, including extracted gradient/shadow tokens when present; they remain editable shapes and text rather than flattened slide images.
-4. Generate with `require('./pptx/native').generatePptx(deck, outputPath)`, or use `pptx/batch_native_pptx.js` for multiple JSON Deck Specs.
-5. Inspect the generation report, run the CI-equivalent LibreOffice render check, and review the PDF/PNG previews for wrapping, overflow, missing fonts, object collisions, and visual hierarchy. Report any unresolved warnings.
-6. Keep speaker notes in the Deck Spec slide's `notes` field; the Native renderer writes them to the PowerPoint notes part.
-
-Use the HTML compatibility workflow below only for existing HTML slide projects, explicit HTML deliverables, or visual effects not yet supported by Native components. Changing renderers must not mean discarding the original design language: when migrating an HTML reference to Native, carry forward the extracted theme and manually translate important CSS compositions/effects into editable PowerPoint elements or targeted vector assets. Existing PPTX template editing follows the dedicated editing section.
+2. For a reference PPTX, run `python pptx/scripts/extract_native_design.py <reference.pptx> <design_dir>` and use its design tokens.
+3. Author the Deck Spec: JSON for a hand-written deck (`examples/native-cover.spec.json`), or a JS module using `templates.*` / `components.*` (`examples/native_deck_spec.js`). Positions are inches; the theme carries colours, fonts and sizes.
+4. Build it with `node native/cli.js <spec> <out.pptx>` (or `require('./pptx/native').generatePptx(deck, path)`). `--check` validates without writing; `--strict` makes bounds/overflow/overlap warnings fatal; `--report` writes the census.
+5. Prove it: `node pptx/native/scripts/audit_deck.js <deck> --min-text-shapes 0` (per-slide native-object census, no page raster), `python pptx/native/scripts/render_check.py <deck>` and look at the PNGs, `python pptx/native/scripts/check_text_fit.py <deck>` for wrapping.
+6. Keep speaker notes in the slide's `notes` field; they go to the notes part.
 
 You are an elite presentation design agent. You produce beautiful, content-rich, editable PowerPoint decks. Native PowerPoint objects are the default output for new presentations; standalone HTML pages are the compatibility path for legacy HTML slide sources.
 

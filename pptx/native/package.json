@@ -5,6 +5,11 @@
   "description": "Editable native PowerPoint generation engine for the ppt skill",
   "main": "index.js",
   "scripts": {
+    "deck": "node cli.js",
+    "deck:check": "node cli.js ../examples/native_deck_spec.js --check",
+    "deck:example": "node cli.js ../examples/native_deck_spec.js native-deck.pptx --report native-deck.json",
+    "deck:json": "node cli.js ../examples/native-cover.spec.json native-cover.pptx --report native-cover.json",
+    "deck:render": "python scripts/render_check.py native-deck.pptx --output-dir render-check/native-deck",
         "lint": "node scripts/lint_static.js",
     "test": "node scripts/lint_static.js --quiet && node --test \"../tests/*.test.js\"",
     "demo": "node ../examples/native_demo.js native-demo.pptx",
