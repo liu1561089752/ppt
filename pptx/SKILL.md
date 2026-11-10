@@ -273,6 +273,10 @@ STAGE 4 — BUILD (fan out `Agent` sub-agents to write the pages)
 Every page — cover / body / closing — is committed by a `ppt` sub-agent that calls `Write` itself. The main agent NEVER writes page modules. This keeps the work uniformly parallel and removes any temptation to serialize it onto the main turn.
 
   • `Agent(subagent_type="ppt-expert", description=..., prompt=...)` — spawn a sub-agent that writes a CONTIGUOUS RANGE of pages. Use it for every page in the deck. Single-page groups are fine when a section (or the cover) stands alone.
+  • **If you cannot spawn sub-agents** (some harnesses cap depth at 1, so an agent that is itself a
+    sub-agent gets `subagent depth 2 exceeds maxDepth 1`), write every page module yourself, in brief
+    order, one page at a time. Stage 3's `theme.js` and `slides_brief.json` remain mandatory — they
+    are what keeps 25 sequential pages consistent — and every build/verify step below still applies.
 
   1. Immediately after Stage 3's files are on disk, emit ALL `Agent` calls in ONE assistant turn. Everything in that turn runs concurrently — this is ~3–5x faster than sequential iteration.
 
@@ -315,7 +319,7 @@ Every page — cover / body / closing — is committed by a `ppt` sub-agent that
        - every colour comes from `theme.colors.*`, every font size from `theme.sizes.*`, every gap/inset from `theme.spacing.*`; never hard-code a hex, a point size or a margin
        - positions and sizes are INCHES on a 13.333 x 7.5 canvas; keep text inside x 0.9..12.43 and y 0.62..6.88 unless the design bleeds a shape on purpose
        - render EVERY fact / headline / bullet / stat / quote / image path in `task_brief` verbatim
-       - images: `{ type: 'image', src: 'assets/xxx.jpg', x, y, w, h, fit: 'cover', focus: 'center' }` — the file must already exist beside the deck; never invent a path, never use a URL
+       - images: `{ type: 'image', path: 'assets/xxx.jpg', x, y, w, h, fit: 'cover', focus: 'center' }` — the field is `path` (or a `data:` blob), NOT `src`; a `src` fails validation with "requires path or data". The file must already exist beside the deck; never invent a path, never use a URL
        - a chart is a `chart` element with real `data` (name/labels/values), never a picture of a chart; a table is a `table` element with `rows`, never a stack of text boxes
        - speaker notes: if `speaker_notes` is `short`/`full`, fill `notes` (`short` = 3–5 bullet hints, `full` = ~80–150 word script; match the deck language; cover any `notes_must_include:` points). If `none`, omit it.
        - obey every constraint in the NATIVE QUALITY BAR (text density, contrast, element discipline, no rasterised page)
@@ -359,6 +363,12 @@ node <engine>/cli.js deck.js out.pptx --report out.json --layout-out layout.json
   • `warnings none` is the target. A warning names its page and its box: `OUT_OF_BOUNDS` (a box escapes the canvas — a decorative shape may bleed on purpose, a text box may not), `TEXT_OVERFLOW_RISK` (the measured text needs more height than its box has), `TEXT_OVERLAP` (two text boxes intersect).
   • Fix the **geometry or the copy**, in the page module, and re-run. Do not "fix" a warning by deleting the words the user asked for, and never by shrinking a font below `theme.sizes.caption`.
   • `--strict` on the final build is the release condition: `node <engine>/cli.js deck.js out.pptx --strict`.
+  • **Read the `fonts` line and do not ignore it.** `Microsoft YaHei · no face files: wrap is estimated`
+    means the wrap was computed from fallback metrics, not from the real face: the line count — and
+    therefore every block placed under that text — is an estimate, and `--strict` does **not** fail
+    on it. A page whose text sits tight against its box is a suspect page: give such a box slack, or
+    break the line yourself with an explicit `\n`, and re-render. Installing the face makes the
+    measurement exact; nothing on this machine can tell you how PowerPoint will break the same line.
 
 **Step 4.7 — look at it.** A deck that passes the gates can still look wrong.
 
@@ -626,7 +636,7 @@ Exit codes: `0` written · `1` spec rejected (nothing written) · `2` writer fai
 | `text` | text box with runs | `text` (string or run array), `x/y/w/h`, `fontSize`, `fontFace`, `bold`, `italic`, `color`, `align`, `valign`, `lineSpacing`, `lineSpacingMultiple`, `charSpacing`, `bullet`, `transparency` |
 | `shape` | `p:sp` | `fill`, `gradient`, `lineColor`, `lineWidth`, `radius`, `shadow`, `rotate`, `transparency`, `hyperlink` |
 | `line` | connector | `color`, `width`, `dash`, `beginArrowType`, `endArrowType` |
-| `image` | `p:pic` | `src` (relative path or data URI), `fit` (`cover`/`contain`/`crop`/`fill`/`none`/`scale-down`), `crop`, `focus`, `radius`, `outline`, `shadow`, `tile` |
+| `image` | `p:pic` | `path` (relative path, or `data:` a URI — `src` is NOT a field), `fit` (`cover`/`contain`/`crop`/`fill`/`none`/`scale-down`), `crop`, `focus`, `radius`, `outline`, `shadow`, `tile` |
 | `table` | `a:tbl` | `rows` (`[["a","b"]]` or `[[{ "text": "a", "options": {…} }]]`), `colW`, `rowH`, cell `rowspan`/`colspan`, `fill`, `border`, `valign`, `bullet` |
 | `chart` | `c:chart` + embedded `.xlsx` | `chartType` (`bar`/`line`/`pie`/`doughnut`/`area`/`radar`/`scatter`/`bubble`), `data` (`[{ name, labels, values }]`), `options` (`showLegend`, `legendPos`, `showValue`, `dataLabelPosition`, `chartColors`, `gridlines`, `seriesLineStyles`, …) |
 | `container` | declarative grouping | `layout` (`flow`/`grid`/`flex`), `children`, `gap` / `rowGap` / `columnGap` / `crossGap`, `padding`; a child may declare `columnSpan` / `rowSpan` |
@@ -652,7 +662,7 @@ The worked example is `<engine>/../examples/native_deck_spec.js` (six pages, fou
 | visual golden (7 decks / 35 pages) | `python <engine>/scripts/visual_golden.py` |
 | text fit (measured vs drawn) | `python <engine>/scripts/check_all_text_fit.py` |
 | stress (N generated pages) | `node <engine>/scripts/stress_spec.js --slides 40 --seed 7` |
-| OOXML integrity | `python <engine>/scripts/verify_native_ooxml.py <deck.pptx>` |
+| OOXML integrity | `python <engine>/scripts/verify_native_ooxml.py <deck.pptx>` (`uneven_tables` counts tables whose column widths differ — a design feature, not a defect; `invalid_enums` and `integrity_problems` must both be 0) |
 | object census | `node <engine>/scripts/audit_deck.js <deck.pptx> --min-text-shapes 0` |
 | third reader | `python <engine>/scripts/verify_with_python_pptx.py --deck <deck.pptx> --round-trip` |
 

@@ -1109,3 +1109,38 @@ test('the catalogue of what the engine cannot draw matches the code', () => {
   assert.ok(Number(summary[1]) > 50, 'the engine refuses more than fifty things, got ' + summary[1]);
   assert.ok(Number(summary[2]) > 50, 'the schema holds more than fifty rules, got ' + summary[2]);
 });
+test('tracking is measured, not just written', () => {
+  // `charSpacing` reaches the writer as `a:rPr@spc`, and for a long time it stopped there: the
+  // measurement never saw it, so the wrap put more characters on a line than the render did and
+  // the box reserved one line fewer than it drew.
+  const body = '把渠道成本摊开来看，单车毛利才是一句实话，其余都是口径。';
+  const plain = { type: 'text', text: body, x: 0.5, y: 0.5, w: 2.6, h: 0.4, fontSize: 14 };
+  const tracked = Object.assign({}, plain, { charSpacing: 4 });
+  const layoutOf = (element) => layoutSlide({ elements: [element] }, { width: 13.333, height: 7.5 })[0];
+  const fromPlain = layoutOf(plain);
+  const fromTracked = layoutOf(tracked);
+  const widest = (element) => Math.max.apply(null,
+    String(element._renderText).split('\n').map((line) => Array.from(line).length));
+  assert.notEqual(fromTracked._renderText, fromPlain._renderText, 'the wrap sees the tracking');
+  assert.ok(widest(fromTracked) < widest(fromPlain),
+    'a tracked line holds fewer characters: ' + widest(fromTracked) + ' vs ' + widest(fromPlain));
+  assert.ok(fromTracked._requiredTextHeight >= fromPlain._requiredTextHeight,
+    'and the box is never reserved smaller than before: ' + fromTracked._requiredTextHeight);
+});
+
+test('a closing quotation mark never starts a line', () => {
+  // The kinsoku pass carried 。and ，back to the line above but not the quotes, so a sentence that
+  // ended in a quotation mark had the mark sitting at the head of the next line.
+  const lines = wrapText('行业里有一句话说得对：“毛利才是实话，份额只是过程。”所以我们要看单车毛利。', 4.2, 16).split('\n');
+  assert.ok(lines.length > 1, 'the sample wraps: ' + JSON.stringify(lines));
+  lines.forEach((line, index) => {
+    assert.ok(!/^[”’»›]/u.test(line), 'line ' + index + ' starts with a closing mark: ' + line);
+  });
+});
+
+test('an opening quotation mark never ends a line', () => {
+  const lines = wrapText('会议纪要里写着：他说“明年的重点是把渠道成本压到最低”，这句话要落到预算里。', 3.4, 16).split('\n');
+  lines.forEach((line, index) => {
+    assert.ok(!/[“‘«‹]$/u.test(line), 'line ' + index + ' ends with an opening mark: ' + line);
+  });
+});

@@ -167,6 +167,13 @@ function prepareElement(source, availableWidth, theme = {}, options = {}) {
     // at the box *width* would invent line breaks that never render. The analyzer
     // already decided the box; here we only need a height that does not shrink it.
     if (element.vert) measureOptions.noWrap = true;
+    // Tracked text occupies more than its glyphs, and measureTextPt charges
+    // letterSpacingPt per character. Without it, a tracked kicker measured narrower than it
+    // draws, so its box reserved one line fewer than the render used - and the next block was
+    // placed on top of the overflow.
+    if (Number.isFinite(element.charSpacing) && element.charSpacing !== 0) {
+      measureOptions.letterSpacingPt = element.charSpacing;
+    }
     // The first-line indent narrows the first line, so the wrap sees it; the height
     // measures the already wrapped text and must not apply it a second time.
     const wrapOptions = Object.assign({}, measureOptions);

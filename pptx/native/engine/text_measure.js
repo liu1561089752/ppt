@@ -37,8 +37,11 @@ function measureTextPt(text, fontSizePt, options = {}) {
 }
 
 function normalizeCjkLineBreaks(lines) {
-  const leadingPunctuation = new Set(Array.from('，。！？：；、）》】」』〕〉〗〙〛,.!?;:%)]}'));
-  const trailingOpening = new Set(Array.from('（【「『〔〈〖〘〚([{'));
+  // Marks that may not start a line, and marks that may not end one. The quotes are here
+  // because without them a sentence that closes with a quotation mark had the mark carried to
+  // the head of the next line - a typographic error, and one a reader notices immediately.
+  const leadingPunctuation = new Set(Array.from('，。！？：；、）》】」』〕〉〗〙〛”’»›,.!?;:%)]}'));
+  const trailingOpening = new Set(Array.from('（【「『〔〈〖〘〚《“‘«‹([{'));
   if (lines.length < 2) return lines;
   // Repeat until nothing moves. One pass is not enough: carrying a mark back can leave the
   // previous line ending with an opening bracket, and that has to be pushed forward again.

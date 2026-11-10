@@ -77,7 +77,7 @@ touching the disk).
 | `text` | text box with runs | `fontSize` (pt), `bold`, `italic`, `color`, `align`, `valign`, `lineSpacing`, `charSpacing`, `paragraphs`, `text` as a run array for mixed styling |
 | `shape` | `p:sp` | `fill`, `gradient`, `lineColor`, `lineWidth`, `radius`, `shadow`, `rotate`, `transparency` |
 | `line` | connector | `color`, `width`, `dash`, `endArrowType` |
-| `image` | `p:pic` | `path`/`src`, `fit` (`cover`, `contain`, `crop`, `fill`, `none`), `crop`, `focus`, `alt` |
+| `image` | `p:pic` | `path` (or `data:`), `fit` (`cover`, `contain`, `crop`, `fill`, `none`), `crop`, `focus`, `alt` |
 | `table` | `a:tbl` | `rows` (strings or `{text, options}`), `colW`, `rowH`, cell `rowspan`/`colspan`, `fill`, `border` |
 | `chart` | `c:chart` + embedded `.xlsx` | `chartType` (`bar`, `line`, `pie`, `doughnut`, `area`, `scatter`, `bubble`, `radar`), `data`, `options` |
 | `container` | declarative grouping | `layout` (`flow`, `grid`, `flex`), children with `gridColumnStart`/`span` |
