@@ -16,8 +16,14 @@ the wrong test for "did they agree". Downscaling by a factor averages a glyph do
 few pixels, which leaves a real disagreement - a block in the wrong place, a missing
 shape, different spacing - as the dominant signal.
 
+A page whose text the reader flows itself (a columned body, for one) cannot be compared glyph
+by glyph: each implementation wraps with its own fonts, so the ink inside the box moves. Those
+pages are not skipped - `--flowed` judges the smaller claim that must hold: the text starts in
+the same place in both readers and both found about the same amount of ink. The far edges
+follow each reader's own line breaks and are reported, not judged.
+
 Usage:
-    python compare_renderers.py --a lorender/ --b wpsrender/ [--downscale 4]
+    python compare_renderers.py --a lorender/ --b wpsrender/ [--downscale 4] [--flowed 1]
 """
 
 from __future__ import annotations
@@ -81,6 +87,43 @@ def ink_agreement(reference: Image.Image, actual: Image.Image) -> dict:
     return {"ink_iou": round(iou, 6), "ink_ratio": round(ratio, 6)}
 
 
+def block_bounds(image: Image.Image):
+    """The rectangle the ink occupies, or None for a blank page."""
+    return ink_mask(image).getbbox()
+
+
+def flowed_agreement(first: Image.Image, second: Image.Image, tolerance: float) -> dict:
+    """Two readers agree on where a reader-flowed text starts and how much of it there is.
+
+    A text box whose lines the reader breaks itself cannot be compared glyph by glyph across
+    readers: each implementation wraps with its own fonts, so the ink inside the box moves.
+    Its *right and bottom* edges cannot agree either - they are where the last line happened
+    to end. What must agree is where the text starts (the box's content origin, which is what
+    this engine places) and that both readers found about the same amount of ink (neither
+    dropped a column). Both are smaller claims than the pixel judge, and both are real: the
+    first fails when a box is placed or inset wrong, the second when a reader loses the flow.
+    """
+    first_mask = ink_mask(first)
+    second_mask = ink_mask(second)
+    first_box = first_mask.getbbox()
+    second_box = second_mask.getbbox()
+    if first_box is None or second_box is None:
+        return {"check": "flowed text start", "block_agree": False, "block_delta_px": None,
+                "block_note": "one of the pages carries no ink"}
+    width, height = first.size
+    limit = tolerance * max(width, height)
+    start_delta = max(abs(first_box[0] - second_box[0]), abs(first_box[1] - second_box[1]))
+    first_ink = first_mask.histogram()[255]
+    second_ink = second_mask.histogram()[255]
+    ratio = min(first_ink, second_ink) / max(first_ink, second_ink) if max(first_ink, second_ink) else 1.0
+    agree = start_delta <= limit and ratio >= 0.8
+    return {"check": "flowed text start", "block_agree": agree,
+            "block_delta_px": start_delta, "block_limit_px": round(limit, 1),
+            "ink_ratio_flowed": round(ratio, 3),
+            "block_a": list(first_box), "block_b": list(second_box),
+            "block_note": "the far edges follow each reader's own line breaks; they are reported, not judged"}
+
+
 def self_check() -> int:
     """Four controls: the ink judge must pass a glyph-level shift, pass a thickness change
     and fail a block that actually moved. A judge that cannot be falsified is not a judge."""
@@ -110,6 +153,16 @@ def self_check() -> int:
     controls.append(("a block in the wrong place", displaced["ink_iou"] < 0.60))
     # Measured separation on real renders: two readers land at 0.81-0.99, a block moved by
 
+    # The flowed judge makes a smaller claim, so it needs its own controls: the same start with
+    # different line breaks must pass, and a start that moved must fail.
+    same_start = plate([(50, 50, 150, 70), (50, 70, 340, 90)])
+    other_breaks = plate([(50, 50, 120, 70), (50, 70, 300, 90), (50, 90, 200, 110)])
+    controls.append(("flowed text, same start, other line breaks",
+                     flowed_agreement(same_start, other_breaks, 0.02)["block_agree"]))
+    moved_down = plate([(50, 90, 150, 110), (50, 110, 340, 130)])
+    controls.append(("flowed text whose start moved",
+                     not flowed_agreement(same_start, moved_down, 0.02)["block_agree"]))
+
     failed = [name for name, ok in controls if not ok]
     if failed:
         print("Self-check failed: " + ", ".join(failed))
@@ -135,6 +188,10 @@ def main() -> int:
     parser.add_argument("--skip", type=str, default="",
                         help="1-based slide numbers to leave out, e.g. 1,4 - for pages whose text a reader flows itself")
     parser.add_argument("--min-ink", type=float, default=0.72)
+    parser.add_argument("--flowed", type=str, default="",
+                        help="1-based slide numbers whose text the reader flows itself; judged on the ink block");
+    parser.add_argument("--flowed-tolerance", type=float, default=0.02,
+                        help="how far the ink block may move between readers, as a fraction of the page")
     parser.add_argument("--self-check", action="store_true",
                         help="run the ink judge against three synthetic controls and exit")
     args = parser.parse_args()
@@ -142,6 +199,7 @@ def main() -> int:
         return self_check()
 
     skipped = {int(part) for part in str(args.skip).replace(' ', '').split(',') if part.isdigit()}
+    flowed = {int(part) for part in str(args.flowed).replace(' ', '').split(',') if part.isdigit()}
     if not args.a or not args.b:
         raise SystemExit("--a and --b are required unless --self-check is used")
     first = slide_files(args.a)
@@ -160,8 +218,13 @@ def main() -> int:
         passed = (values["mae"] <= args.max_mae
                   and values["changed_pixel_ratio"] <= args.max_changed
                   and values["ink_iou"] >= args.min_ink)
-        if (index + 1 in skipped):
+        if index + 1 in skipped:
             results.append({"slide": index + 1, "status": "skipped", **values})
+        elif index + 1 in flowed:
+            flowed_values = flowed_agreement(scaled_first, scaled_second, args.flowed_tolerance)
+            results.append({"slide": index + 1,
+                            "status": "pass" if flowed_values["block_agree"] else "fail",
+                            **values, **flowed_values})
         else:
             results.append({"slide": index + 1, "status": "pass" if passed else "fail", **values})
     report = {
@@ -175,6 +238,8 @@ def main() -> int:
         # mistaken for a pass.
         "passed": all(item["status"] != "fail" for item in results),
         "skipped": sum(1 for item in results if item["status"] == "skipped"),
+        # A flowed page is judged, but on a smaller claim: the block its text fills.
+        "flowed": sum(1 for item in results if item.get("check") == "flowed text block"),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["passed"] else 1
