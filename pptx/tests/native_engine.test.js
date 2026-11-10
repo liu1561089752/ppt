@@ -5837,6 +5837,40 @@ test('an unstyled document still reads as a document', () => {
   assert.ok(!styledHeading.bold, 'and the weight is the author\u2019s too');
 });
 
+test('a margin escapes a padding-less parent, and a flex box keeps it inside', () => {
+  // Chrome, measured on this markup, slide-relative: the plain card is at 0 and its child at 0
+  // (the child's 20px margin escaped through the parent, which has no padding to stop it);
+  // the padded card is at 42 and its child at 72 (10px of padding plus the 20px margin);
+  // the flex card is at 124 and its child at 144 (a flex container is a formatting context,
+  // so the margin stays inside and does not collapse with the parent's).
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; }',
+    '  .card { width: 300px; margin: 12px 0 0; background: #EEEEEE; }',
+    '  .padded { width: 300px; margin: 12px 0 0; padding: 10px; background: #DDDDDD; }',
+    '  .flexcard { width: 300px; margin: 12px 0 0; background: #E8E8E8; display: flex; flex-direction: column; }',
+    '  .kid { height: 30px; margin: 20px 0 0; background: #CCCCCC; }',
+    '</style></head><body><main class="slide">',
+    '  <section class="card"><div class="kid"></div></section>',
+    '  <section class="padded"><div class="kid"></div></section>',
+    '  <section class="flexcard"><div class="kid"></div></section>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const elements = result.deck.slides[0].elements;
+  const tops = elements.map((element) => Math.round(element.y * 96 * 10) / 10);
+  // The padded card's child sits inside the container (not a top-level box); the flex card's
+  // child does not, because a flex child with margins is a fallback the container model does
+  // not carry - reported, and drawn at its own coordinates.
+  assert.deepEqual(tops, [0, 0, 42, 124, 144], 'tops: ' + JSON.stringify(tops));
+  assert.equal(elements.length, 5);
+  const heights = elements.map((element) => Math.round(element.h * 96 * 10) / 10);
+  assert.deepEqual(heights, [30, 30, 70, 50, 30], 'heights: ' + JSON.stringify(heights));
+  const fallbacks = result.report.containerFallbacks.map((entry) => entry.reason);
+  assert.ok(fallbacks.some((reason) => reason === 'flex child declares margins'),
+    'the fallback is named: ' + JSON.stringify(fallbacks));
+});
+
 test('two margins between blocks become one gap, and a negative one keeps its pull', () => {
   // Chrome, measured on this exact markup: tops 40 / 104 / 134. The gap after the first block
   // is max(24px bottom, 16px top) = 24 - not 40 - and the third block is pulled up 10px by its

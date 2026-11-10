@@ -2793,6 +2793,15 @@ function collapsesThroughParent(style) {
   // but a box that paints an edge keeps its margin inside either way, and that is the
   // conservative answer.
   const painted = Boolean(parseBorder(style));
+  // A box that starts a block formatting context keeps its children's margins to itself:
+  // a flex or grid container, an absolutely positioned box, a scroll container, a float.
+  // Chrome asked directly: the same h3 inside `display: flex` sits 0px from its parent and
+  // the parent keeps its own margin, while inside a plain div the h3's margin escapes.
+  const display = String(style.display || '').toLowerCase();
+  const formattingContext = /flex|grid|table|flow-root/u.test(display)
+    || isAbsolute(style) || floatOf(style)
+    || (style.overflow !== undefined && String(style.overflow).toLowerCase() !== 'visible');
+  if (formattingContext) return { top: false, bottom: false };
   return {
     top: !(padding.top > 0) && !painted,
     bottom: !(padding.bottom > 0) && !painted
@@ -2812,8 +2821,24 @@ function effectiveMargins(domNode, style, ctx, context) {
   // Marked before recursing: a guard against a cycle costs nothing and keeps a broken tree
   // from overflowing the stack.
   cache.set(domNode, result);
-  // Only the sibling rule is applied. The through-parent rule - a padding-less parent letting
-  // its first child's margin escape - moves every box on a page, and it is its own change.
+  const flow = elementChildren(domNode).filter((child) => {
+    const childStyle = ctx.styles.computed(child);
+    if (childStyle.display === 'none' || childStyle.display === 'inline') return false;
+    if (isAbsolute(childStyle) || floatOf(childStyle)) return false;
+    return true;
+  });
+  if (!flow.length) return result;
+  const through = collapsesThroughParent(style);
+  if (through.top) {
+    const firstNode = flow[0];
+    const first = effectiveMargins(firstNode, ctx.styles.computed(firstNode), ctx, context);
+    result.top = Math.max(0, result.top, first.top) + Math.min(0, result.top, first.top);
+  }
+  if (through.bottom) {
+    const lastNode = flow[flow.length - 1];
+    const last = effectiveMargins(lastNode, ctx.styles.computed(lastNode), ctx, context);
+    result.bottom = Math.max(0, result.bottom, last.bottom) + Math.min(0, result.bottom, last.bottom);
+  }
   return result;
 }
 
@@ -2835,7 +2860,7 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
   const soloHeight = visible.length === 1 ? contentBox.h : null;
   let floatedBefore = false;
   // The parent's own padding/border decides whether its first child's margin escapes it.
-  const parentCollapsesTop = false;
+  const parentCollapsesTop = collapsesThroughParent(ctx.styles.computed(domNode)).top;
   let pendingMarginTop = 0;
   let firstInFlow = true;
   for (let index = 0; index < visible.length; index += 1) {
@@ -2925,6 +2950,9 @@ function layoutFlow(domNode, contentBox, inherited, ctx) {
     }
     const margins = effectiveMargins(child, childStyle, ctx,
       { parentWidth: contentBox.w, fontSizePx: inherited.fontPx });
+    // The first in-flow child's top margin has already escaped through a padding-less parent
+    // (it is in that parent's own margin), so it must not be counted again here.
+    if (firstInFlow && parentCollapsesTop) margins.top = 0;
     // Adjacent siblings collapse into one gap: `cursor` is the previous block's content
     // bottom, and the two margins become a single value here. Positive margins take the
     // larger, negative margins are added to it (CSS 2.1 8.3.1) - a "max" alone would let a
