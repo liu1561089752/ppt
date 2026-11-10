@@ -1720,6 +1720,12 @@ function analyzeNode(domNode, slot, inherited, ctx) {
   if (accent) {
     node.edge = { side: accent.side, width: accent.border.width, color: accent.border.color };
     if (accent.border.dash) node.edge.dash = accent.border.dash;
+    // The strip is a border, so a container's content starts inside it: the declared padding
+    // plus the strip's width on that one side, which is what the child's slot already used.
+    const inset = accent.border.width / 72;
+    const padding = Object.assign({ top: 0, right: 0, bottom: 0, left: 0 }, node.padding || {});
+    padding[accent.side] = Number((padding[accent.side] + inset).toFixed(4));
+    node.padding = padding;
   }
   return node;
 }
@@ -1975,10 +1981,16 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     recordUnsupported(ctx, domNode, 'outline', style.outline,
       'A shape carries one line: the outline sits beside a border here, so the border is what draws');
   }
-  const insetLeft = padding.left + (border ? border.width / 72 : 0);
-  const insetTop = padding.top + (border ? border.width / 72 : 0);
-  const insetRight = padding.right + (border ? border.width / 72 : 0);
-  const insetBottom = padding.bottom + (border ? border.width / 72 : 0);
+  // A single declared border side is drawn as a strip on the box's edge, but it is still a
+  // border: CSS puts the content box inside it, so a 4px accent pushes the words 4px in and
+  // takes 4px off the content width. Reading it only in `analyzeNode` (where the strip is
+  // created) was too late for the layout.
+  const singleSide = domNode.tag === 'td' || domNode.tag === 'th' ? null : singleBorderSide(style);
+  const edgeInset = (side) => (singleSide && singleSide.side === side ? singleSide.border.width / 72 : 0);
+  const insetLeft = padding.left + (border ? border.width / 72 : 0) + edgeInset('left');
+  const insetTop = padding.top + (border ? border.width / 72 : 0) + edgeInset('top');
+  const insetRight = padding.right + (border ? border.width / 72 : 0) + edgeInset('right');
+  const insetBottom = padding.bottom + (border ? border.width / 72 : 0) + edgeInset('bottom');
 
   let width = slot.w === null || slot.w === undefined ? null : slot.w;
   // With an auto height, `aspect-ratio` means "the height follows the used width".

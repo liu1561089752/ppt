@@ -77,7 +77,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | text-transform full-width | ASCII printables map onto U+FF01-FF5E; uppercase/lowercase/capitalize unchanged |
 | grid/flex parity | Chrome-measured allocation (1fr 2fr -> 396.7/793.3; flex-basis 30% -> 360/360) pinned in the suite |
 | outline | Uniform ring becomes the shape line (colour + dash), no layout space; border wins when both are declared |
-| a single-side border, drawn | one strip shape on the box's edge - now for containers and for groups that fall back, too (it used to stop at the spec and never reach the slide) |
+| a single-side border, drawn | one strip shape on the box's edge - for containers, containers' children and fallback groups alike - and its width is part of the inset, so the content starts inside it |
 | logical properties | Aliased to physical sides at declaration time (one writing mode modelled); inset uses the box-shorthand expansion, ltr left-wins Chrome-verified |
 | relative/sticky shift | Applied at every level incl. top-level containers and text; the flow hole stays at the static position; regression test reads a:off from the written file |
 | semantic elements | Tables, figures, anchors, mark/sub/sup, nested lists and dl all translate natively; a file-level test pins hyperlink rels, a:highlight and the subscript baseline |

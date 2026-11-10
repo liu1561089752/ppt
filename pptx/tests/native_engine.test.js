@@ -5610,6 +5610,25 @@ test('border-radius: 50% is the inscribed ellipse, smaller percentages are named
 });
 
 
+test('a border side is a border: the content starts inside it', () => {
+  // A single-side border is drawn as a strip, but CSS still treats it as a border: the content
+  // box sits inside it. Chrome, on this markup, puts the first line 26px from the card's left
+  // edge (4px of border plus 22px of padding) and leaves 22px on the right.
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; background: #FBFAF7; }',
+    '  .card { width: 300px; padding: 20px 22px; background: #FFFFFF;',
+    '    border-left: 4px solid #2F5D50; }',
+    '</style></head><body><main class="slide"><div class="card">盒子里的文字</div></main></body></html>'
+  ].join('\n');
+  const card = pipeline.convertHtml(html).deck.slides[0].elements[0];
+  assert.equal(card.type, 'container');
+  assert.equal(card.edge.side, 'left');
+  assert.ok(Math.abs(card.padding.left * 96 - 26) < 0.2, 'left inset: ' + (card.padding.left * 96).toFixed(2));
+  assert.ok(Math.abs(card.padding.right * 96 - 22) < 0.2, 'right inset: ' + (card.padding.right * 96).toFixed(2));
+  assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
+});
+
 test('a single-side border reaches the slide as a strip, scaled or not', async () => {
   // `border-left` is not a shape edge in DrawingML: it is a thin filled rectangle on the box's
   // own edge. It travelled as far as the spec and stopped - a container's accent bar was never
