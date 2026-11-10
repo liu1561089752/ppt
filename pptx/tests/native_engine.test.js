@@ -5654,6 +5654,24 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('every example deck is one the gates convert', () => {
+  // The reader gates read `pipeline-converted/`, which is generated. A new example that no gate
+  // converts is a fixture nobody checks, so the conversion list is pinned to the examples on disk:
+  // adding an example means adding it here, and `npm run pipeline:all` picks it up.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { execFileSync } = require('node:child_process');
+  const native = path.join(__dirname, '..', 'native');
+  const listed = execFileSync(process.execPath, [path.join(native, 'scripts', 'convert_examples.js'), '--list'],
+    { cwd: native, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+  const onDisk = fs.readdirSync(path.join(__dirname, '..', 'examples'))
+    .filter((name) => /^pipeline-.*\.html$/u.test(name))
+    .map((name) => name.replace(/\.html$/u, ''))
+    .sort();
+  assert.deepEqual(listed, onDisk, 'the converter covers every pipeline example');
+  assert.equal(listed.length, 19, 'nineteen example decks today');
+});
+
 test('the catalogue of what the engine cannot draw matches the code', () => {
   // The contract is that every difference the drawing cannot express is named. That claim is easy
   // to erode - a new report appears and the document drifts - so LIMITS.md is generated from the
