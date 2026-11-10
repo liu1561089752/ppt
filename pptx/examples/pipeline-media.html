@@ -66,6 +66,10 @@
   .scale-card p { font-size: 12.5px; line-height: 1.7; color: #6B7674; margin: 0; }
   .scale-card.up { transform: scale(1.18); border-left-color: #C2703F; }
   .scale-card.down { transform: scale(0.86); border-left-color: #F2A24C; }
+  .arcbanner { margin-top: 40px; width: 900px; padding: 18px 26px; background: #FFFFFF;
+    border-radius: 28px; border-left: 10px solid #C2703F; }
+  .arcbanner .t { font-size: 14px; font-weight: 600; color: #17332F; margin-bottom: 6px; }
+  .arcbanner p { margin: 0; font-size: 12.5px; line-height: 1.75; color: #6B7674; }
 </style>
 </head>
 <body>
@@ -189,6 +193,10 @@
       <h3>退后</h3>
       <p>字号 15 → 12.9，槽位没动。</p>
     </div>
+  </div>
+  <div class="arcbanner">
+    <div class="t">竖条也要跟着圆角走</div>
+    <p>左边这条 10px 的强调边不是一根方角矩形：在四个角上它按 28px 的圆角收窄，和浏览器画出来的形状一样，而且仍然是可编辑的一个形状。</p>
   </div>
   <p class="foot">均匀缩放有原生答案；scale(50%, 150%) 这种把字形拉扁的比例，报告里会点名，不会只画一半。</p>
 </main>

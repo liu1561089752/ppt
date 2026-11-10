@@ -606,6 +606,16 @@ function edgeElements(element, box) {
   } else if (edge.side === 'left') {
     Object.assign(strip, { x: box.x, y: box.y, w: thickness, h });
   } else Object.assign(strip, { x: box.x + w - thickness, y: box.y, w: thickness, h });
+  // A rounded box tapers its band over the corner arcs. The outline was traced in the band's
+  // own space; handing it over as the shape's geometry keeps the strip an editable object
+  // that simply cannot paint outside the shape it describes.
+  if (edge.path && Array.isArray(edge.path.points) && edge.path.points.length >= 3) {
+    strip.clip = {
+      width: Number(edge.path.width) || 1,
+      height: Number(edge.path.height) || 1,
+      points: edge.path.points.map((point) => [point[0], point[1]])
+    };
+  }
   return [strip];
 }
 

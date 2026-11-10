@@ -5629,6 +5629,45 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('a border band follows the rounded corner it sits on', async () => {
+  // Chrome, on a 300x200 card with a 40px radius and a 12px left border: the band is a
+  // rectangle only along the straight part of the edge; over each corner it tapers, reaching
+  // full width 40px down and vanishing 11.4px down (40 - sqrt(2*40*12 - 12*12)).
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; background: #FBFAF7; }',
+    '  .card { position: absolute; left: 40px; top: 40px; width: 300px; height: 200px;',
+    '    background: #FFFFFF; border-radius: 40px; border-left: 12px solid #2F5D50; }',
+    '</style></head><body><main class="slide"><div class="card"></div></main></body></html>'
+  ].join('\n');
+  const card = pipeline.convertHtml(html).deck.slides[0].elements[0];
+  assert.ok(card.edge && card.edge.path, 'a rounded box carries an outline for its band');
+  const points = card.edge.path.points;
+  assert.ok(points.length >= 10, 'an arc needs samples: ' + points.length);
+  assert.ok(Math.abs(card.edge.path.width - 12) < 0.5, 'band space width: ' + card.edge.path.width);
+  assert.ok(Math.abs(card.edge.path.height - 200) < 0.5, 'band space height: ' + card.edge.path.height);
+  const lowest = Math.min(...points.map((point) => point[1]));
+  const expected = 40 - Math.sqrt(2 * 40 * 12 - 12 * 12);
+  assert.ok(Math.abs(lowest - expected) < 1, 'the taper starts at ' + lowest.toFixed(1) + ', not ' + expected.toFixed(1));
+  // Every point is inside the band's own width, and the outer edge reaches zero in the middle.
+  assert.ok(points.every((point) => point[0] >= -0.01 && point[0] <= 12.01), 'inside the band');
+  assert.ok(points.some((point) => Math.abs(point[0]) < 0.01), 'the outer edge is the box edge');
+
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const result = pipeline.convertHtml(html);
+  const file = path.join(os.tmpdir(), 'native-arc-' + process.pid + '.pptx');
+  await generatePptx(result.deck, file);
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+  fs.unlinkSync(file);
+  assert.ok(xml.includes('<a:custGeom>'), 'the strip is a custom geometry, not a rectangle');
+  assert.ok((xml.match(/<a:lnTo>/gu) || []).length >= 10, 'the arc is traced');
+});
+
 test('a single-side border reaches the slide as a strip, scaled or not', async () => {
   // `border-left` is not a shape edge in DrawingML: it is a thin filled rectangle on the box's
   // own edge. It travelled as far as the spec and stopped - a container's accent bar was never

@@ -297,6 +297,11 @@ function applyUniformScale(node, factor) {
         target[field] = target[field].map((value) => Number(((Number(value) || 0) * factor).toFixed(4)));
       }
     });
+    if (target.edge) {
+      const edge = Object.assign({}, target.edge);
+      if (Number.isFinite(edge.width)) edge.width = Number((edge.width * factor).toFixed(2));
+      target.edge = edge;
+    }
     (target.overlays || []).forEach((overlay) => {
       ['x', 'y', 'w', 'h', 'radius'].forEach((field) => {
         if (Number.isFinite(overlay[field])) overlay[field] = Number((overlay[field] * factor).toFixed(4));
@@ -924,6 +929,45 @@ function checkUnsupported(ctx, domNode, style) {
       BORDER_SIDES.map((side) => side + ': ' + borderSideText(style, side)).join('; '),
       'A native shape outline is uniform; declare every side the same, or use a separate rule/shape');
   }
+}
+
+/**
+ * The outline of a border band that follows a rounded corner, in the band's own box.
+ *
+ * A single-side border is drawn as a band along that edge, and CSS keeps the band inside the
+ * border box's radius: over the corner arc the band tapers to nothing. Sampled into a polygon
+ * (the writer turns a polygon into a custom geometry, so the shape stays editable).
+ * `length` runs along the edge, `thickness` across it, and `v` is measured from the outer edge.
+ */
+function borderBandOutline(side, length, thickness, radius) {
+  const t = thickness;
+  const r = Math.min(radius, length / 2);
+  if (!(t > 0.2) || !(r > 0.5) || !(length > 2 * r - 0.01)) return null;
+  const outer = (distance) => {
+    const dy = r - Math.min(distance, r);
+    return Math.max(0, r - Math.sqrt(Math.max(0, r * r - dy * dy)));
+  };
+  // Where the arc reaches the band's inner edge: above this the band has no width at all.
+  const start = r > t ? r - Math.sqrt(Math.max(0, 2 * r * t - t * t)) : 0;
+  const samples = 14;
+  const points = [];
+  const place = (v, u) => {
+    if (side === 'left') points.push([v, u]);
+    else if (side === 'right') points.push([t - v, u]);
+    else if (side === 'top') points.push([u, v]);
+    else points.push([u, t - v]);
+  };
+  place(t, start);
+  place(t, length - start);
+  for (let step = 0; step <= samples; step += 1) {
+    const distance = start + ((r - start) * step) / samples;
+    place(outer(distance), length - distance);
+  }
+  for (let step = samples - 1; step >= 1; step -= 1) {
+    const distance = start + ((r - start) * step) / samples;
+    place(outer(distance), distance);
+  }
+  return points;
 }
 
 /** The one declared border side of an element, when it is a single-side accent. */
@@ -1726,6 +1770,21 @@ function analyzeNode(domNode, slot, inherited, ctx) {
     const padding = Object.assign({ top: 0, right: 0, bottom: 0, left: 0 }, node.padding || {});
     padding[accent.side] = Number((padding[accent.side] + inset).toFixed(4));
     node.padding = padding;
+    // A rounded box keeps the band inside its radius, so the band tapers over the corner
+    // arcs instead of standing square outside them. The outline travels in the band's own
+    // box, in CSS pixels, the space the writer scales a custom geometry onto.
+    const thicknessPx = accent.border.width / 0.75;
+    const lengthPx = (accent.side === 'left' || accent.side === 'right' ? node.h : node.w) * 96;
+    const outline = borderBandOutline(accent.side, lengthPx, thicknessPx, (node.radius || 0) * 96);
+    if (outline && outline.length >= 3) {
+      const bandWidth = accent.side === 'left' || accent.side === 'right' ? thicknessPx : lengthPx;
+      const bandHeight = accent.side === 'left' || accent.side === 'right' ? lengthPx : thicknessPx;
+      node.edge.path = {
+        width: Number(bandWidth.toFixed(2)),
+        height: Number(bandHeight.toFixed(2)),
+        points: outline.map((point) => [Number(point[0].toFixed(2)), Number(point[1].toFixed(2))])
+      };
+    }
   }
   return node;
 }
