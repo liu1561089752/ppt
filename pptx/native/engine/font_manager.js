@@ -175,4 +175,4 @@ function normalLineHeight(family, fontkit) {
   return value;
 }
 
-module.exports = { FontManager, normalLineHeight };
+module.exports = { FontManager, normalLineHeight, fontFileForFamily: fontFileFor };

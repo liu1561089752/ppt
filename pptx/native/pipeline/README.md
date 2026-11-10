@@ -176,6 +176,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | closed details | content stays collapsed (was drawn anyway); open keeps everything |
 | overflow-wrap: normal spill | boundary - PowerPoint always breaks long words, so the word breaks here too (all words kept) |
 | a word wider than its box | named where it bites: CSS `overflow-wrap: normal` lets the word stick out, a reader breaks it, so the box is measured with the break and the difference is reported once. `break-word`/`anywhere`/`break-all` ask for exactly that break and stay silent |
+| embedded fonts | opt-in (`--embed-fonts`): every face the deck names is resolved on this machine and written as a `fntdata` part with `p:embeddedFontLst`; faces that are not installed, or are not TrueType (`.otf`, `.ttc`), are named instead |
 | `columns: 2` on a paragraph | native - one text box with `numCol`/`spcCol`, so the reader balances the columns itself; the element's own text counts, not only child paragraphs |
 | object-position crop focus | native - both axes at 1% granularity, kept fraction constant |
 | object-fit: none / scale-down | named - no native "natural size and clip" switch |

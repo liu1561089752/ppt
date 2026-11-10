@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import posixpath
+import re
 import zipfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -252,7 +253,7 @@ def inspect(path: Path) -> dict[str, int]:
               "shadowed_pictures": 0, "tables": 0,
               "merged_cells": 0, "uneven_tables": 0, "rotated": 0,
               "text_columns": 0, "small_caps": 0, "custom_geometry": 0,
-              "invalid_enums": 0}
+              "embedded_fonts": 0, "invalid_enums": 0}
     problems: list[str] = []
     with zipfile.ZipFile(path) as archive:
         slide_names = sorted(
@@ -262,6 +263,15 @@ def inspect(path: Path) -> dict[str, int]:
             key=lambda name: int(name.rsplit("slide", 1)[1].split(".")[0])
         )
         counts["slides"] = len(slide_names)
+        # An embedded face is a part plus a relationship plus a name in the list; a name with
+        # no part behind it is a deck that asks a reader to repair itself.
+        embedded_parts = {name for name in archive.namelist() if name.startswith("ppt/fonts/") and name.endswith(".fntdata")}
+        counts["embedded_fonts"] = len(embedded_parts)
+        presentation = archive.read("ppt/presentation.xml").decode("utf-8") if "ppt/presentation.xml" in archive.namelist() else ""
+        known = {name.rsplit("/", 1)[-1] for name in embedded_parts}
+        for target in re.findall(r'Target="fonts/([^"]+)"', presentation and archive.read("ppt/_rels/presentation.xml.rels").decode("utf-8") or ""):
+            if target not in known:
+                problems.append(f"embedded font relationship points at a missing part: fonts/{target}")
         for name in slide_names:
             root = ET.fromstring(archive.read(name))
             problems.extend(audit_enums(root))

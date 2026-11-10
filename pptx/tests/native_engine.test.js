@@ -5652,6 +5652,57 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('embedding a face carries the font inside the package', async () => {
+  // A deck that names a font nobody installed renders in the reader's substitute. Opting in
+  // puts the font's own bytes in the package (p:embeddedFontLst + ppt/fonts/*.fntdata), which
+  // is the only way a measurement survives the trip to another machine.
+  const { fontFileForFamily } = require('../native/engine/font_manager');
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; font-family: Arial, sans-serif; }',
+    '  h1 { font-size: 30px; }',
+    '</style></head><body><main class="slide"><h1>Arial headline</h1></main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const plainFile = path.join(os.tmpdir(), 'native-fonts-plain-' + process.pid + '.pptx');
+  const embeddedFile = path.join(os.tmpdir(), 'native-fonts-on-' + process.pid + '.pptx');
+  await generatePptx(result.deck, plainFile);
+  const written = await generatePptx(result.deck, embeddedFile, { embedFonts: true });
+  const plain = await JSZip.loadAsync(fs.readFileSync(plainFile));
+  const patched = await JSZip.loadAsync(fs.readFileSync(embeddedFile));
+  const plainParts = Object.keys(plain.files).filter((name) => /^ppt\/fonts\/[^/]+\.fntdata$/u.test(name));
+  assert.deepEqual(plainParts, [], 'nothing travels unless the caller asks');
+  if (!fontFileForFamily('Arial')) {
+    assert.deepEqual(written.embeddedFonts, []);
+    assert.ok(written.skippedFonts.some((entry) => entry.face === 'Arial'), 'a missing face is named');
+    fs.unlinkSync(plainFile);
+    fs.unlinkSync(embeddedFile);
+    return;
+  }
+  const parts = Object.keys(patched.files).filter((name) => /^ppt\/fonts\/[^/]+\.fntdata$/u.test(name));
+  assert.equal(parts.length, 1, 'one part per file: ' + JSON.stringify(parts));
+  const fontBytes = await patched.file(parts[0]).async('nodebuffer');
+  assert.ok(fontBytes.length > 1000, 'the font itself is inside: ' + fontBytes.length + ' bytes');
+  const presentation = await patched.file('ppt/presentation.xml').async('string');
+  assert.ok(presentation.includes('<p:embeddedFontLst>'), 'the list is declared');
+  assert.ok(/<p:font typeface="Arial"\/><p:regular r:id="rId\d+"\/>/u.test(presentation), presentation.slice(0, 400));
+  assert.ok(/embedTrueTypeFonts="1"/u.test(presentation), 'the presentation says it carries fonts');
+  const rels = await patched.file('ppt/_rels/presentation.xml.rels').async('string');
+  assert.ok(/Type="[^"]*\/font"[^>]*Target="fonts\/font1\.fntdata"/u.test(rels), rels.slice(-260));
+  // A part with no content type is a package a reader offers to repair; the audit gate found
+  // exactly that when the embedding was first written.
+  const types = await patched.file('[Content_Types].xml').async('string');
+  assert.ok(/<Default Extension="fntdata" ContentType="application\/x-fontdata"\/>/u.test(types), types.slice(-200));
+  assert.deepEqual(written.embeddedFonts.map((entry) => entry.face), ['Arial']);
+  fs.unlinkSync(plainFile);
+  fs.unlinkSync(embeddedFile);
+});
+
 test('a word wider than its box is named, not silently broken', () => {
   // CSS `overflow-wrap: normal` lets a long word stick out of its box; a reader breaks it
   // instead, and the box has to be measured with that break or the next block would sit a line

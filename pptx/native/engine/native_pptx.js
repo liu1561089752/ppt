@@ -1048,6 +1048,120 @@ async function patchScatterStyle(outputPath) {
   return touched > 0;
 }
 
+/** Text for an XML attribute or element: the five characters that would break the part. */
+function xmlText(value) {
+  return String(value === undefined || value === null ? '' : value)
+    .replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
+}
+
+/**
+ * Every face the deck asks for: shapes, table cells, runs and the theme's own defaults.
+ * A face that only appears in a theme is still the face an unset run renders in.
+ */
+function collectDeckFaces(deck) {
+  const faces = new Set();
+  const add = (value) => {
+    const face = String(value || '').replace(/["']/gu, '').split(',')[0].trim();
+    if (!face || /^(inherit|initial|unset|sans-serif|serif|monospace|system-ui)$/iu.test(face)) return;
+    faces.add(face);
+  };
+  const walkElement = (element) => {
+    if (!element || typeof element !== 'object') return;
+    add(element.fontFace);
+    (element.runs || []).forEach((run) => {
+      if (run && run.options) add(run.options.fontFace);
+    });
+    (element.rows || []).forEach((row) => {
+      (row.cells || []).forEach((cell) => {
+        add(cell && cell.fontFace);
+        ((cell && cell.runs) || []).forEach((run) => {
+          if (run && run.options) add(run.options.fontFace);
+        });
+      });
+    });
+    (element.children || []).forEach(walkElement);
+    (element.overlays || []).forEach(walkElement);
+  };
+  ((deck && deck.slides) || []).forEach((slide) => (slide.elements || []).forEach(walkElement));
+  const themeFonts = (deck && deck.theme && deck.theme.fonts) || {};
+  ['heading', 'body', 'cjk', 'mono'].forEach((key) => add(themeFonts[key]));
+  return Array.from(faces);
+}
+
+/**
+ * Embed the faces the deck was designed with.
+ *
+ * A deck that names a font nobody installed renders in the reader's substitute, which is how
+ * a carefully measured layout arrives looking wrong. `p:embeddedFontLst` plus one
+ * `ppt/fonts/*.fntdata` part per face is the OOXML answer, and PowerPoint honours it. Opt-in,
+ * because the font's own bytes travel inside the package: a CJK face is tens of megabytes.
+ * Only TrueType files embed; an OpenType/CFF or a collection is named instead of half-written.
+ */
+async function patchEmbeddedFonts(outputPath, deck, options = {}) {
+  const { fontFileForFamily } = require('./font_manager');
+  const faces = collectDeckFaces(deck);
+  const wanted = [];
+  const skipped = [];
+  const seenFiles = new Map();
+  faces.forEach((face) => {
+    const file = fontFileForFamily(face);
+    if (!file) { skipped.push({ face, reason: 'not installed on this machine' }); return; }
+    if (!/\.ttf$/iu.test(file)) { skipped.push({ face, reason: 'not a TrueType file, so it cannot ride in fntdata' }); return; }
+    wanted.push({ face, file });
+  });
+  if (!wanted.length) return { embedded: [], skipped };
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  const relsFile = zip.file('ppt/_rels/presentation.xml.rels');
+  const presFile = zip.file('ppt/presentation.xml');
+  if (!relsFile || !presFile) return { embedded: [], skipped };
+  let rels = await relsFile.async('string');
+  let presentation = await presFile.async('string');
+  const usedIds = Array.from(rels.matchAll(/Id="rId(\d+)"/gu), (match) => Number(match[1]));
+  let nextId = (usedIds.length ? Math.max(...usedIds) : 0) + 1;
+  const entries = [];
+  const addedRels = [];
+  wanted.forEach((entry, index) => {
+    let partIndex = seenFiles.get(entry.file);
+    if (!partIndex) {
+      partIndex = seenFiles.size + 1;
+      seenFiles.set(entry.file, partIndex);
+      const partName = 'ppt/fonts/font' + partIndex + '.fntdata';
+      zip.file(partName, fs.readFileSync(entry.file));
+      const rid = 'rId' + nextId;
+      nextId += 1;
+      addedRels.push('<Relationship Id="' + rid + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/font' + partIndex + '.fntdata"/>');
+      entries.push({ face: entry.face, file: entry.file, part: partName, rid, bytes: fs.statSync(entry.file).size });
+    }
+  });
+  rels = rels.replace('</Relationships>', addedRels.join('') + '</Relationships>');
+  const list = entries.map((entry) => '<p:embeddedFont><p:font typeface="' + xmlText(entry.face) + '"/><p:regular r:id="' + entry.rid + '"/></p:embeddedFont>').join('');
+  if (!presentation.includes('<p:embeddedFontLst>')) {
+    const block = '<p:embeddedFontLst>' + list + '</p:embeddedFontLst>';
+    const anchor = presentation.includes('<p:defaultTextStyle') ? '<p:defaultTextStyle' : '</p:presentation>';
+    presentation = presentation.replace(anchor, block + anchor);
+  }
+  presentation = presentation.replace(/<p:presentation([^>]*?)(\/?)>/u, (whole, attrs, selfClose) => {
+    if (/embedTrueTypeFonts=/u.test(attrs)) return whole;
+    return '<p:presentation' + attrs + ' embedTrueTypeFonts="1"' + (selfClose || '') + '>';
+  });
+  // A part needs a content type or a reader offers to repair the package: the extension is
+  // mapped once, which is how PowerPoint spells an embedded font.
+  const typesFile = zip.file('[Content_Types].xml');
+  if (typesFile) {
+    let types = await typesFile.async('string');
+    if (!/Extension="fntdata"/iu.test(types)) {
+      types = types.replace('</Types>', '<Default Extension="fntdata" ContentType="application/x-fontdata"/></Types>');
+      zip.file('[Content_Types].xml', types);
+    }
+  }
+  zip.file('ppt/_rels/presentation.xml.rels', rels);
+  zip.file('ppt/presentation.xml', presentation);
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return { embedded: entries, skipped };
+}
+
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
@@ -1075,6 +1189,7 @@ async function generatePptx(deck, outputPath, options = {}) {
   }
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
+  const fontEmbedding = options.embedFonts ? await patchEmbeddedFonts(outputPath, deck, options) : { embedded: [], skipped: [] };
   // Last, after every patch that writes shapes: ids stay unique whatever the writer did.
   await patchShapeIds(outputPath);
   return {
@@ -1082,6 +1197,8 @@ async function generatePptx(deck, outputPath, options = {}) {
     report: result.report,
     pageSize: result.pageSize,
     fontReport: result.fontReport,
+    embeddedFonts: fontEmbedding.embedded,
+    skippedFonts: fontEmbedding.skipped,
     // The boxes the writer really used, containers already resolved to absolute
     // positions: a reader that checks the render needs these, not the nested spec.
     laidOut: laidOutShapes
@@ -1094,5 +1211,5 @@ module.exports = {
   applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
   applyTextIndent, patchTextIndents, applyMarkerColour,
   innerShadowXml, applyInnerShadow, patchInnerShadows,
-  applyTextShadow, patchTextShadows
+  applyTextShadow, patchTextShadows, collectDeckFaces, patchEmbeddedFonts
 };

@@ -22,6 +22,8 @@ function parseArgs(argv) {
     else if (token === '--title') options.title = argv[++index];
     else if (token === '--language') options.language = argv[++index];
     else if (token === '--page-size') options.pageSize = argv[++index];
+    // Opt-in: the font's own bytes travel inside the package (a CJK face is tens of MB).
+    else if (token === '--embed-fonts') options.embedFonts = true;
     else if (token === '--json') options.json = true;
     else if (token === '--allow-layout-issues') options.allowLayoutIssues = true;
     else if (token === '--help' || token === '-h') options.help = true;

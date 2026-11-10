@@ -113,9 +113,16 @@ async function convertFile(inputPath, options = {}) {
     }
     fs.mkdirSync(path.dirname(path.resolve(options.pptx)), { recursive: true });
     const written = await generatePptx(result.deck, path.resolve(options.pptx), {
-      readImageFile: (file) => fs.readFileSync(path.isAbsolute(file) ? file : path.join(baseDirectory, file))
+      readImageFile: (file) => fs.readFileSync(path.isAbsolute(file) ? file : path.join(baseDirectory, file)),
+      embedFonts: options.embedFonts === true
     });
     result.output = { pptx: written.outputPath, slides: written.report.length };
+    if (written.embeddedFonts && written.embeddedFonts.length) {
+      result.output.embeddedFonts = written.embeddedFonts.map((entry) => ({ face: entry.face, bytes: entry.bytes }));
+    }
+    if (written.skippedFonts && written.skippedFonts.length) {
+      result.output.skippedFonts = written.skippedFonts;
+    }
     if (options.layoutPath) {
       const slides = (written.laidOut || []).map((elements) => ({
         elements: elements.filter((element) => element.type === 'text').map((element) => ({
