@@ -42,6 +42,7 @@ const USAGE = [
   '',
   '  --out <file>     output path, same as the positional argument',
   '  --report <file>  write the generation report as JSON',
+  '  --layout-out <f>  write the boxes the writer used (for the text-fit gate)',
   '  --check          validate the spec and stop; writes nothing',
   '  --strict         layout warnings become failures',
   '  --json           one JSON object instead of the human summary',
@@ -50,13 +51,13 @@ const USAGE = [
 ].join('\n');
 
 function parseArgs(argv) {
-  const options = { spec: null, out: null, report: null, json: false, check: false, strict: false, quiet: false, help: false };
+  const options = { spec: null, out: null, report: null, layout: null, json: false, check: false, strict: false, quiet: false, help: false };
   const positional = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--out') { options.out = argv[index += 1] || null; } else if (arg === '--report') {
       options.report = argv[index += 1] || null;
-    } else if (arg === '--json') { options.json = true; } else if (arg === '--check') {
+    } else if (arg === '--layout-out') { options.layout = argv[index += 1] || null; } else if (arg === '--json') { options.json = true; } else if (arg === '--check') {
       options.check = true;
     } else if (arg === '--strict') { options.strict = true; } else if (arg === '--quiet') {
       options.quiet = true;
@@ -230,6 +231,16 @@ async function main() {
       droppedPictures: result.droppedPictures || [],
       embeddedFonts: result.embeddedFonts || [],
       skippedFonts: result.skippedFonts || []
+    }, null, 2) + '\n', 'utf8');
+  }
+
+  // The boxes the writer really used, one entry per slide, in inches: the text-fit gate compares
+  // these against the lines the renderer drew, so it needs what was written and not what was asked.
+  if (options.layout) {
+    const layoutPath = path.resolve(options.layout);
+    fs.writeFileSync(layoutPath, JSON.stringify({
+      pageSize: result.pageSize,
+      slides: (result.laidOut || []).map((elements) => ({ elements }))
     }, null, 2) + '\n', 'utf8');
   }
 

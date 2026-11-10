@@ -29,37 +29,17 @@ NATIVE = HERE.parent
 EXAMPLES = NATIVE.parent / "examples"
 BASELINE = NATIVE / "baselines" / "text-fit.json"
 
+sys.path.insert(0, str(HERE))
+import corpus  # noqa: E402  (the deck corpus sits beside this script)
+
 
 def fixtures():
-    return sorted(path for path in EXAMPLES.glob("pipeline-*.html"))
+    """The deck corpus: specs and demo scripts, never HTML."""
+    return corpus.entries()
 
 
-def build(html, workdir):
-    stem = html.stem
-    deck = workdir / (stem + ".pptx")
-    layout = workdir / (stem + "-layout.json")
-    result = subprocess.run(
-        [
-            "node",
-            str(NATIVE / "pipeline" / "cli.js"),
-            str(html),
-            "--out",
-            str(workdir / (stem + ".json")),
-            "--pptx",
-            str(deck),
-            "--layout-out",
-            str(layout),
-        ],
-        cwd=str(NATIVE),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if not deck.exists() or not layout.exists():
-        print("  build failed for " + html.name + ":\n" + result.stdout[-2000:])
-        return None, None
-    return deck, layout
-
+def build(entry, workdir):
+    return corpus.build(entry, workdir, need_layout=True)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -80,31 +60,32 @@ def main():
     problems = []
     with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
-        for html in fixtures():
-            if args.only and args.only not in html.name:
+        for entry in fixtures():
+            name = entry["name"]
+            if args.only and args.only not in name:
                 continue
-            deck, layout = build(html, workdir)
-            if deck is None:
-                problems.append(html.name + ": the deck did not build")
+            deck, layout = build(entry, workdir)
+            if deck is None or layout is None:
+                problems.append(name + ": the deck did not build with a layout")
                 continue
-            print("== " + html.name)
+            print("== " + name)
             counts = check(deck, layout, soffice, 0.02, True)
-            current[html.name] = counts
-            before = previous.get(html.name)
+            current[name] = counts
+            before = previous.get(name)
             if before and not args.write_baseline:
                 if counts["boxes"] < before.get("boxes", 0):
                     problems.append(
-                        html.name + ": only " + str(counts["boxes"]) + " box(es) checked, baseline had "
+                        name + ": only " + str(counts["boxes"]) + " box(es) checked, baseline had "
                         + str(before.get("boxes"))
                     )
                 if counts["extraLines"] > before.get("extraLines", 0):
                     problems.append(
-                        html.name + ": " + str(counts["extraLines"]) + " box(es) needed an extra line, baseline had "
+                        name + ": " + str(counts["extraLines"]) + " box(es) needed an extra line, baseline had "
                         + str(before.get("extraLines"))
                     )
                 if counts["missingWords"] > before.get("missingWords", 0):
                     problems.append(
-                        html.name + ": " + str(counts["missingWords"]) + " box(es) lost words, baseline had "
+                        name + ": " + str(counts["missingWords"]) + " box(es) lost words, baseline had "
                         + str(before.get("missingWords"))
                     )
 

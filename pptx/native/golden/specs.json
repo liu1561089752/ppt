@@ -1,0 +1,12 @@
+{
+  "comment": "The decks the visual gates photograph. Native only: a spec file, or a demo script that writes its own deck. `{assets}` is a temporary directory the script may write its PNGs into.",
+  "decks": [
+    { "name": "spec-cover", "spec": "native-cover.spec.json" },
+    { "name": "spec-flagship", "spec": "native_deck_spec.js" },
+    { "name": "demo-basic", "run": "native_demo.js" },
+    { "name": "demo-components", "run": "native_components_demo.js" },
+    { "name": "demo-layouts", "run": "native_layouts_demo.js" },
+    { "name": "demo-images", "run": "native_images_demo.js", "args": ["{assets}"] },
+    { "name": "demo-stress", "run": "native_stress_deck.js", "args": ["{assets}"] }
+  ]
+}

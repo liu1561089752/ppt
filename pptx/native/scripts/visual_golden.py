@@ -41,6 +41,9 @@ HERE = Path(__file__).resolve().parent
 NATIVE = HERE.parent
 EXAMPLES = NATIVE.parent / "examples"
 BASELINE = NATIVE / "baselines" / "visual.json"
+
+sys.path.insert(0, str(HERE))
+import corpus  # noqa: E402  (the deck corpus sits beside this script)
 GRID = (24, 14)  # colour cells: fine enough that a 4px accent strip moves one
 
 
@@ -63,22 +66,12 @@ def find_soffice(explicit=None):
 
 
 def fixtures():
-    return sorted(path for path in EXAMPLES.glob("pipeline-*.html"))
+    """The deck corpus: specs and demo scripts, never HTML."""
+    return corpus.entries()
 
 
-def build(html, workdir):
-    stem = html.stem
-    deck = workdir / (stem + ".pptx")
-    result = subprocess.run(
-        ["node", str(NATIVE / "pipeline" / "cli.js"), str(html), "--pptx", str(deck)],
-        cwd=str(NATIVE),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if not deck.exists():
-        print("  build failed for " + html.name + ":\n" + result.stdout[-1500:])
-        return None
+def build(entry, workdir):
+    deck, _ = corpus.build(entry, workdir)
     return deck
 
 
@@ -178,42 +171,43 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        for html in fixtures():
-            if args.only and args.only not in html.name:
+        for entry in fixtures():
+            name = entry["name"]
+            if args.only and args.only not in name:
                 continue
-            deck = build(html, root)
+            deck = build(entry, root)
             if deck is None:
-                problems.append(html.name + ": the deck did not build")
+                problems.append(name + ": the deck did not build")
                 continue
             pages, texts = render_pages(deck, soffice, root)
             prints = [fingerprint(page, text) for page, text in zip(pages, texts)]
-            current[html.name] = prints
-            print("== " + html.name + " (" + str(len(prints)) + " page(s), "
+            current[name] = prints
+            print("== " + name + " (" + str(len(prints)) + " page(s), "
                   + str(pages[0].size[0]) + "x" + str(pages[0].size[1]) + ")")
-            before = previous.get(html.name)
+            before = previous.get(name)
             if args.update:
                 continue
             if not before:
                 # A fixture nobody photographed is not a fixture this gate can hold: accepting
                 # it silently let a new deck skip the comparison for as long as it existed.
-                problems.append(html.name + ': no baseline yet - look at the pages, then run'
+                problems.append(name + ': no baseline yet - look at the pages, then run'
                                 ' --update' )
                 continue
             if len(before) != len(prints):
-                problems.append(html.name + ": " + str(len(prints)) + " page(s), baseline had " + str(len(before)))
+                problems.append(name + ": " + str(len(prints)) + " page(s), baseline had " + str(len(before)))
                 continue
             for number, (old, new) in enumerate(zip(before, prints), start=1):
                 bits, cell = distance(old, new)
                 if bits > args.max_bits or cell > args.max_cell:
                     problems.append(
-                        html.name + " page " + str(number) + ": moved by " + str(bits)
+                        name + " page " + str(number) + ": moved by " + str(bits)
                         + " bit(s), colour by " + str(cell)
                     )
                 # A word counts even when no pixel moves: the numbering bug drew the same
                 # glyph in the same place for every item of a list.
                 if old.get("words") != new.get("words"):
                     problems.append(
-                        html.name + " page " + str(number) + ": the words changed ("
+                        name + " page " + str(number) + ": the words changed ("
                         + str(old.get("count", "?")) + " -> " + str(new.get("count", "?")) + " words)"
                     )
 

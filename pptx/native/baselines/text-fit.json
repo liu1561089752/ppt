@@ -1,111 +1,48 @@
 {
-  "pipeline-chart.html": {
-    "boxes": 13,
+  "demo-basic": {
+    "boxes": 7,
     "droppedByWindow": 0,
     "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
-  "pipeline-clamp.html": {
-    "boxes": 18,
+  "demo-components": {
+    "boxes": 23,
     "droppedByWindow": 0,
     "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
-  "pipeline-clip.html": {
-    "boxes": 10,
+  "demo-images": {
+    "boxes": 17,
     "droppedByWindow": 0,
     "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
-  "pipeline-columns.html": {
-    "boxes": 6,
+  "demo-layouts": {
+    "boxes": 11,
     "droppedByWindow": 0,
     "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
-  "pipeline-decorations.html": {
-    "boxes": 33,
-    "droppedByWindow": 2,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-float.html": {
-    "boxes": 41,
+  "demo-stress": {
+    "boxes": 130,
     "droppedByWindow": 0,
     "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
-  "pipeline-grid.html": {
-    "boxes": 47,
-    "droppedByWindow": 1,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-indent.html": {
-    "boxes": 27,
-    "droppedByWindow": 1,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-paginate.html": {
-    "boxes": 2,
+  "spec-cover": {
+    "boxes": 22,
     "droppedByWindow": 0,
     "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0
   },
-  "pipeline-patterns.html": {
-    "boxes": 45,
-    "droppedByWindow": 0,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 1
-  },
-  "pipeline-reference.html": {
-    "boxes": 20,
-    "droppedByWindow": 0,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-relative.html": {
-    "boxes": 12,
-    "droppedByWindow": 0,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-stress.html": {
-    "boxes": 39,
-    "droppedByWindow": 0,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-structural.html": {
-    "boxes": 27,
-    "droppedByWindow": 0,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-vertical.html": {
-    "boxes": 20,
-    "droppedByWindow": 0,
-    "extraLines": 0,
-    "missingWords": 0,
-    "unmatched": 0
-  },
-  "pipeline-wrap.html": {
-    "boxes": 81,
+  "spec-flagship": {
+    "boxes": 52,
     "droppedByWindow": 0,
     "extraLines": 0,
     "missingWords": 0,

@@ -2407,6 +2407,16 @@ async function generatePptx(deck, outputPath, options = {}) {
   const fontEmbedding = options.embedFonts ? await patchEmbeddedFonts(outputPath, deck, options) : { embedded: [], skipped: [] };
   // Last, after every patch that writes shapes: ids stay unique whatever the writer did.
   await patchShapeIds(outputPath);
+  // The boxes the writer really used, for a gate that compares a render against the layout. The
+  // CLI has --layout-out for people; a demo script that builds its own deck has nowhere to pass a
+  // flag, so the environment can ask for the same file.
+  const layoutTarget = options.layoutPath || process.env.NATIVE_LAYOUT_OUT;
+  if (layoutTarget) {
+    fs.writeFileSync(layoutTarget, JSON.stringify({
+      pageSize: result.pageSize,
+      slides: laidOutShapes.map((elements) => ({ elements }))
+    }, null, 2) + '\n', 'utf8');
+  }
   return {
     outputPath,
     report: result.report,
