@@ -6,12 +6,17 @@ estimate with a renderer, but nothing watched the picture itself: a gradient tha
 direction, a shadow that loses its offset, a z-order that swaps, an image cropped from the wrong
 origin, or a colour that shifts by ten points all pass every other test.
 
-This renders each fixture with LibreOffice and fingerprints every page two ways:
+This renders each fixture with LibreOffice and fingerprints every page three ways:
 
   * a 64-bit difference hash of the luminance, which is stable against antialiasing and
     sensitive to anything that moves
   * an 8x5 grid of mean RGB, which catches a colour or emphasis change that the hash averages
     away
+  * a digest of the words the renderer actually drew
+
+The third one exists because the first two cannot see a word. A list that numbered every item
+1 instead of 1, 2, 3 moves almost no pixels - the glyph is the same shape in the same place -
+and it passed this gate, the text-fit audit and every structural test for as long as it existed.
 
     python scripts/visual_golden.py --update      # accept what is there now
     python scripts/visual_golden.py               # fail if a page moved
@@ -25,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import subprocess
 import sys
@@ -77,7 +83,8 @@ def build(html, workdir):
 
 
 def render_pages(deck, soffice, workdir):
-    """Every page of the deck as a PIL image, via a PDF, at the slide's own pixel size."""
+    """Every page of the deck as a PIL image and as words, via a PDF."""
+    import pymupdf
     import pypdfium2 as pdfium
 
     profile = (workdir / "profile").as_posix()
@@ -101,6 +108,10 @@ def render_pages(deck, soffice, workdir):
     pdf_path = workdir / (deck.stem + ".pdf")
     if not pdf_path.exists():
         raise SystemExit("LibreOffice did not produce a PDF:\n" + result.stdout)
+    # The words come from the same PDF, read separately: pypdfium2 renders, pymupdf reads the
+    # text layer, and the drawing is not part of the text.
+    words = pymupdf.open(str(pdf_path))
+    texts = [" ".join(words[index].get_text("text").split()) for index in range(len(words))]
     pages = []
     document = pdfium.PdfDocument(str(pdf_path))
     try:
@@ -113,10 +124,13 @@ def render_pages(deck, soffice, workdir):
             page.close()
     finally:
         document.close()
-    return pages
+    words.close()
+    if len(texts) != len(pages):
+        raise SystemExit("the PDF has " + str(len(pages)) + " page(s) but " + str(len(texts)) + " text layers")
+    return pages, texts
 
 
-def fingerprint(image):
+def fingerprint(image, text=""):
     """A difference hash plus a colour grid.
 
     The hash is stable against antialiasing and sensitive to anything that moves; the grid is
@@ -133,7 +147,8 @@ def fingerprint(image):
             right = pixels[row * 9 + column + 1]
             bits = (bits << 1) | (1 if left > right else 0)
     cells = base64.b64encode(image.resize(GRID, 1).tobytes()).decode("ascii")
-    return {"hash": format(bits, "016x"), "cells": cells}
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+    return {"hash": format(bits, "016x"), "cells": cells, "words": digest, "count": len(text.split())}
 
 
 def distance(a, b):
@@ -170,8 +185,8 @@ def main():
             if deck is None:
                 problems.append(html.name + ": the deck did not build")
                 continue
-            pages = render_pages(deck, soffice, root)
-            prints = [fingerprint(page) for page in pages]
+            pages, texts = render_pages(deck, soffice, root)
+            prints = [fingerprint(page, text) for page, text in zip(pages, texts)]
             current[html.name] = prints
             print("== " + html.name + " (" + str(len(prints)) + " page(s), "
                   + str(pages[0].size[0]) + "x" + str(pages[0].size[1]) + ")")
@@ -193,6 +208,13 @@ def main():
                     problems.append(
                         html.name + " page " + str(number) + ": moved by " + str(bits)
                         + " bit(s), colour by " + str(cell)
+                    )
+                # A word counts even when no pixel moves: the numbering bug drew the same
+                # glyph in the same place for every item of a list.
+                if old.get("words") != new.get("words"):
+                    problems.append(
+                        html.name + " page " + str(number) + ": the words changed ("
+                        + str(old.get("count", "?")) + " -> " + str(new.get("count", "?")) + " words)"
                     )
 
     if args.update:

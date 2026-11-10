@@ -8081,11 +8081,63 @@ test('nested lists draw the markers the browser draws, level by level', async ()
   assert.equal(levelOff[1], '685800', 'and two 27pt margins below the box: ' + (levelOff && levelOff[1]));
 
   const counted = await marks('<ol><li>一</li><li value="7">七</li></ol>');
-  assert.deepEqual(counted.found, ['number:1', 'number:7'], 'value="7" starts that item at seven');
+  // Only the paragraph that begins a count carries `startAt`: a reader reads the attribute as
+  // "start here", so a first paragraph stamped with it made every later item restart too.
+  assert.deepEqual(counted.found, ['number', 'number:7'], 'value="7" starts that item at seven');
 
   const picture = await marks('<ul style="list-style: url(a.png) disc"><li>一</li></ul>');
   assert.ok(picture.report.unsupportedDetails.some((entry) => entry.property === 'listStyleImage'),
     'a marker drawn from an image is named');
+});
+
+test('an ordered list counts up instead of repeating its start number', async () => {
+  // Every numbered paragraph carried `startAt`, and a reader reads that as "this paragraph
+  // starts at N" - so a three-item list that starts at 5 rendered 5, 5, 5, and a plain list
+  // rendered 1, 1, 1. The numbers were all there, all the same one. LibreOffice was asked to
+  // render both spellings: with `startAt` on the first paragraph only it answers 5, 6, 7;
+  // with it on every paragraph it answers 5, 5, 5.
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx, paragraphNumbering } = require('../native/engine/native_pptx');
+  const build = (body) => pipeline.convertHtml([
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  li { font-size: 18px; }</style></head><body><main class="slide">' + body, 
+    '</main></body></html>'
+  ].join('\n'));
+  const startsOf = async (body) => {
+    const result = build(body);
+    const output = path.join(os.tmpdir(), 'native-numbers-' + process.pid + '.pptx');
+    await generatePptx(result.deck, output);
+    const zip = await JSZip.loadAsync(fs.readFileSync(output));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    fs.rmSync(output, { force: true });
+    return [...xml.matchAll(/<a:buAutoNum([^>]*)>/gu)].map((match) => {
+      const start = /startAt="(\d+)"/u.exec(match[1]);
+      return start ? Number(start[1]) : null;
+    });
+  };
+
+  assert.deepEqual(await startsOf('<ol><li>一</li><li>二</li><li>三</li></ol>'), [null, null, null],
+    'a plain list continues the count: one start, three numbers');
+  assert.deepEqual(await startsOf('<ol start="5"><li>五</li><li>六</li><li>七</li></ol>'), [5, null, null],
+    'a list that starts at five says so once');
+  assert.deepEqual(await startsOf('<ol><li>一</li><li value="7">七</li><li>八</li></ol>'), [null, 7, null],
+    'a mid-list value restarts the count once');
+  assert.deepEqual(await startsOf('<ol><li>一</li><li>二<ol><li>二a</li><li>二b</li></ol></li><li>三</li></ol>'),
+    [null, null, 1, null, null], 'a nested level numbers from one, the way a nested ol does');
+
+  // The rule itself, without a package in the way.
+  assert.deepEqual(paragraphNumbering({ text: 'a\nb\nc', bullet: { type: 'number', startAt: 4 } })
+    .map((paragraph) => paragraph.startAt), [4, null, null]);
+  assert.deepEqual(paragraphNumbering({
+    text: [
+      { text: 'a', options: { bullet: { type: 'number' }, breakLine: true } },
+      { text: 'b', options: { bullet: { type: 'number', startAt: 9 }, breakLine: true } },
+      { text: 'c', options: { bullet: { type: 'number' } } }
+    ]
+  }).map((paragraph) => paragraph.startAt), [null, 9, null], 'per-item values survive, the rest continue');
 });
 
 test('a nested list keeps its own marker language', () => {

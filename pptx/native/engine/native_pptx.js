@@ -936,6 +936,110 @@ async function patchTextColumns(outputPath, deck, laidOut) {
 }
 
 /**
+ * The start number each paragraph of a text shape really declares, in paragraph order.
+ *
+ * PptxGenJS writes `startAt` on every numbered paragraph it generates, and a reader reads that
+ * as "this paragraph starts at N" - so a three-item list that starts at 5 rendered 5, 5, 5 and
+ * a plain list rendered 1, 1, 1. Only the paragraph that really begins a count keeps the
+ * attribute; the rest continue the count. A nested level begins its own count, which is what a
+ * nested `<ol>` does in a browser.
+ */
+function paragraphNumbering(spec) {
+  const paragraphs = [];
+  const declared = (bullet) => {
+    const value = bullet ? Number(bullet.startAt) : NaN;
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+  if (typeof (spec && spec.text) === 'string') {
+    String(spec.text).split('\n').forEach((line, index) => {
+      paragraphs.push({ level: 0, startAt: index === 0 ? declared(spec.bullet) : null });
+    });
+    return paragraphs;
+  }
+  if (!spec || !Array.isArray(spec.text)) return paragraphs;
+  let current = null;
+  let currentLevel = 0;
+  let open = false;
+  spec.text.forEach((run) => {
+    const options = (run && run.options) || {};
+    if (!open) {
+      current = declared(options.bullet);
+      currentLevel = Number.isFinite(Number(options.indentLevel)) ? Number(options.indentLevel) : 0;
+      open = true;
+    }
+    if (options.breakLine) {
+      paragraphs.push({ level: currentLevel, startAt: current });
+      open = false;
+    }
+  });
+  if (open) paragraphs.push({ level: currentLevel, startAt: current });
+  // A level that has not been seen yet starts at 1, the way a nested <ol> numbers.
+  const seen = new Set();
+  paragraphs.forEach((paragraph) => {
+    if (paragraph.startAt !== null) { seen.add(paragraph.level); return; }
+    if (paragraph.level > 0 && !seen.has(paragraph.level)) paragraph.startAt = 1;
+    seen.add(paragraph.level);
+  });
+  return paragraphs;
+}
+
+/** Rewrite the `startAt` of every numbered paragraph in one text body. */
+function applyListNumbering(xml, paragraphs) {
+  let index = 0;
+  return xml.replace(/<a:p>[\s\S]*?<\/a:p>/gu, (paragraph) => {
+    const wanted = paragraphs[index];
+    index += 1;
+    if (!/<a:buAutoNum/u.test(paragraph)) return paragraph;
+    const desired = wanted && wanted.startAt !== null && wanted.startAt !== undefined ? wanted.startAt : null;
+    return paragraph.replace(/<a:buAutoNum([^/]*?)(?:\s+startAt="\d+")?\/>/u, (match, rest) => {
+      const base = '<a:buAutoNum' + rest;
+      return desired === null ? base + '/>' : base + ' startAt="' + desired + '"/>';
+    });
+  });
+}
+
+/**
+ * Numbered lists: one `startAt` per count, not one per paragraph.
+ *
+ * Every paragraph carried the attribute, so a list of three rendered 5, 5, 5 when it started at
+ * 5 and 1, 1, 1 when it did not - the numbers were there, all of them the same one. The deck spec
+ * knows which paragraphs really begin a count, so the shapes are walked against it.
+ */
+async function patchListNumbering(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const numbered = (element) => element && element.type === 'text' && typeof element.text !== 'undefined';
+  if (!supplied(laidOut, slides).some((elements) => elements.some(numbered))) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
+    if (!shapeElements.some(numbered)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    let shapeIndex = 0;
+    let changed = false;
+    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapeElements[shapeIndex++];
+      if (!numbered(element) || !/<a:buAutoNum/u.test(inner)) return whole;
+      const updated = applyListNumbering(inner, paragraphNumbering(element));
+      if (updated !== inner) changed = true;
+      return '<p:sp>' + updated + '</p:sp>';
+    });
+    if (shapeIndex !== shapeElements.length) {
+      throw new Error('List numbering patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has ' + shapeIndex + ' p:sp elements');
+    }
+    if (changed) { zip.file(name, next); touched += 1; }
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
+/**
  * `::marker { color: ... }` becomes `a:buClr` inside the bulleted paragraph's
  * `a:pPr`, before the `buChar` it colours. PptxGenJS has no bullet-colour option,
  * so the marker colour rides the same post-serialization patch as the indents.
@@ -1311,6 +1415,9 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchLevelIndents(outputPath, deck, result.laidOut);
   await patchMarkerColours(outputPath, deck, result.laidOut);
   await patchTextColumns(outputPath, deck, result.laidOut);
+  // Every numbered paragraph carried `startAt`, which reads as "start here" - so lists repeated
+  // one number. Runs after the columns patch, which rewrites the same text bodies.
+  await patchListNumbering(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);
   await patchTitlePlaceholders(outputPath, deck, result.laidOut);
@@ -1349,6 +1456,7 @@ async function generatePptx(deck, outputPath, options = {}) {
 module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
+  patchListNumbering, paragraphNumbering, applyListNumbering,
   applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
   applyTextIndent, patchTextIndents, applyMarkerColour,
   innerShadowXml, applyInnerShadow, patchInnerShadows,
