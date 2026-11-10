@@ -1804,6 +1804,124 @@ async function patchShapeIds(outputPath) {
   return touched > 0;
 }
 
+/** `ST_DLblPos`: every token a data label may be placed at, and nothing else. */
+const DATA_LABEL_POSITIONS = new Set(['ctr', 'inBase', 'inEnd', 'outEnd', 'bestFit', 'b', 'c', 't', 'l', 'r']);
+
+/**
+ * The schema token for a declared data-label position. The writer's own vocabulary is the
+ * camelCase form (`outEnd`), and the analyzer hands that straight through, but a hand-written
+ * spec may say what the CSS-ish spelling was, so the folded word is accepted too.
+ */
+function dataLabelPositionToken(value) {
+  const raw = String(value === undefined || value === null ? '' : value).trim();
+  if (!raw) return null;
+  if (DATA_LABEL_POSITIONS.has(raw)) return raw;
+  const folded = raw.toLowerCase().replace(/[^a-z]/gu, '');
+  const aliases = {
+    center: 'ctr', centre: 'ctr', middle: 'ctr',
+    insidebase: 'inBase', insideend: 'inEnd', outsideend: 'outEnd', outside: 'outEnd',
+    bestfit: 'bestFit', top: 't', bottom: 'b', left: 'l', right: 'r'
+  };
+  return aliases[folded] || null;
+}
+
+/**
+ * Put one `c:dLblPos` into every label block of a chart part. `CT_DLbls` is a sequence and
+ * `dLblPos` may only stand between `txPr` and `showLegendKey`; the writer always writes
+ * `showLegendKey`, so it is the anchor, with the block's own close as the fallback.
+ * Returns how many blocks changed, so a patch that finds the position already right writes
+ * nothing.
+ */
+function applyDataLabelPosition(xml, token) {
+  const node = '<c:dLblPos val="' + token + '"/>';
+  let changed = 0;
+  let next = xml.replace(/<c:dLbls>[\s\S]*?<\/c:dLbls>/gu, (block) => {
+    if (/<c:dLblPos val="/u.test(block)) {
+      // A declared position is one value for the whole chart, so every label in the block takes
+      // it - a pie writes one position per point, and leaving any of them behind would draw two
+      // different placements in one chart.
+      const replaced = block.replace(/<c:dLblPos val="[^"]*"\/>/gu, (existing) => {
+        if (existing === node) return existing;
+        changed += 1;
+        return node;
+      });
+      return replaced;
+    }
+    const anchor = block.indexOf('<c:showLegendKey');
+    const at = anchor >= 0 ? anchor : block.lastIndexOf('</c:dLbls>');
+    changed += 1;
+    return block.slice(0, at) + node + block.slice(at);
+  });
+  // An empty `<c:dLbls/>` has no anchor; giving it a body is still the right shape.
+  if (/<c:dLbls\/>/u.test(next)) {
+    changed += 1;
+    next = next.replace(/<c:dLbls\/>/gu, '<c:dLbls>' + node + '</c:dLbls>');
+  }
+  return { xml: next, changed };
+}
+
+/** Which plot-area group a chart type must appear as, so a patch can prove its alignment. */
+const CHART_PLOT_GROUP = {
+  bar: 'barChart', line: 'lineChart', pie: 'pieChart', doughnut: 'doughnutChart',
+  area: 'areaChart', radar: 'radarChart', scatter: 'scatterChart', bubble: 'bubbleChart'
+};
+
+/**
+ * A data label's position is `c:dLblPos`, and the writer drops the request for the chart types
+ * its own validator refuses - a doughnut, an area chart and a radar keep the position in the
+ * spec and lose it in the part. One value covers the whole chart (a per-point position would
+ * need one entry per point, which no deck has asked for), so every label block gets it.
+ *
+ * Chart parts are numbered in creation order, which is the order the elements are added, so the
+ * walk is positional - and a part whose plot group does not match the spec's chart type means
+ * the two walks have drifted apart, which is an error rather than a guess.
+ */
+async function patchDataLabelPositions(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const charts = [];
+  supplied(laidOut, slides).forEach((elements) => {
+    (elements || []).forEach((element) => {
+      if (element && element.type === 'chart') charts.push(element);
+    });
+  });
+  if (!charts.some((chart) => chart.options && chart.options.dataLabelPosition)) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  const names = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/u.test(name))
+    .sort((left, right) => Number(/(\d+)\.xml$/u.exec(left)[1]) - Number(/(\d+)\.xml$/u.exec(right)[1]));
+  if (names.length !== charts.length) {
+    throw new Error('Data-label position patch alignment mismatch: the Deck Spec has ' + charts.length +
+      ' chart element(s) but the PPTX has ' + names.length + ' chart part(s)');
+  }
+  let touched = 0;
+  for (let index = 0; index < names.length; index += 1) {
+    const options = charts[index].options || {};
+    const token = dataLabelPositionToken(options.dataLabelPosition);
+    if (!token) {
+      if (options.dataLabelPosition) {
+        throw new Error('Data-label position patch: unknown position "' + options.dataLabelPosition +
+          '" on chart ' + (index + 1) + ' of the file');
+      }
+      continue;
+    }
+    const xml = await zip.file(names[index]).async('string');
+    const group = CHART_PLOT_GROUP[charts[index].chartType || 'bar'];
+    if (group && !xml.includes('<c:' + group)) {
+      throw new Error('Data-label position patch alignment mismatch on chart part ' + (index + 1) +
+        ': the spec says ' + (charts[index].chartType || 'bar') + ' but the part holds no c:' + group);
+    }
+    const applied = applyDataLabelPosition(xml, token);
+    if (applied.changed > 0) {
+      zip.file(names[index], applied.xml);
+      touched += 1;
+    }
+  }
+  if (touched) {
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+    fs.writeFileSync(outputPath, buffer);
+  }
+  return touched > 0;
+}
+
 /**
  * The writer spells one scatter style: `lineMarker`, which draws a line between points
  * that a scatter never claimed to connect. `marker` is what the word scatter means -
@@ -2033,6 +2151,10 @@ async function generatePptx(deck, outputPath, options = {}) {
     && element.chartType === 'scatter'))) {
     await patchScatterStyle(outputPath);
   }
+  // A data label's position, which the writer keeps for a bar or a line and drops for the
+  // chart types its own validator refuses (a doughnut, an area, a radar). After the scatter
+  // style, because both rewrite the same chart parts and this one only inserts an element.
+  await patchDataLabelPositions(outputPath, deck, result.laidOut);
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
   // A picture's hyperlink target is written raw where a text run's is escaped, so the rels part
@@ -2063,6 +2185,7 @@ module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects,
   applyTileFill, patchTiledFills, pictureFrameInches, applyTextColumns, patchTextColumns,
+  applyDataLabelPosition, patchDataLabelPositions, dataLabelPositionToken,
   cellBulletMarker, applyCellBullets, patchCellBullets, bulletParagraphIndent, cellBulletIndentBase,
   applyRelsEscapes, patchHyperlinkRelEscapes,
   applyShapeClick, patchShapeHyperlinks, hyperlinkRegistry, hyperlinkId, spHyperlinkUrl,

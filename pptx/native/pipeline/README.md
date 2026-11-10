@@ -138,7 +138,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | a ruby reading | kept inline after its base text; furigana cannot be placed, and the deck says so per reading |
 | an SVG picture | drawn for PowerPoint 2016 and later; named once per distinct source because other readers show a placeholder |
 | `background-repeat` | one picture whose fill repeats: `a:tile` with the cell as a fraction of the frame; PowerPoint draws it, LibreOffice and WPS draw one stretched cell and `LIMITS.md` says so |
-| `clip-path: inset()` on a picture | a source-rectangle crop with the drawn box shrunk to the visible rectangle and the layout slot kept; anything but one rectangle is named |
+| `clip-path: inset()` on a picture | a source-rectangle crop with the drawn box shrunk to the visible rectangle and the layout slot kept; it composes with the picture's own fit, and anything but one rectangle is named |
+| `grid-template-areas` + `grid-area: <name>` | the map is the explicit grid: a named cell keeps its start lines and spans, and a map that is not rectangles of whole cells is named |
 | `object-position` / `background-position` lengths | an offset from the near edge; a gap the format cannot draw is clamped and named. Background layers start at `0% 0%`, pictures at `50% 50%` |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |

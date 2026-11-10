@@ -13,8 +13,12 @@ const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../nat
 const {
   generatePptx,
   applyTileFill,
-  patchTiledFills
+  patchTiledFills,
+  applyDataLabelPosition,
+  patchDataLabelPositions,
+  dataLabelPositionToken
 } = require('../native/engine/native_pptx');
+const pipeline = require('../native/pipeline/index');
 const {
   resolveImageGeometry,
   fitDrawnSize,
@@ -320,4 +324,205 @@ test('a declared crop and a fit mode compose instead of one of them winning', ()
     path: 'F:/native-ppt-engine/does-not-exist.png'
   }, {});
   assert.match(srcRectAttributes(unmeasured.srcRect), /l="25000"/u, 'the crop survives an unmeasurable source');
+});
+
+// ---------------------------------------------------------------------------------------
+// A data label's position is `<c:dLblPos>`. The writer writes it for the chart types its own
+// validator accepts and silently drops it for a doughnut, an area and a radar - so the position
+// is put into the part after the write, and these tests read the part.
+
+const chartDeck = (attributes, type = 'bar') => pipeline.convertHtml([
+  '<html><head><style>',
+  '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+  '  .chart { width: 900px; height: 420px; }',
+  '</style></head><body><main class="slide">',
+  '  <table class="chart" data-chart="' + type + '" ' + attributes + '>',
+  '    <thead><tr><th>季度</th><th>收入</th><th>成本</th></tr></thead>',
+  '    <tbody><tr><td>Q1</td><td>320</td><td>210</td></tr>',
+  '    <tr><td>Q2</td><td>418</td><td>246</td></tr></tbody>',
+  '  </table>',
+  '</main></body></html>'
+].join('\n'));
+
+const chartElements = (deck) => {
+  const found = [];
+  const walk = (list) => (list || []).forEach((element) => {
+    if (element.type === 'chart') found.push(element);
+    element.children && walk(element.children);
+  });
+  deck.slides.forEach((slide) => walk(slide.elements));
+  return found;
+};
+
+// PptxGenJS numbers chart parts from a counter that outlives the instance (`_chartCounter` at
+// module scope), so the second deck written in one process starts at chart2.xml. The names are
+// still in creation order, which is all a positional patch needs.
+async function chartParts(output) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(output.output));
+  return Object.keys(zip.files)
+    .filter((name) => /^ppt\/charts\/chart\d+\.xml$/u.test(name))
+    .sort((left, right) => Number(/(\d+)\.xml$/u.exec(left)[1]) - Number(/(\d+)\.xml$/u.exec(right)[1]));
+}
+
+test('a doughnut keeps the data-label position the writer throws away', async () => {
+  const converted = chartDeck('data-chart-colors="#F2A24C,#4FB3A8" data-chart-labels="percent"'
+    + ' data-chart-label-position="outEnd"', 'doughnut');
+  const [chart] = chartElements(converted.deck);
+  assert.equal(chart.options.dataLabelPosition, 'outEnd', 'the spec carries the position');
+  const output = await writePptx(converted.deck);
+  try {
+    const [partName] = await chartParts(output);
+    const part = await output.xml(partName);
+    // One label block: a doughnut draws one set of point labels, not one per series.
+    assert.equal((part.match(/<c:dLblPos val="outEnd"\/>/gu) || []).length, 1,
+      'the position reaches the part: ' + part.slice(part.indexOf('<c:dLbls>'), part.indexOf('<c:dLbls>') + 200));
+    // It sits where `CT_DLbls` allows it: after `txPr`, before the show* flags.
+    const block = /<c:dLbls>[\s\S]*?<\/c:dLbls>/u.exec(part)[0];
+    assert.ok(block.indexOf('<c:dLblPos') > block.indexOf('</c:txPr>'), 'after txPr');
+    assert.ok(block.indexOf('<c:dLblPos') < block.indexOf('<c:showLegendKey'), 'before showLegendKey');
+  } finally {
+    output.cleanup();
+  }
+});
+
+test('an area chart gets the position on every label block, once', async () => {
+  const converted = chartDeck('data-chart-colors="#F2A24C,#4FB3A8" data-chart-labels="value"'
+    + ' data-chart-label-position="t"', 'area');
+  const output = await writePptx(converted.deck);
+  try {
+    const [partName] = await chartParts(output);
+    const part = await output.xml(partName);
+    const positions = part.match(/<c:dLblPos val="t"\/>/gu) || [];
+    assert.equal(positions.length, 3, 'two series and the chart share one value: ' + positions.length);
+    // Idempotent: the second pass finds the position already right and writes nothing.
+    const again = await patchDataLabelPositions(output.output, converted.deck, output.result.laidOut);
+    assert.equal(again, false, 'a second run changes nothing');
+    const after = await output.xml(partName);
+    assert.equal(after, part, 'and leaves the part byte-identical');
+  } finally {
+    output.cleanup();
+  }
+});
+
+test('a bar the writer already places keeps one position, not two', async () => {
+  // A clustered bar accepts ctr/inBase/inEnd, and the writer writes the element itself.
+  const converted = chartDeck('data-chart-colors="#F2A24C" data-chart-labels="value"'
+    + ' data-chart-label-position="inEnd"');
+  const output = await writePptx(converted.deck);
+  try {
+    const [partName] = await chartParts(output);
+    const part = await output.xml(partName);
+    assert.equal((part.match(/<c:dLblPos val="inEnd"\/>/gu) || []).length, 3, 'the writer wrote it');
+    assert.equal(await patchDataLabelPositions(output.output, converted.deck, output.result.laidOut), false,
+      'so the patch has nothing to do');
+  } finally {
+    output.cleanup();
+  }
+});
+
+test('a position is folded onto the schema spelling, and an unknown one is an error', async () => {
+  assert.equal(dataLabelPositionToken('outEnd'), 'outEnd', 'the writer vocabulary passes through');
+  assert.equal(dataLabelPositionToken('outside-end'), 'outEnd', 'the attribute spelling folds');
+  assert.equal(dataLabelPositionToken('best-fit'), 'bestFit');
+  assert.equal(dataLabelPositionToken('center'), 'ctr');
+  assert.equal(dataLabelPositionToken(''), null, 'nothing declared, nothing to write');
+  assert.equal(dataLabelPositionToken('sideways'), null, 'a typo is not guessed at');
+
+  const converted = chartDeck('data-chart-colors="#F2A24C" data-chart-labels="value"', 'doughnut');
+  const output = await writePptx(converted.deck);
+  try {
+    const broken = { slides: [{ elements: [{ type: 'chart', chartType: 'doughnut',
+      options: { dataLabelPosition: 'sideways' } }] }] };
+    await assert.rejects(
+      () => patchDataLabelPositions(output.output, broken, null),
+      /Data-label position patch: unknown position "sideways"/u
+    );
+    // And when the walk and the writer disagree about how many charts there are, it refuses:
+    // two chart elements in the spec, one part in the file.
+    await assert.rejects(
+      () => patchDataLabelPositions(output.output, { slides: [{ elements: [
+        { type: 'chart', chartType: 'doughnut', options: { dataLabelPosition: 'outEnd' } },
+        { type: 'chart', chartType: 'doughnut', options: { dataLabelPosition: 'outEnd' } }
+      ] }] }, null),
+      /Data-label position patch alignment mismatch/u
+    );
+  } finally {
+    output.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------------------
+// A table cell's own typography: line spacing is `a:pPr/a:lnSpc`, letter spacing `a:rPr/@spc`.
+
+test('a cell keeps its own line spacing and letter spacing', async () => {
+  const converted = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-family: "Segoe UI", sans-serif; font-size: 16px; }',
+    '  table { width: 700px; border-collapse: collapse; line-height: 1.1; }',
+    '  td, th { padding: 10px 12px; border: 1px solid #D8D4CC; }',
+    '  td.tall { line-height: 2.4; }',
+    '  td.wide { letter-spacing: 4px; }',
+    '  td.pixels { line-height: 28px; }',
+    '</style></head><body><main class="slide">',
+    '  <table>',
+    '    <thead><tr><th>列</th><th>行距</th><th>字距</th><th>像素行距</th></tr></thead>',
+    '    <tbody><tr><td>基准</td><td class="tall">两倍行距</td><td class="wide">四像素字距</td>',
+    '      <td class="pixels">二十八像素</td></tr></tbody>',
+    '  </table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const output = await writePptx(converted.deck);
+  try {
+    const slide = await output.slide();
+    const rows = (/<a:tbl>[\s\S]*?<\/a:tbl>/u.exec(slide) || [''])[0].match(/<a:tr[\s\S]*?<\/a:tr>/gu) || [];
+    const cells = (rows[1] || '').match(/<a:tc>[\s\S]*?<\/a:tc>/gu) || [];
+    const spacing = (cell) => {
+      const percent = /<a:spcPct val="(\d+)"\/>/u.exec(cell);
+      if (percent) return 'pct:' + percent[1];
+      const points = /<a:spcPts val="(\d+)"\/>/u.exec(cell);
+      return points ? 'pts:' + points[1] : 'none';
+    };
+    const letterSpacing = (cell) => {
+      const found = /<a:rPr[^>]*spc="(-?\d+)"/u.exec(cell);
+      return found ? Number(found[1]) : null;
+    };
+
+    // The table's own 1.1 is the baseline; the cell that declares 2.4 must not inherit it.
+    assert.equal(spacing(cells[0]), 'pct:110000', 'the plain cell keeps the table line spacing');
+    assert.equal(spacing(cells[1]), 'pct:240000', 'the cell own line-height is per cell: ' + spacing(cells[1]));
+    assert.equal(spacing(cells[3]), 'pts:2100', 'a px line-height is 21pt, in points not percent');
+    // 4px of tracking is 3pt, and the run carries it in 1/100 pt.
+    assert.equal(letterSpacing(cells[2]), 300, 'a cell own letter-spacing is rPr@spc');
+    assert.equal(letterSpacing(cells[0]), null, 'a cell that declares none carries no attribute');
+  } finally {
+    output.cleanup();
+  }
+});
+
+test('a run inside a cell loses its own letter spacing (today\'s shape)', async () => {
+  // The cell is read as one string, so an inline `<span style="letter-spacing">` has nowhere to
+  // go: the writer can carry per-run spacing in a cell (cell.text as a run array), the analyzer
+  // never emits it. Named in the report; asserted here so a fix flips this test.
+  const converted = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 16px; }',
+    '  table { width: 700px; border-collapse: collapse; }',
+    '  td, th { padding: 10px 12px; }',
+    '  span.wide { letter-spacing: 6px; }',
+    '</style></head><body><main class="slide">',
+    '  <table><thead><tr><th>列</th></tr></thead>',
+    '  <tbody><tr><td>前缀<span class="wide">间距</span>后缀</td></tr></tbody></table>',
+    '</main></body></html>'
+  ].join('\n'));
+  const output = await writePptx(converted.deck);
+  try {
+    const slide = await output.slide();
+    const rows = (/<a:tbl>[\s\S]*?<\/a:tbl>/u.exec(slide) || [''])[0].match(/<a:tr[\s\S]*?<\/a:tr>/gu) || [];
+    const cell = ((rows[1] || '').match(/<a:tc>[\s\S]*?<\/a:tc>/gu) || [''])[0];
+    assert.equal((cell.match(/<a:r>/gu) || []).length, 1, 'the cell is one run');
+    assert.equal(/<a:rPr[^>]*spc="/u.test(cell), false, 'and the tracking is not on it');
+    assert.match(cell, /前缀间距后缀/u, 'the text itself is kept');
+  } finally {
+    output.cleanup();
+  }
 });

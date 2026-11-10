@@ -18,8 +18,8 @@ generated from the source, so it cannot drift away from the code.
 
 <!-- generated:start -->
 
-Generated from `pipeline/analyzer.js`: **151 call sites**, **84 properties**,
-**136 distinct explanations**. Regenerate with `npm run limits:update`; a new report
+Generated from `pipeline/analyzer.js`: **154 call sites**, **86 properties**,
+**137 distinct explanations**. Regenerate with `npm run limits:update`; a new report
 without a line here fails the gate.
 
 | reported as | what the deck says it could not do |
@@ -30,7 +30,7 @@ without a line here fails the gate.
 | `accentColor` | An accent colour has no native spelling here: only a progress bar or a meter is coloured by it |
 | `animation` | The slide draws the final state; the entrance or motion itself is not drawn |
 | `backgroundImage` | Only one picture layer and one linear gradient above it can be painted: ⟨what⟩ is dropped<br>Only one picture layer behind the text can be painted: ⟨what⟩ is dropped<br>⟨unreadableLayer⟩, so the layer is dropped and the box keeps its own fill<br>⟨unsupportedGradient⟩ cannot be translated (⟨why⟩), so the box keeps its geometry and is left unpainted |
-| `backgroundPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge |
+| `backgroundPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge<br>The offset is measured against the source's own size, and this picture's size cannot be read here, so the position is not applied |
 | `backgroundRepeat` | The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled<br>`space` and `round` resize the cell until a whole number of cells fills the box; a tile repeats one fixed cell, so the pattern is drawn once |
 | `border` | A native shape outline is uniform; declare every side the same, or use a separate rule/shape |
 | `borderCollapse` | Collapsed borders resolve to one line in the browser; adjacent cells disagree on ⟨conflicts⟩, and a native table cell keeps both edges |
@@ -38,7 +38,7 @@ without a line here fails the gate.
 | `borderStyle` | A double border needs a compound line, which the writer cannot spell: it draws as one solid line |
 | `boxShadow` | ⟨shadowNote⟩ |
 | `boxSizing` | Width is resolved as a border box; declare box-sizing: border-box to make it exact |
-| `clipPath` | A rounded inset needs a rounded geometry; a source rectangle has right angles, so the picture keeps square corners<br>Only lengths and percentages inside inset() name a source rectangle; this clip shape is not one<br>The inset leaves no picture; a source rectangle cannot be empty<br>The picture is already cropped or letterboxed by its fit, so this clip would compose two crops; one source rectangle cannot hold both, and the clip is not drawn<br>The picture is clipped by its own inset and the frame crops it again: one source rectangle cannot hold both, so the frame keeps the picture as the inset left it<br>clip-path clips the subtree; only this box's own paint is clipped, its children keep their shape<br>⟨explicitHeight === null ? 'A clip…⟩ |
+| `clipPath` | A rounded inset needs a rounded geometry; a source rectangle has right angles, so the picture keeps square corners<br>Only lengths and percentages inside inset() name a source rectangle; this clip shape is not one<br>The inset leaves no picture; a source rectangle cannot be empty<br>The picture is drawn at a size of its own - a declared background-size, a natural-size layer, or a source whose size this cannot read - so the clip cannot be composed into one source rectangle<br>clip-path clips the subtree; only this box's own paint is clipped, its children keep their shape<br>⟨explicitHeight === null ? 'A clip…⟩ |
 | `column-widths` | Fixed-layout columns are scaled into the table box instead of widening it |
 | `columns` | ⟨reason⟩ |
 | `data-chart` | A bubble needs three numbers per point: an x column, a y column and a size column<br>A bubble reads the columns after x in pairs (y, size); ⟨seriesCount⟩ leaves one of them unpaired<br>A chart needs data: add data-values="1,2,3" or put the numbers in a <table><br>A chart value has to be a number, and this cell holds no number, so it is plotted as 0⟨more(textValues.length)⟩<br>A scatter needs an x column and at least one y series: two numeric columns<br>An empty value cell is plotted as 0; use an explicit 0 if that is what the page means⟨more(blankValues.length)⟩<br>The first column of a bubble is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>The first column of a scatter is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>Unknown chart type; use bar or column, line, area, pie, doughnut or radar |
@@ -51,6 +51,7 @@ without a line here fails the gate.
 | `data-chart-grouping` | Use clustered, stacked or percentStacked |
 | `data-chart-hole-size` | Use a percentage from 10 to 90 |
 | `data-chart-label-format` | Use an Excel number format code |
+| `data-chart-label-pos` | Use outside-end, inside-end, center, best-fit, top, bottom, left or right |
 | `data-chart-label-position` | A ⟨chartType⟩ chart accepts ⟨allowed.join('/')⟩ for data labels, not ⟨options.dataLabelPosition⟩<br>Use outside-end, inside-end, center, best-fit, top, bottom, left or right |
 | `data-chart-labels` | Use value, percent, series or none |
 | `data-chart-legend` | Use true, false, none, top, bottom, left, right or top-right |
@@ -69,6 +70,7 @@ without a line here fails the gate.
 | `fontVariant` | A table cell has no small-caps switch: the letters draw at their own size<br>Only small-caps has a native run property; this value has none<br>Small caps on an inline span is not carried: declare it on the block so the whole box can be patched |
 | `fontWeight` | A weight below 400 draws as regular: the format has bold or not, no light axis - name a Light family in font-family to get the cut<br>A weight between 501 and 599 draws as regular: no native spelling exists for intermediate weights |
 | `gridColumn` | Named grid lines and areas are not modelled; the item is auto-placed with its span width |
+| `gridTemplateAreas` | A named area has to cover one rectangle of whole cells and every row needs the same number of cells; this map has neither, so no item is placed by name |
 | `href` | A link around a whole table cannot be drawn: the file format gives a table no click target, so its cells stay unlinked<br>A link around part of a cell cannot be drawn: a table cell has no runs, so linking it would make the whole cell clickable and the link is dropped<br>An in-page anchor has no slide to jump to in the deck; the link draws but does not navigate |
 | `inlineBox` | An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped |
 | `length` | This ⟨entry.property⟩ is not a length this shape can resolve, so the box falls back to the layout default instead of the declared value |
@@ -79,7 +81,7 @@ without a line here fails the gate.
 | `meter` | The gauge is drawn in the deck accent; the browser also tints it by where the value falls in the range, which this shape does not reproduce |
 | `name` | Unknown chart attribute; the styling it asks for is not applied |
 | `objectFit` | Unknown object-fit value: the picture is stretched to fill the box instead |
-| `objectPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge |
+| `objectPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge<br>The offset is measured against the source's own size, and this picture's size cannot be read here, so the position is not applied |
 | `opacity` | opacity fades the whole subtree; only this box's own fill and text are faded, its children keep full opacity |
 | `outline` | A shape carries one line: the outline sits beside a border here, so the border is what draws |
 | `overflowWrap` | A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break |

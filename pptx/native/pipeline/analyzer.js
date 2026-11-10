@@ -48,6 +48,9 @@ const {
 } = require('./css');
 const { estimateTextHeight, estimateRichTextHeight, estimateLineCount, measureTextPt, clampText } = require('../engine/text_measure');
 const { normalLineHeight } = require('../engine/font_manager');
+// A picture's fit and the clip over it compose into one source rectangle; the resolver that
+// knows the fit modes is the emitter's, so the same code answers both questions.
+const { resolveImageGeometry, nestSrcRect } = require('../engine/image_fit');
 
 /** Fontkit is an optional dependency; metrics stay best-effort without it. */
 function fontkit() {
@@ -71,6 +74,8 @@ const SUPPORTED_PROPERTIES = new Set([
   'flexWrap', 'flexGrow', 'flexBasis', 'flexShrink', 'gap', 'rowGap', 'columnGap', 'gridTemplateColumns',
   'gridColumn', 'gridRow', 'gridColumnStart', 'gridColumnEnd', 'gridRowStart', 'gridRowEnd',
   'gridArea', 'captionSide', 'outline', 'gridTemplateRows', 'gridAutoRows', 'alignItems', 'justifyItems', 'justifySelf',
+  // `grid-template-areas` is read as the explicit grid: a name maps to the rectangle it draws.
+  'gridTemplateAreas',
   'alignContent',
   'justifyContent', 'alignSelf', 'order', 'transform', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
@@ -1206,11 +1211,33 @@ function lengthPositionClamped(node, ctx) {
 }
 
 /**
+ * A length position is measured against the source's own size: that size is the slack the offset
+ * moves the picture through. A picture that will be drawn but whose size cannot be read here has
+ * nothing to resolve the offset against - the fit falls back to a stretch - and staying quiet
+ * there would lose the placement without a word.
+ *
+ * A picture whose source is already named as unpainted is not this case: nothing is drawn at all,
+ * so there is no placement to lose and no second note to add.
+ */
+function lengthPositionUnmeasurable(node, ctx) {
+  const raw = node.focus;
+  if (typeof raw !== 'string' || !raw.trim()) return false;
+  if (unreadableSourceReason(node.src, ctx)) return false;
+  return pictureNaturalSize(node.src, ctx) === null;
+}
+
+/**
  * The two properties are named at their own call site, with the sentence spelled out, because the
  * catalogue in `LIMITS.md` is read from these arguments: a shared constant would show up there as
  * an expression instead of an explanation.
  */
 function noteClampedObjectPosition(node, domNode, ctx) {
+  if (lengthPositionUnmeasurable(node, ctx)) {
+    recordUnsupported(ctx, domNode, 'objectPosition', node.focus,
+      'The offset is measured against the source\'s own size, and this picture\'s size cannot be'
+        + ' read here, so the position is not applied');
+    return;
+  }
   if (!lengthPositionClamped(node, ctx)) return;
   recordUnsupported(ctx, domNode, 'objectPosition', node.focus,
     'A length offset would push the picture out of its box; the file format cannot draw that gap,'
@@ -1218,6 +1245,12 @@ function noteClampedObjectPosition(node, domNode, ctx) {
 }
 
 function noteClampedBackgroundPosition(node, domNode, ctx) {
+  if (lengthPositionUnmeasurable(node, ctx)) {
+    recordUnsupported(ctx, domNode, 'backgroundPosition', node.focus,
+      'The offset is measured against the source\'s own size, and this picture\'s size cannot be'
+        + ' read here, so the position is not applied');
+    return;
+  }
   if (!lengthPositionClamped(node, ctx)) return;
   recordUnsupported(ctx, domNode, 'backgroundPosition', node.focus,
     'A length offset would push the picture out of its box; the file format cannot draw that gap,'
@@ -1267,28 +1300,54 @@ function clipInsetSides(body, widthIn, heightIn) {
 }
 
 /**
+ * Where the picture is drawn inside its own box, resolved by the code the emitter uses.
+ *
+ * `clip-path` clips that drawing, so which pixels stay visible depends on the drawn box, the source
+ * size and the focus. Deriving them again here would be a second copy of the fit modes drifting
+ * away from the first, so the question goes to the same resolver.
+ *
+ * Null says the drawing is not a fit: a background picture whose `background-size` names a length,
+ * a percentage or `auto` is drawn at the size the design asked for (the builder resolves that), and
+ * an unreadable source has no size to fit against.
+ */
+function drawnPictureOf(node, ctx) {
+  if (node.backgroundSize || node.backgroundSizeSpec || node.backgroundNatural) return null;
+  const natural = pictureNaturalSize(node.src, ctx);
+  if (!natural) return null;
+  try {
+    return resolveImageGeometry({
+      x: 0,
+      y: 0,
+      w: Number(node.w),
+      h: Number(node.h),
+      fit: node.objectFit || 'stretch',
+      focus: node.focus,
+      crop: node.crop || null
+    }, { natural });
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * `clip-path: inset()` on a picture is that picture's own source rectangle: what the browser shows
  * of the image is the part inside the inset, so the box shrinks to the inset and the crop carries
  * the same fractions - the visible pixels then stay at the size they were drawn at, which a crop
  * that kept the whole box would not do (it would stretch them to fill it).
  *
- * Only a picture that fills its box translates this way. A `cover`/`contain` fit, or a frame that
- * already crops the picture, is a second crop: two crops in one source rectangle is a separate
- * job, and the report stays.
+ * A picture that is also fitted (`object-fit: cover`, or a picture smaller than its box) draws its
+ * source window *inside* the box, so the inset and that window compose: the inset keeps selecting a
+ * rectangle of the box, and the source fractions are the window's, nested. Drawing the composed
+ * window into the visible rectangle is a one-to-one copy of what the browser clips, which is why
+ * both are written and neither is reported.
  *
  * Every refusal names `clipPath` with its sentence written out at the call, because that is how
  * the catalogue in `LIMITS.md` learns what the deck could not draw.
  */
-function applyInsetCrop(node, domNode, style, ctx, fills) {
+function applyInsetCrop(node, domNode, style, ctx) {
   const body = clipInsetBody(style);
   if (body === null) return;
   const value = style.clipPath;
-  if (!fills) {
-    recordUnsupported(ctx, domNode, 'clipPath', value,
-      'The picture is already cropped or letterboxed by its fit, so this clip would compose two'
-        + ' crops; one source rectangle cannot hold both, and the clip is not drawn');
-    return;
-  }
   const sides = clipInsetSides(body, node.w, node.h);
   if (sides && sides.rounded) {
     recordUnsupported(ctx, domNode, 'clipPath', value,
@@ -1307,31 +1366,57 @@ function applyInsetCrop(node, domNode, style, ctx, fills) {
   const right = Math.max(0, sides.right);
   const bottom = Math.max(0, sides.bottom);
   if (left + right < 1e-6 && top + bottom < 1e-6) return;
-  const width = Number((node.w * (1 - left - right)).toFixed(4));
-  const height = Number((node.h * (1 - top - bottom)).toFixed(4));
-  if (left + right >= 1 - 1e-6 || top + bottom >= 1 - 1e-6
-    || !(width > 0.01) || !(height > 0.01)) {
+  const drawn = drawnPictureOf(node, ctx);
+  if (!drawn) {
+    recordUnsupported(ctx, domNode, 'clipPath', value,
+      'The picture is drawn at a size of its own - a declared background-size, a natural-size layer,'
+        + ' or a source whose size this cannot read - so the clip cannot be composed into one source'
+        + ' rectangle');
+    return;
+  }
+  // The inset rectangle is a rectangle of the box; the picture only fills part of it under
+  // `contain`, so what stays visible is the part both share.
+  const rect = { x: node.w * left, y: node.h * top, w: node.w * (1 - left - right), h: node.h * (1 - top - bottom) };
+  const box = drawn.box;
+  const visibleLeft = Math.max(rect.x, box.x);
+  const visibleTop = Math.max(rect.y, box.y);
+  const visibleRight = Math.min(rect.x + rect.w, box.x + box.w);
+  const visibleBottom = Math.min(rect.y + rect.h, box.y + box.h);
+  if (!(visibleRight - visibleLeft > 0.01) || !(visibleBottom - visibleTop > 0.01)) {
     recordUnsupported(ctx, domNode, 'clipPath', value,
       'The inset leaves no picture; a source rectangle cannot be empty');
     return;
   }
+  const share = (value, origin, extent) => (extent > 0 ? (value - origin) / extent : 0);
+  const sub = {
+    left: share(visibleLeft, box.x, box.w),
+    top: share(visibleTop, box.y, box.h),
+    right: 1 - share(visibleRight, box.x, box.w),
+    bottom: 1 - share(visibleBottom, box.y, box.h)
+  };
+  const composed = nestSrcRect(drawn.srcRect, sub);
+  const round = (value) => Number(Math.max(0, Math.min(1, value)).toFixed(5));
+  const crop = {
+    left: round(composed.left),
+    top: round(composed.top),
+    right: round(composed.right),
+    bottom: round(composed.bottom)
+  };
+  // An inset that only cuts the empty margin around a smaller picture shows all of it: there is
+  // nothing to crop, and moving the box into its own margin would move the picture with it.
+  if (crop.left + crop.top + crop.right + crop.bottom < 1e-6) return;
   // CSS clips the paint, not the layout: the box keeps its slot in the flow (the cursor reads the
   // layout box back) while the picture is drawn at the visible rectangle only.
   node.layoutX = node.x;
   node.layoutY = node.y;
   node.layoutW = node.w;
   node.layoutH = node.h;
-  node.x = Number((node.x + node.w * left).toFixed(4));
-  node.y = Number((node.y + node.h * top).toFixed(4));
-  node.w = width;
-  node.h = height;
+  node.x = Number((node.x + visibleLeft).toFixed(4));
+  node.y = Number((node.y + visibleTop).toFixed(4));
+  node.w = Number((visibleRight - visibleLeft).toFixed(4));
+  node.h = Number((visibleBottom - visibleTop).toFixed(4));
   node.objectFit = 'crop';
-  node.crop = {
-    left: Number(left.toFixed(5)),
-    top: Number(top.toFixed(5)),
-    right: Number(right.toFixed(5)),
-    bottom: Number(bottom.toFixed(5))
-  };
+  node.crop = crop;
 }
 
 /**
@@ -1705,6 +1790,13 @@ function buildRuns(domNode, baseStyle, ctx) {
       }
     }
     Object.assign(options, decorationOptions(style, tag));
+    // The browser's own `<sup>`/`<sub>` style is two halves: a raise, which the run carries as
+    // `baseline`, and `font-size: smaller`, which Chrome resolves to 5/6 of the parent (measured:
+    // 11.6667px inside 14px). The run model already carries a size per run, so the second half
+    // costs one property - and a size the design declares on the element wins, as in the cascade.
+    if ((tag === 'sup' || tag === 'sub') && options.fontSize === undefined && base.fontSize) {
+      options.fontSize = Math.round(base.fontSize * (5 / 6) * 100) / 100;
+    }
     // A background on a plain inline element is a highlighter, which PowerPoint keeps
     // as a run property (`<a:highlight>`), so the words really are marked.
     if (inline && inline.highlight) options.highlight = inline.highlight;
@@ -3429,7 +3521,7 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       // A tiled layer's position places the first cell; only a fitted picture reads it as a crop
       // window, so the gap a length would leave is named for that case alone.
       if (!node.tile) noteClampedBackgroundPosition(node, domNode, ctx);
-      applyInsetCrop(node, domNode, style, ctx, node.objectFit === 'stretch');
+      applyInsetCrop(node, domNode, style, ctx);
       checkCornerMix(domNode, style, ctx);
     node.radius = radiusOf(style);
       if ((ellipseOf(style) || {}).percent >= 50) node.ellipse = true;
@@ -3518,9 +3610,9 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     // A length position the overflow cannot reach is named: a source rectangle always fills the
     // frame, so a reader sees the near edge instead of the strip the numbers ask for.
     noteClampedObjectPosition(node, domNode, ctx);
-    // `clip-path: inset()` on a picture is that picture's own crop rectangle, as long as the
-    // picture is what fills the box - see `applyInsetCrop`.
-    applyInsetCrop(node, domNode, style, ctx, node.objectFit === 'fill');
+    // `clip-path: inset()` on a picture is that picture's own crop rectangle, composed with
+    // whatever its fit already draws - see `applyInsetCrop`.
+    applyInsetCrop(node, domNode, style, ctx);
     return node;
   }
 
@@ -4796,8 +4888,53 @@ function gridAxisValue(style, axis) {
     + String(end === undefined ? 'auto' : end).trim();
 }
 
+/**
+ * `grid-template-areas` as a matrix of area names, or null when the declaration cannot be read.
+ *
+ * Each quoted string is a row and `.` is an empty cell. A name has to cover one rectangle of whole
+ * cells - the format says so, and a browser throws the whole declaration away when it does not - so
+ * a map that breaks that rule is null here and the caller names it instead of guessing a shape.
+ * Names are case-sensitive, as CSS identifiers are.
+ */
+function gridAreaMatrix(style) {
+  const raw = style.gridTemplateAreas;
+  if (raw === undefined || raw === null) return null;
+  const text = String(raw).trim();
+  if (!text || text.toLowerCase() === 'none') return null;
+  const rows = [];
+  const pattern = /'([^']*)'|"([^"]*)"/gu;
+  let match = pattern.exec(text);
+  while (match) {
+    rows.push((match[1] === undefined ? match[2] : match[1]).trim().split(/\s+/u).filter(Boolean));
+    match = pattern.exec(text);
+  }
+  if (!rows.length) return null;
+  const columns = Math.max(...rows.map((row) => row.length));
+  if (!columns || rows.some((row) => row.length !== columns)) return null;
+  const bounds = new Map();
+  rows.forEach((row, rowIndex) => {
+    row.forEach((token, columnIndex) => {
+      if (token === '.') return;
+      const seen = bounds.get(token);
+      if (!seen) {
+        bounds.set(token, { top: rowIndex, left: columnIndex, bottom: rowIndex, right: columnIndex, cells: 1 });
+        return;
+      }
+      seen.top = Math.min(seen.top, rowIndex);
+      seen.left = Math.min(seen.left, columnIndex);
+      seen.bottom = Math.max(seen.bottom, rowIndex);
+      seen.right = Math.max(seen.right, columnIndex);
+      seen.cells += 1;
+    });
+  });
+  for (const box of bounds.values()) {
+    if ((box.right - box.left + 1) * (box.bottom - box.top + 1) !== box.cells) return null;
+  }
+  return { rows: rows.length, columns, bounds };
+}
+
 /** The spans and starts a grid item declares, plus anything that cannot be resolved. */
-function gridPlacementSpec(style, columnCount, rowCount) {
+function gridPlacementSpec(style, columnCount, rowCount, areas) {
   // `grid-area: row-start / column-start / row-end / column-end` is a shorthand for all
   // four longhands, so it wins when it is present.
   const area = String(style.gridArea === undefined ? '' : style.gridArea).trim();
@@ -4816,7 +4953,22 @@ function gridPlacementSpec(style, columnCount, rowCount) {
         named: column.named || row.named
       };
     }
-    // A bare name is a named area, which needs `grid-template-areas`.
+    // A bare name is a named area, and the matrix `grid-template-areas` drew is its rectangle:
+    // that is where the name gets its four lines, so a span across two columns is a
+    // `columnSpan` like any other and needs no new placement rule.
+    const box = areas ? areas.bounds.get(area) : null;
+    if (box) {
+      return {
+        columnStart: box.left,
+        columnEnd: box.right + 1,
+        columnSpan: box.right - box.left + 1,
+        rowStart: box.top,
+        rowEnd: box.bottom + 1,
+        rowSpan: box.bottom - box.top + 1,
+        named: false
+      };
+    }
+    // The area is not in the map (or there is no map): the item keeps auto placement.
     return { columnStart: null, columnEnd: null, columnSpan: 1, rowStart: null, rowEnd: null, rowSpan: 1, named: true };
   }
   const column = gridPlacementOf(gridAxisValue(style, 'column'), columnCount);
@@ -4873,12 +5025,23 @@ function layoutGrid(domNode, style, contentBox, inherited, ctx) {
   };
 
   const kids = sortByOrder(visibleChildren(domNode, ctx), ctx);
+  // A `grid-template-areas` map is the explicit grid: it names rows and columns, and an item that
+  // says `grid-area: head` takes the rectangle the map draws for that name.
+  const areas = gridAreaMatrix(style);
+  const declaredAreas = String(style.gridTemplateAreas === undefined || style.gridTemplateAreas === null
+    ? '' : style.gridTemplateAreas).trim();
+  if (declaredAreas && declaredAreas.toLowerCase() !== 'none' && !areas) {
+    recordUnsupported(ctx, domNode, 'gridTemplateAreas', declaredAreas,
+      'A named area has to cover one rectangle of whole cells and every row needs the same number of'
+        + ' cells; this map has neither, so no item is placed by name');
+  }
   // A negative row line counts back from the last line, which only exists once the
-  // explicit row tracks are known.
-  const rowCount = gridRowTracksOf(style, contentBox.h, inherited.fontPx).length || null;
+  // explicit row tracks are known - and the area map names rows of its own.
+  const explicitRows = gridRowTracksOf(style, contentBox.h, inherited.fontPx).length;
+  const rowCount = Math.max(explicitRows, areas ? areas.rows : 0) || null;
   const plans = kids.map((child) => {
     const childStyle = ctx.styles.computed(child);
-    const placement = gridPlacementSpec(childStyle, columns, rowCount);
+    const placement = gridPlacementSpec(childStyle, columns, rowCount, areas);
     if (placement.named) {
       recordUnsupported(ctx, child, 'gridColumn', gridAxisValue(childStyle, 'column'),
         'Named grid lines and areas are not modelled; the item is auto-placed with its span width');
@@ -5345,7 +5508,9 @@ const CHART_LEGEND_POSITIONS = {
   bottom: 'b', b: 'b', top: 't', t: 't', left: 'l', l: 'l', right: 'r', r: 'r', 'top-right': 'tr', tr: 'tr'
 };
 const CHART_LABEL_FLAGS = { value: 'showValue', percent: 'showPercent', series: 'showSerName' };
-const CHART_LABEL_POSITIONS = new Set(['b', 'bestFit', 'ctr', 'l', 'r', 't', 'inEnd', 'outEnd']);
+// The values `CT_DLbls/dLblPos` accepts. `inBase` belongs here: a stacked bar draws its labels
+// on the baseline of each segment, and the alias table below can reach the word.
+const CHART_LABEL_POSITIONS = new Set(['b', 'bestFit', 'ctr', 'l', 'r', 't', 'inBase', 'inEnd', 'outEnd']);
 // The words a designer writes, mapped onto the schema's. `outside-end` is what people
 // type; `outEnd` is what the file holds.
 const CHART_LABEL_POSITION_ALIASES = {
@@ -5385,7 +5550,8 @@ function applyChartStyling(attrs, options, domNode, ctx, chartType) {
   // An unknown data-chart-* attribute is a typo, and a typo in a styling attribute
   // is a silently lost style. Name it.
   const KNOWN_CHART_ATTRS = new Set(['data-chart', 'data-chart-colors', 'data-chart-labels',
-    'data-chart-label-position', 'data-chart-value-format', 'data-chart-axis-titles',
+    'data-chart-label-position', 'data-chart-label-pos', 'data-chart-value-format',
+    'data-chart-axis-titles',
     'data-chart-legend', 'data-chart-title', 'data-chart-grid', 'data-chart-grouping',
     'data-chart-dir', 'data-chart-text-color', 'data-values', 'data-labels',
     'data-chart-gap-width', 'data-chart-smooth', 'data-chart-cat-label-rotate',
@@ -5433,12 +5599,29 @@ function applyChartStyling(attrs, options, domNode, ctx, chartType) {
     }
   }
 
-  const labelPosition = String(attrs['data-chart-label-position'] || '').trim();
+  // `data-chart-label-pos` is the short spelling of the same declaration; the long one wins when a
+  // deck writes both, and a refused value is reported under the name that was actually written.
+  const shortPosition = attrs['data-chart-label-pos'];
+  const labelPosition = String(attrs['data-chart-label-position'] !== undefined
+    ? attrs['data-chart-label-position']
+    : (shortPosition === undefined ? '' : shortPosition)).trim();
   if (labelPosition) {
     const spelled = CHART_LABEL_POSITION_ALIASES[labelPosition.toLowerCase()] || labelPosition;
-    if (CHART_LABEL_POSITIONS.has(spelled)) options.dataLabelPosition = spelled;
-    else recordUnsupported(ctx, domNode, 'data-chart-label-position', labelPosition,
-      'Use outside-end, inside-end, center, best-fit, top, bottom, left or right');
+    if (CHART_LABEL_POSITIONS.has(spelled)) {
+      options.dataLabelPosition = spelled;
+      // A position only means something where a label is drawn: ask for the value label unless the
+      // design already named the labels it wants - `data-chart-labels="percent"` plus a position
+      // means percent labels there, and adding value labels beside them would draw a second line.
+      const named = options.showValue !== undefined || options.showPercent !== undefined
+        || options.showSerName !== undefined;
+      if (!named) options.showValue = true;
+    } else if (attrs['data-chart-label-position'] !== undefined) {
+      recordUnsupported(ctx, domNode, 'data-chart-label-position', labelPosition,
+        'Use outside-end, inside-end, center, best-fit, top, bottom, left or right');
+    } else {
+      recordUnsupported(ctx, domNode, 'data-chart-label-pos', labelPosition,
+        'Use outside-end, inside-end, center, best-fit, top, bottom, left or right');
+    }
   }
 
   const valueFormat = attrs['data-chart-value-format'];
@@ -7083,15 +7266,6 @@ function analyzeHtml(html, options = {}) {
       if (String((node.style && node.style.overflow) || '').toLowerCase() === 'hidden') {
         (node.children || []).forEach((child) => {
           if (!child.absolute || child.tag !== 'img') return;
-          // A picture its own `inset()` already clipped is one crop; the frame around it would be
-          // a second, and one source rectangle cannot hold both. Named rather than composed.
-          if (child.crop) {
-            recordUnsupported(ctx, { tag: 'img', classes: [] }, 'clipPath',
-              String((child.style && child.style.clipPath) || ''),
-              'The picture is clipped by its own inset and the frame crops it again: one source'
-                + ' rectangle cannot hold both, so the frame keeps the picture as the inset left it');
-            return;
-          }
           const boxLeft = node.x, boxTop = node.y;
           const boxRight = node.x + node.w, boxBottom = node.y + node.h;
           const imgLeft = child.x, imgTop = child.y;
@@ -7102,12 +7276,16 @@ function analyzeHtml(html, options = {}) {
           const cropTop = Math.max(0, (boxTop - imgTop) / child.h);
           const cropRight = Math.max(0, (imgRight - boxRight) / child.w);
           const cropBottom = Math.max(0, (imgBottom - boxBottom) / child.h);
+          // A picture its own `inset()` already clipped carries that clip in source fractions of
+          // the box it kept, and this frame cuts the same box again: two windows inside one
+          // picture nest, which is one source rectangle and not a second declaration.
+          const frame = { left: cropLeft, top: cropTop, right: cropRight, bottom: cropBottom };
           child.x = Math.max(imgLeft, boxLeft);
           child.y = Math.max(imgTop, boxTop);
           child.w = Math.min(imgRight, boxRight) - child.x;
           child.h = Math.min(imgBottom, boxBottom) - child.y;
           child.objectFit = 'crop';
-          child.crop = { left: cropLeft, top: cropTop, right: cropRight, bottom: cropBottom };
+          child.crop = child.crop ? nestSrcRect(child.crop, frame) : frame;
         });
       }
       (node.children || []).forEach(visit);

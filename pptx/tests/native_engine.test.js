@@ -5775,6 +5775,58 @@ test('a repeating background, a cropped picture and a placed one reach one packa
     'the inset becomes a source rectangle in tenths of a percent');
 });
 
+test('a named grid is one declarative container that reproduces Chrome\'s cells', () => {
+  // The map is the contract: each cell carries the rectangle its name draws, and the container
+  // stays declarative - if the builder dropped the start lines the engine would lay the cells
+  // out from its own cursor and the whole grid would fall back to absolute shapes. The cell
+  // numbers are the same Chrome session as the boxes above: .named opened at (64,230) with a
+  // 1152-wide, 420-high box, and its five children were read with getBoundingClientRect().
+  const cells = [
+    { name: '标题横跨两列', column: 0, row: 0, columnSpan: 2, rowSpan: undefined, x: 64, y: 230, w: 847, h: 92 },
+    { name: '2.84 亿元', column: 0, row: 1, columnSpan: 2, rowSpan: undefined, x: 64, y: 340, w: 847, h: 200 },
+    { name: '右栏纵跨两行', column: 2, row: 0, columnSpan: undefined, rowSpan: 2, x: 929, y: 230, w: 287, h: 310 },
+    { name: '注释', column: 0, row: 2, columnSpan: 2, rowSpan: undefined, x: 64, y: 558, w: 847, h: 92 },
+    { name: '脚注', column: 2, row: 2, columnSpan: undefined, rowSpan: undefined, x: 929, y: 558, w: 287, h: 92 }
+  ];
+  const html = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'examples', 'pipeline-grid.html'), 'utf8');
+  const result = pipeline.convertHtml(html);
+  assert.deepEqual(result.report.unsupportedDetails, [], 'a named grid is drawable now');
+  const page = result.deck.slides[3];
+  assert.deepEqual(result.report.containerFallbacks, [], 'and the engine replays it declaratively');
+  const container = page.elements.find((element) =>
+    element.type === 'container' && (element.children || []).length === cells.length);
+  assert.ok(container, 'page 4 still holds the grid as one container');
+  const textOf = (element) => {
+    const parts = [];
+    if (typeof element.text === 'string') parts.push(element.text);
+    (element.children || []).forEach((child) => parts.push(textOf(child)));
+    return parts.join(' ').replace(/\s+/gu, ' ').trim();
+  };
+  cells.forEach((cell) => {
+    const child = container.children.find((element) => textOf(element).includes(cell.name));
+    assert.ok(child, 'the grid still has the ' + cell.name + ' cell');
+    assert.equal(child.gridColumnStart, cell.column, cell.name + ' starts on column ' + cell.column);
+    assert.equal(child.gridRowStart, cell.row, cell.name + ' starts on row ' + cell.row);
+    assert.equal(child.columnSpan, cell.columnSpan, cell.name + ' spans ' + cell.columnSpan + ' columns');
+    assert.equal(child.rowSpan, cell.rowSpan, cell.name + ' spans ' + cell.rowSpan + ' rows');
+  });
+  // And the engine's own replay of that container puts each cell on the browser's box.
+  const placed = require('../native/engine/layout').layoutContainer(
+    container, { x: container.x, y: container.y, w: container.w, h: container.h }, result.deck.theme || {});
+  assert.equal(Math.round(placed.height * 96), 420, 'three rows and two gaps: ' + placed.height);
+  cells.forEach((cell) => {
+    const box = placed.elements.find((element) => {
+      const engine = {
+        x: Math.round(element.x * 96), y: Math.round(element.y * 96),
+        w: Math.round(element.w * 96), h: Math.round(element.h * 96)
+      };
+      return Math.abs(engine.x - cell.x) <= 2 && Math.abs(engine.y - cell.y) <= 2 &&
+        Math.abs(engine.w - cell.w) <= 2 && Math.abs(engine.h - cell.h) <= 2;
+    });
+    assert.ok(box, 'no drawn box for the ' + cell.name + ' cell at ' + cell.x + ',' + cell.y);
+  });
+});
 test('the catalogue of what the engine cannot draw matches the code', () => {
   // The contract is that every difference the drawing cannot express is named. That claim is easy
   // to erode - a new report appears and the document drifts - so LIMITS.md is generated from the
@@ -8969,14 +9021,18 @@ test('the top-level boxes land where Chrome put them', () => {
     [{ x: 64, y: 56, w: 1152, h: 16 }, { x: 64, y: 94, w: 1152, h: 43 },
      { x: 64, y: 159, w: 900, h: 49 }, { x: 64, y: 230, w: 1152, h: 386 }],
     [{ x: 64, y: 56, w: 1152, h: 16 }, { x: 64, y: 94, w: 1152, h: 43 },
-     { x: 64, y: 159, w: 900, h: 50 }, { x: 64, y: 231, w: 1152, h: 322 }]
+     { x: 64, y: 159, w: 900, h: 50 }, { x: 64, y: 231, w: 1152, h: 322 }],
   ];
   const html = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'examples', 'pipeline-grid.html'), 'utf8');
   const deck = pipeline.convertHtml(html).deck;
-  assert.equal(deck.slides.length, recorded.length, 'the fixture still has its pages');
-  deck.slides.forEach((slide, page) => {
-    assert.equal(slide.elements.length, recorded[page].length,
+  // Page 4 is the named-areas dashboard. Its cells are not top-level boxes in the deck (a grid cell
+  // with its own background becomes a shape or a container), so it is measured on its own below
+  // rather than through this loop, which is about the slide's direct children.
+  assert.equal(deck.slides.length, recorded.length + 1, 'the fixture still has its pages');
+  recorded.forEach((expectedBoxes, page) => {
+    const slide = deck.slides[page];
+    assert.equal(slide.elements.length, expectedBoxes.length,
       'page ' + (page + 1) + ' still has its blocks');
     slide.elements.forEach((element, position) => {
       const expected = recorded[page][position];

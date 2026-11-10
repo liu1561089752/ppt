@@ -292,13 +292,13 @@ test('an inset that is not one rectangle is named instead of approximated', () =
   assert.equal(firstOfKind(empty, 'image').crop, undefined);
   assert.match(reportsOf(empty, 'clipPath')[0], /leaves no picture/u);
 
-  // A picture that already crops or letterboxes is a second crop, and one source rectangle
-  // cannot hold two.
-  const cover = convert('<img class="c" src="' + SQUARE + '" alt="x">',
-    '.c { width: 200px; height: 150px; object-fit: cover; clip-path: inset(10%); }');
-  assert.equal(firstOfKind(cover, 'image').objectFit, 'cover');
-  assert.equal(firstOfKind(cover, 'image').crop, undefined);
-  assert.match(reportsOf(cover, 'clipPath')[0], /two crops/u);
+  // A picture drawn at a size of its own carries no fit to compose with the inset: the source
+  // rectangle the clip would need is not the one the layer draws.
+  const sized = convert('<div class="c"></div>',
+    '.c { width: 200px; height: 150px; background-image: url(' + SQUARE + ');'
+    + ' background-size: 120px 120px; clip-path: inset(10%); }');
+  assert.equal(firstOfKind(sized, 'image').crop, undefined);
+  assert.match(reportsOf(sized, 'clipPath')[0], /size of its own/u);
 });
 
 test('an inset that cuts nothing is silent', () => {
@@ -569,3 +569,271 @@ test('the crop fixture draws its pictures and names nothing', () => {
   assert.equal(tiled.length, 2, 'two of the three pattern boxes repeat: ' + tiled.length);
   assert.deepEqual(tiled.map((node) => [node.tile.x, node.tile.y]), [[true, true], [true, false]]);
 });
+
+// ---------------------------------------------------------------------------------------------
+// Named grid areas: the map is the explicit grid, and a name is its rectangle.
+// ---------------------------------------------------------------------------------------------
+
+const namedAreaGrid = (areas) => convert(
+  '<div class="g"><div class="head">head</div><div class="side">side</div>'
+  + '<div class="main">main</div></div>',
+  '.g { display: grid; grid-template-columns: 200px 200px;'
+  + " grid-template-areas: " + areas + "; gap: 12px; width: 420px; }"
+  + ' .head { grid-area: head; } .side { grid-area: side; } .main { grid-area: main; }');
+
+test('grid-template-areas places an item in the rectangle its name draws', () => {
+  const result = namedAreaGrid("'head head' 'side main'");
+  assert.deepEqual(reportProperties(result), [], 'a rectangular map is drawn, not named');
+  const boxes = allNodes(result).filter((node) => node.style && node.style.gridArea);
+  const byArea = (name) => boxes.find((node) => String(node.style.gridArea) === name);
+  const head = byArea('head');
+  const side = byArea('side');
+  const main = byArea('main');
+  assert.ok(head && side && main, 'all three items exist');
+
+  // Row 1 is the whole width: two 200px tracks and the 12px gap between them.
+  close(head.x, 0.4167, 'head starts at the content edge');
+  close(head.w, 412 / 96, 'head spans both columns and the gap');
+  close(head.y, 0.4167, 'head is on the first row');
+  assert.equal(head.gridColumnStart, 0);
+  assert.equal(head.columnSpan, 2, 'the area covers two columns');
+
+  // Row 2: side | main, side by side, one row down.
+  close(side.x, 0.4167, 'side keeps the first column');
+  close(side.w, 200 / 96, 'side is one track wide');
+  close(main.x, 0.4167 + 212 / 96, 'main starts after the second track begins');
+  close(main.w, 200 / 96, 'main is one track wide');
+  close(side.y, main.y, 'side and main share a row');
+  assert.ok(side.y > head.y, 'the second row is below the first');
+  assert.equal(side.gridRowStart, 1);
+  assert.equal(main.gridColumnStart, 1);
+  // The map names two rows even though no `grid-template-rows` does.
+  close(head.h + side.h + 12 / 96, head.h + side.h + 0.125, 'the gap between the rows is the declared one');
+});
+
+test('a name that covers a non-rectangular set of cells is named, not guessed', () => {
+  const result = namedAreaGrid("'head head' 'side head'");
+  const mapReports = reportsOf(result, 'gridTemplateAreas');
+  assert.equal(mapReports.length, 1, 'the map itself is the loss: ' + JSON.stringify(reportProperties(result)));
+  assert.match(mapReports[0], /one rectangle of whole cells/u);
+  // Every item still places in document order, and each one says why it is not in its area.
+  assert.equal(reportsOf(result, 'gridColumn').length, 3, 'the three named items say why they were not placed');
+  const boxes = allNodes(result).filter((node) => node.style && node.style.gridArea);
+  assert.equal(boxes.filter((node) => node.columnSpan === 2).length, 0, 'nothing spans two columns');
+});
+
+test('an item that names an area the map does not draw keeps its own report', () => {
+  const result = convert('<div class="g"><div class="lead">x</div></div>',
+    '.g { display: grid; grid-template-columns: 200px 200px;'
+    + " grid-template-areas: 'head head' 'side main'; width: 420px; }"
+    + ' .lead { grid-area: headline; }');
+  assert.deepEqual(reportsOf(result, 'gridTemplateAreas'), [], 'the map is rectangular');
+  const placementReports = reportsOf(result, 'gridColumn');
+  assert.equal(placementReports.length, 1, 'the missing name is the loss');
+  assert.match(placementReports[0], /Named grid lines and areas are not modelled/u);
+  const box = allNodes(result).find((node) => node.style && node.style.gridArea);
+  assert.equal(box.columnSpan, undefined, 'the item keeps auto placement');
+});
+
+test('the named-areas page of the grid fixture lands on Chrome\'s cells', () => {
+  // Read from Chrome 156 with getBoundingClientRect() on pipeline-grid.html's last page, in CSS
+  // px from that page's own corner. The map is 1.6fr/1fr/0.9fr over 1152px with an 18px gap and
+  // rows of 92/200/92: head and chart take the first two tracks, rail both rows of the last one.
+  const recorded = {
+    named: [64, 230, 1152, 420],
+    head: [64, 230, 847, 92],
+    chart: [64, 340, 847, 200],
+    rail: [929, 230, 287, 310],
+    note: [64, 558, 847, 92],
+    foot: [929, 558, 287, 92]
+  };
+  const directory = path.join(__dirname, '..', 'examples');
+  const html = fs.readFileSync(path.join(directory, 'pipeline-grid.html'), 'utf8');
+  const result = pipeline.convertHtml(html, { baseDir: directory });
+  assert.deepEqual(reportProperties(result), [], 'the named map is drawn, not named');
+  const nodes = result.analysis.slides[result.analysis.slides.length - 1].nodes;
+  const find = (node) => {
+    if (node.classes && node.classes.includes('named')) return node;
+    for (const child of node.children || []) {
+      const hit = find(child);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const named = find({ children: nodes });
+  assert.ok(named, 'the page still holds the named grid');
+  const px = (value) => Math.round(value * 96);
+  const compare = (box, expected, what) => {
+    assert.ok(Math.abs(px(box.x) - expected[0]) <= 2, what + ' x (' + px(box.x) + ' vs ' + expected[0] + ')');
+    assert.ok(Math.abs(px(box.y) - expected[1]) <= 2, what + ' y (' + px(box.y) + ' vs ' + expected[1] + ')');
+    assert.ok(Math.abs(px(box.w) - expected[2]) <= 2, what + ' w (' + px(box.w) + ' vs ' + expected[2] + ')');
+    assert.ok(Math.abs(px(box.h) - expected[3]) <= 2, what + ' h (' + px(box.h) + ' vs ' + expected[3] + ')');
+  };
+  compare(named, recorded.named, 'the grid itself');
+  named.children.forEach((child) => {
+    const name = (child.classes || []).find((entry) => entry !== 'band');
+    assert.ok(recorded[name], 'the cell ' + name + ' was measured');
+    compare(child, recorded[name], name);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Two windows in one picture nest: the fit the picture already draws, and the clip over it.
+// ---------------------------------------------------------------------------------------------
+
+test('an inset composes with the fit the picture already draws', async () => {
+  // 40x100 source in a 200x100 box: `cover` draws 200x500, so the source window is y 0.4..0.6.
+  // The inset keeps 10% off each side of that drawing, which is 20px of 200 and 10px of 100.
+  const result = convert('<img src="' + TALL + '" alt="x">',
+    'img { width: 200px; height: 100px; object-fit: cover; clip-path: inset(10%); }');
+  const image = firstOfKind(result, 'image');
+  assert.deepEqual(reportProperties(result), [], 'one source rectangle holds both windows');
+  assert.equal(image.objectFit, 'crop');
+  close(image.crop.left, 0.1, 'the left tenth of the drawn window');
+  close(image.crop.right, 0.1, 'the right tenth');
+  close(image.crop.top, 0.42, 'a tenth of the 0.2 the cover window shows');
+  close(image.crop.bottom, 0.42, 'and the same at the bottom');
+  close(image.x, 0.625, 'the visible rectangle keeps the box position it had');
+  close(image.y, 0.5208, 'including the ten percent above it');
+  close(image.w, 160 / 96, 'the drawn width is the part that stayed visible');
+  close(image.h, 80 / 96, 'and the drawn height likewise');
+
+  const rect = srcRectOf(await slideXml(result));
+  assert.equal(rect, 'l="10000" t="42000" r="10000" b="42000"', 'the composed window reaches the part');
+});
+
+test('a contained picture composes at its own scale, and an inset over the margin cuts nothing', () => {
+  // 40x100 in a 200x100 box is drawn 40x100, centred: the inset leaves the whole picture across
+  // and ten percent off the top and bottom.
+  const contained = convert('<img src="' + TALL + '" alt="x">',
+    'img { width: 200px; height: 100px; object-fit: contain; clip-path: inset(10%); }');
+  const picture = firstOfKind(contained, 'image');
+  assert.deepEqual(reportProperties(contained), []);
+  close(picture.crop.left, 0, 'the letterbox margin takes the horizontal cut');
+  close(picture.crop.right, 0, 'on both sides');
+  close(picture.crop.top, 0.1, 'the vertical cut is a tenth of the drawn picture');
+  close(picture.crop.bottom, 0.1, 'and the same at the bottom');
+  close(picture.w, 40 / 96, 'the drawn width is unchanged');
+
+  // A cut that only reaches into the margin leaves every pixel of the picture visible, so the
+  // box is left exactly as it was and nothing is reported.
+  const margin = convert('<img src="' + TALL + '" alt="x">',
+    'img { width: 200px; height: 100px; object-fit: contain; clip-path: inset(0 0 0 5%); }');
+  const kept = firstOfKind(margin, 'image');
+  assert.deepEqual(reportProperties(margin), []);
+  assert.equal(kept.crop, undefined, 'no crop is needed');
+  assert.equal(kept.objectFit, 'contain', 'and the fit is untouched');
+  close(kept.w, 200 / 96, 'the box keeps its width');
+});
+
+test('an overflow frame nests its crop inside the inset the picture already carries', async () => {
+  // 40x100 in a 300x100 box under `cover`: the window is y 0.4333..0.5667. The picture sits 20px
+  // left of its frame, so the frame cuts it at 200 of its 300 columns, and the inset takes
+  // another 30px off each end: 190 of the 240 visible columns survive.
+  const result = convert('<div class="frame"><img class="p" src="' + TALL + '" alt="x"></div>',
+    '.frame { position: relative; width: 200px; height: 100px; overflow: hidden; }'
+    + ' .p { position: absolute; left: -20px; top: 0; width: 300px; height: 100px;'
+    + ' object-fit: cover; clip-path: inset(10%); }');
+  const image = firstOfKind(result, 'image');
+  assert.deepEqual(reportProperties(result), [], 'two windows in one source rectangle, not a loss');
+  close(image.x, 10 / 96 + 0.4167, 'the frame keeps the part of the inset picture it can show');
+  close(image.w, 190 / 96, '190 of the 300 columns are left');
+  close(image.crop.left, 0.1, 'the inset still holds the left edge');
+  close(image.crop.right, 0.2667, 'and the frame adds the columns it cut away');
+});
+
+// ---------------------------------------------------------------------------------------------
+// The two residuals: the UA shrink on `<sup>`/`<sub>`, and a length position with no size to read.
+// ---------------------------------------------------------------------------------------------
+
+const runsOf = (result) => {
+  const boxes = nodesOfKind(result, 'text').filter((node) => Array.isArray(node.runs));
+  return boxes.flatMap((node) => node.runs);
+};
+
+test('a superscript run carries the browser\'s own 5/6 size as well as its baseline', async () => {
+  const result = convert('<p class="p">E = mc<sup>2</sup> and H<sub>2</sub>O</p>',
+    '.p { font-size: 14px; }');
+  const runs = runsOf(result);
+  const superscript = runs.find((run) => run.options && run.options.superscript);
+  const subscript = runs.find((run) => run.options && run.options.subscript);
+  assert.ok(superscript && subscript, 'both runs exist: ' + JSON.stringify(runs));
+  // Chrome draws 11.6667px inside 14px, which is 5/6 and 8.75pt.
+  close(superscript.options.fontSize, 8.75, 'the superscript is 5/6 of the paragraph');
+  close(subscript.options.fontSize, 8.75, 'and so is the subscript');
+
+  const xml = await slideXml(result);
+  assert.match(xml, /baseline="30000"/u, 'the raise is still the native baseline');
+  assert.match(xml, /baseline="-40000"/u, 'and the lower is its own');
+
+  // A size the design declares on the element is the cascade's answer, not the tag's.
+  const declared = convert('<p class="p">E = mc<sup class="s">2</sup></p>',
+    '.p { font-size: 14px; } .s { font-size: 20px; }');
+  const sized = runsOf(declared).find((run) => run.options && run.options.superscript);
+  close(sized.options.fontSize, 15, 'the declared 20px wins over the UA shrink');
+});
+
+test('a length position with no source size to read is named, a remote one is already named', () => {
+  // A picture that exists and is drawn, but whose size this cannot read: the offset is measured
+  // against that size, so staying quiet would lose the placement.
+  const unmeasurable = convert('<img src="no-such-picture-here.png" alt="x">',
+    'img { width: 200px; height: 100px; object-fit: cover; object-position: 10px 5px; }');
+  const positionReports = reportsOf(unmeasurable, 'objectPosition');
+  assert.equal(positionReports.length, 1, 'the offset has no size to resolve against: '
+    + JSON.stringify(reportProperties(unmeasurable)));
+  assert.match(positionReports[0], /size cannot be read here/u);
+
+  // A remote source is not downloaded, so the picture itself is named and stays unpainted: a
+  // second note about where it would have sat would be noise.
+  const remote = convert('<img src="https://example.com/x.png" alt="x">',
+    'img { width: 200px; height: 100px; object-fit: cover; object-position: 10px 5px; }');
+  assert.deepEqual(reportProperties(remote), ['src'], 'the source is the one loss');
+});
+
+// ---------------------------------------------------------------------------------------------
+// `data-chart-label-pos`: the writer accepts the position, the part is patched to carry it.
+// ---------------------------------------------------------------------------------------------
+
+test('data-chart-label-pos reaches the chart as a label position', async () => {
+  const chartOf = (attributes, type = 'pie') => {
+    const result = convert('<table class="c" data-chart="' + type + '" data-values="3,5" data-labels="a,b" '
+      + attributes + '><tr><td>a</td><td>3</td></tr><tr><td>b</td><td>5</td></tr></table>',
+      'table { width: 600px; }');
+    return { result, chart: result.deck.slides[0].elements.find((element) => element.type === 'chart') };
+  };
+
+  const outside = chartOf('data-chart-label-pos="outEnd"');
+  assert.ok(outside.chart, 'the chart element exists');
+  assert.equal(outside.chart.options.dataLabelPosition, 'outEnd', 'the short name is the same declaration');
+  assert.equal(outside.chart.options.showValue, true, 'a position needs labels, so they are asked for');
+  assert.deepEqual(reportProperties(outside.result), [], 'nothing is lost');
+
+  const inside = chartOf('data-chart-label-pos="inside-base" data-chart-grouping="stacked"', 'bar');
+  assert.equal(inside.chart.options.dataLabelPosition, 'inBase',
+    'the alias table reaches the one token the writer needs for a stacked bar');
+
+  const asked = chartOf('data-chart-label-pos="outEnd" data-chart-labels="percent"');
+  assert.equal(asked.chart.options.dataLabelPosition, 'outEnd');
+  assert.equal(asked.chart.options.showPercent, true, 'the labels the design named win');
+  assert.equal(asked.chart.options.showValue, undefined,
+    'a percent label with a position does not grow a second line of value labels');
+
+  // A shape the writer cannot spell `outEnd` for is the writer's own filter, and it says so under
+  // the long name it was always reported with.
+  const filtered = chartOf('data-chart-label-pos="outEnd"', 'bar');
+  assert.equal(filtered.chart.options.dataLabelPosition, undefined, 'the shape filter deletes it');
+  assert.equal(reportsOf(filtered.result, 'data-chart-label-position').length, 1,
+    'and names the position it could not use');
+
+  const refused = chartOf('data-chart-label-pos="sideways"');
+  const refusedReports = reportsOf(refused.result, 'data-chart-label-pos');
+  assert.equal(refusedReports.length, 1, 'the name that was written is the name that is reported');
+  assert.match(refusedReports[0], /outside-end, inside-end, center/u);
+  assert.equal(refused.chart.options.dataLabelPosition, undefined);
+
+  // The long spelling still reports under its own name, so a typo reads like the attribute.
+  const longName = chartOf('data-chart-label-position="sideways"');
+  assert.equal(reportsOf(longName.result, 'data-chart-label-position').length, 1);
+  assert.equal(reportsOf(longName.result, 'data-chart-label-pos').length, 0);
+});
+

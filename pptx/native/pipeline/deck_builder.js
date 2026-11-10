@@ -1261,9 +1261,14 @@ function containerChild(node, parentPlan, context) {
       element.flex = node.flexGrow;
     }
   }
-  // A grid child may span several tracks; the engine replays the same placement.
+  // A grid child may span several tracks; the engine replays the same placement. The start
+  // lines matter as much as the spans once the grid has a map: a named-area cell is placed at
+  // the rectangle its name draws, and without the start the engine would lay it out from its
+  // own automatic cursor and the container would fall back to absolute boxes.
   if (node.columnSpan) element.columnSpan = node.columnSpan;
   if (node.rowSpan) element.rowSpan = node.rowSpan;
+  if (Number.isFinite(node.gridColumnStart)) element.gridColumnStart = node.gridColumnStart;
+  if (Number.isFinite(node.gridRowStart)) element.gridRowStart = node.gridRowStart;
   // The engine derives a grid item's box from its tracks, so only the sizes the
   // CSS actually declared may be baked in - a stretched height would otherwise be
   // measured back as the item's natural size and inflate the row.
