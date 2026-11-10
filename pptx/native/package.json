@@ -111,6 +111,7 @@
     "render:paginate": "python scripts/render_check.py pipeline-converted/pipeline-paginate.pptx --output-dir render-check/pipeline-paginate",
     "audit:integrity": "python scripts/verify_native_ooxml.py --self-test && python scripts/verify_native_ooxml.py pipeline-converted/stress40.pptx",
     "audit:report": "node scripts/audit_report_baseline.js",
+    "verify:pptx": "python scripts/verify_with_python_pptx.py --deck pipeline-converted/pipeline-chart.pptx --self-check && python scripts/verify_with_python_pptx.py --dir pipeline-converted --only pipeline- --round-trip",
     "audit:report:update": "node scripts/audit_report_baseline.js --update"
   },
   "dependencies": {
