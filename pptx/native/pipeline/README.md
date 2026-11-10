@@ -132,6 +132,11 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | a source with no bytes | an empty `src`, a non-base64 or non-image data URI, a remote URL, a missing file: one helper decides, every caller names it, the box keeps its place, and the geometry degrades to a stretch rather than throwing |
 | a value that is not a number | `line-height` that is not positive is discarded as CSS discards it (the text is kept); a chart value cell with no number in it is named once and plotted as 0 |
 | a numbered list | one `startAt` per count, not per paragraph: `ol start`, `li value` and a nested level all restart where they should, every other item continues the count |
+| a list inside a table cell | one paragraph per item with its own marker, numbered lists restarting where the spec says, indent 0.25in per level with the marker at the text size |
+| a link | a picture, a text run, a whole block (every object it paints) and a whole cell become native clicks; a link around part of a cell or around a table is named; targets are escaped so the part stays well-formed |
+| progress, meter, video | drawn as native track-plus-fill and gauge shapes in the colours a rendered browser measures, with the poster frame as a picture and the player named |
+| a ruby reading | kept inline after its base text; furigana cannot be placed, and the deck says so per reading |
+| an SVG picture | drawn for PowerPoint 2016 and later; named once per distinct source because other readers show a placeholder |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |
 | q quotes | synthesized “ ” join the content (was bare words); declared pseudos win |

@@ -82,6 +82,10 @@ function textOptions(el, theme) {
     options.vert = el.vert;
     options.fit = 'none';
   }
+  // The writer's own `hyperlink` option is deliberately not used for a text box: it writes the
+  // click on the box AND a click on every run, and the run click brings the writer's underline.
+  // A box link is written by `patchShapeHyperlinks` instead - the same `cNvPr` child the writer
+  // would have produced, without touching a run.
   return options;
 }
 
@@ -112,6 +116,9 @@ function shapeStyle(el, theme) {
     fill,
     line
   };
+  // A clickable surface gets its click from `patchShapeHyperlinks`, not from the writer: one
+  // route for every object the anchor produced means one relationship per url and no run-level
+  // click anywhere.
   if (el.shadow) {
     const shadow = typeof el.shadow === 'object' ? el.shadow : {};
     options.shadow = {
@@ -187,6 +194,13 @@ function addElement(slide, el, theme, pptx, context = {}) {
       transparency: el.transparency || 0
     });
     if (el.altText) imageOptions.altText = el.altText;
+    // An `<a href>` around a picture is a link a reader can click, and the writer spells it as
+    // `<a:hlinkClick>` on the picture plus an external relationship. The url travels verbatim:
+    // a value that needs escaping is the writer's problem, and rewriting it would move the
+    // reader to a page the author never named.
+    if (el.hyperlink && el.hyperlink.url) {
+      imageOptions.hyperlink = { url: String(el.hyperlink.url) };
+    }
     if (el.rotate !== undefined) imageOptions.rotate = el.rotate;
     if (el.flipH) imageOptions.flipH = true;
     if (el.flipV) imageOptions.flipV = true;
@@ -936,6 +950,474 @@ async function patchTextColumns(outputPath, deck, laidOut) {
 }
 
 /**
+ * DrawingML's `ST_TextAutonumberScheme`: every numbering style a marker may name. A value
+ * outside the set is not a different list, it is an invalid part, which the reader answers
+ * with a repair prompt - so an unknown style falls back to the decimal period.
+ */
+const AUTONUMBER_SCHEMES = new Set([
+  'alphaLcParenBoth', 'alphaLcParenR', 'alphaLcPeriod', 'alphaUcParenBoth', 'alphaUcParenR',
+  'alphaUcPeriod', 'arabic1Minus', 'arabic2Minus', 'arabicDbPeriod', 'arabicDbPlain',
+  'arabicParenBoth', 'arabicParenR', 'arabicPeriod', 'arabicPlain', 'circleNumDbPlain',
+  'circleNumWdBlackPlain', 'circleNumWdWhitePlain', 'ea1ChsPeriod', 'ea1ChsPlain',
+  'ea1ChtPeriod', 'ea1ChtPlain', 'ea1JpnChsDbPeriod', 'ea1JpnKorPeriod', 'ea1JpnKorPlain',
+  'ea2ChsPeriod', 'ea2ChsPlain', 'ea2ChtPeriod', 'ea2ChtPlain', 'ea2JpnChsDbPeriod',
+  'ea2JpnKorPeriod', 'ea2JpnKorPlain', 'hebrew2Minus', 'hindiAlpha1Period',
+  'hindiAlphaPeriod', 'hindiNumParenR', 'hindiNumPeriod', 'romanLcParenBoth',
+  'romanLcParenR', 'romanLcPeriod', 'romanUcParenBoth', 'romanUcParenR', 'romanUcPeriod',
+  'thaiAlphaParenBoth', 'thaiAlphaParenR', 'thaiAlphaPeriod', 'thaiNumParenBoth',
+  'thaiNumParenR', 'thaiNumPeriod'
+]);
+
+/**
+ * The hanging indent for a bulleted paragraph in a table CELL.
+ *
+ * Not the writer's text-box convention: a text box reserves 27pt per outline level
+ * (`marL="685800"` at level 1), which inside a cell left a visible gutter between the marker and
+ * the cell's own padding, and the items read as detached from their cell. A cell is a quarter
+ * inch: the marker hangs at the cell's left padding and the text starts 0.25in in, one more
+ * quarter inch per nested level.
+ */
+const CELL_BULLET_INDENT_EMU = 228600;
+
+function bulletParagraphIndent(level, base = CELL_BULLET_INDENT_EMU) {
+  const step = Math.max(1, Math.round(Number(base) || CELL_BULLET_INDENT_EMU));
+  return ' marL="' + step * (Math.max(0, Number(level) || 0) + 1) + '" indent="-' + step + '"';
+}
+
+/**
+ * How far a cell's list is recessed: the spec's own `listIndent` in inches when it declares one
+ * (a cell list inherits the CSS `padding-left` the design chose), otherwise the quarter inch.
+ */
+function cellBulletIndentBase(cell) {
+  const inches = Number(cell && cell.options && cell.options.listIndent);
+  if (Number.isFinite(inches) && inches > 0) return Math.round(inches * 72 * EMU_PER_POINT);
+  return CELL_BULLET_INDENT_EMU;
+}
+
+/** The marker a cell paragraph declares, or null when it declares none. */
+function cellParagraphBullet(paragraph) {
+  const bullet = paragraph && paragraph.options && paragraph.options.bullet;
+  return bullet || null;
+}
+
+/**
+ * The outline level of a cell paragraph: what the spec declares, or the `lvl` the writer has
+ * already written when the spec is silent.
+ */
+function cellParagraphLevel(paragraph, spec) {
+  const declared = Number(spec && spec.options && spec.options.indentLevel);
+  if (Number.isFinite(declared) && declared >= 0) return Math.round(declared);
+  const written = /^<a:p>\s*<a:pPr[^>]*\slvl="(\d+)"/u.exec(paragraph);
+  return written ? Number(written[1]) : 0;
+}
+
+/** Does this cell hold a list? Only the cells that answer yes are walked at all. */
+function cellLists(cell) {
+  return Array.isArray(cell && cell.text) && cell.text.some(cellParagraphBullet);
+}
+
+/**
+ * The glyph a `<ul>` marker draws. A nested `<ul>` and `list-style-type: circle/square` draw a
+ * hollow or square marker, and the analyzer names it the way the writer does - a code point
+ * such as `25CB`. Drawing every bullet round made those lists read as the wrong list.
+ */
+function bulletGlyph(bullet) {
+  if (typeof bullet.character === 'string' && bullet.character) return bullet.character;
+  const code = String(bullet.characterCode === undefined ? '' : bullet.characterCode).trim();
+  if (!code) return '•';
+  if (/^[0-9A-Fa-f]{2,6}$/u.test(code)) {
+    const point = parseInt(code, 16);
+    if (Number.isFinite(point) && point > 0) return String.fromCodePoint(point);
+  }
+  return code;
+}
+
+/**
+ * The marker's children, in the order DrawingML requires: the marker size, the marker font, then
+ * the marker itself.
+ *
+ * `buSzPct` pins the marker at the size of its own text. Without it a reader falls back to the
+ * paragraph default, which is where a 10.5pt cell got a marker that looked larger than the item;
+ * 100% means "the size of the text", so it is right at every cell font size and every level.
+ */
+function cellBulletMarker(bullet) {
+  const size = '<a:buSzPct val="100000"/>';
+  if (String(bullet.type) === 'number') {
+    const declared = String(bullet.style || '');
+    const scheme = AUTONUMBER_SCHEMES.has(declared) ? declared : 'arabicPeriod';
+    const startAt = Math.round(Number(bullet.startAt));
+    // The writer spells the numbering font this way for its own numbered paragraphs.
+    return size + '<a:buFont typeface="+mj-lt"/><a:buAutoNum type="' + scheme + '"'
+      + (Number.isFinite(startAt) && startAt > 0 ? ' startAt="' + startAt + '"' : '') + '/>';
+  }
+  return size + '<a:buChar char="' + xmlText(bulletGlyph(bullet)) + '"/>';
+}
+
+/**
+ * The marker goes where the schema allows it: after the spacing children the writer may already
+ * have written, and before `tabLst`/`defRPr`/`extLst`. Every bullet child already there - the
+ * marker, its size and its font - is dropped first, so a second patch replaces its own work
+ * instead of stacking, and the writer's own half-written numbering properties cannot end up on
+ * the wrong side of the marker.
+ */
+function cellParagraphProperties(inner, marker) {
+  const cleaned = String(inner).replace(
+    /<a:buNone\/>|<a:buChar\b[^>]*\/>|<a:buAutoNum\b[^>]*\/>|<a:buSzTx\/>|<a:buSzPct\b[^>]*\/>|<a:buSzPts\b[^>]*\/>|<a:buFontTx\/>|<a:buFont\b[^>]*\/>/gu,
+    '');
+  const tail = /<a:(tabLst|defRPr|extLst)\b/u.exec(cleaned);
+  if (!tail) return cleaned + marker;
+  return cleaned.slice(0, tail.index) + marker + cleaned.slice(tail.index);
+}
+
+/** One cell paragraph gains its marker; the writer writes none of this for a table cell. */
+function insertCellBullet(paragraph, bullet, level, base) {
+  const marker = cellBulletMarker(bullet);
+  const indent = bulletParagraphIndent(level, base);
+  const withIndent = (attributes) => String(attributes || '')
+    .replace(/\s*(?:marL|indent)="[^"]*"/gu, '') + indent;
+  const selfClosed = /^(<a:p>\s*)<a:pPr([^>]*)\/>/u.exec(paragraph);
+  if (selfClosed) {
+    return selfClosed[1] + '<a:pPr' + withIndent(selfClosed[2]) + '>' + marker + '</a:pPr>'
+      + paragraph.slice(selfClosed[0].length);
+  }
+  const paired = /^(<a:p>\s*)<a:pPr([^>]*)>([\s\S]*?)<\/a:pPr>/u.exec(paragraph);
+  if (paired) {
+    return paired[1] + '<a:pPr' + withIndent(paired[2]) + '>'
+      + cellParagraphProperties(paired[3], marker) + '</a:pPr>'
+      + paragraph.slice(paired[0].length);
+  }
+  // A cell paragraph that came from a list of runs carries no properties block at all.
+  return paragraph.replace(/^<a:p>/u,
+    '<a:p><a:pPr' + indent + '>' + marker + '</a:pPr>');
+}
+
+/** Map the paragraphs the spec declares onto one cell's `<a:p>` elements, in order. */
+function applyCellBullets(cellXml, paragraphs, base) {
+  let index = 0;
+  return cellXml.replace(/<a:p>[\s\S]*?<\/a:p>/gu, (paragraph) => {
+    const spec = paragraphs[index];
+    index += 1;
+    const bullet = cellParagraphBullet(spec);
+    if (!bullet) return paragraph;
+    return insertCellBullet(paragraph, bullet, cellParagraphLevel(paragraph, spec), base);
+  });
+}
+
+/**
+ * One table row. A merge continuation (`vMerge`/`hMerge`) is a placeholder that covers a cell
+ * its neighbour already owns, so it consumes no cell of the spec.
+ */
+function applyRowCellBullets(rowXml, cells, label) {
+  let cellIndex = 0;
+  let changed = false;
+  const next = rowXml.replace(/<a:tc\b([^>]*)>[\s\S]*?<\/a:tc>/gu, (cellXml, attributes) => {
+    if (/\s(?:vMerge|hMerge)="1"/u.test(String(attributes))) return cellXml;
+    const cell = cells[cellIndex];
+    cellIndex += 1;
+    if (!cell) {
+      throw new Error('Cell bullet patch alignment mismatch in ' + label
+        + ': PPTX has more cells than the Deck Spec row');
+    }
+    if (!cellLists(cell)) return cellXml;
+    const paragraphs = (cellXml.match(/<a:p>/gu) || []).length;
+    if (paragraphs !== cell.text.length) {
+      throw new Error('Cell bullet patch paragraph mismatch in ' + label + ': Deck Spec declares '
+        + cell.text.length + ' paragraph(s) but PPTX has ' + paragraphs + ' a:p elements');
+    }
+    const updated = applyCellBullets(cellXml, cell.text, cellBulletIndentBase(cell));
+    if (updated !== cellXml) changed = true;
+    return updated;
+  });
+  if (cellIndex !== cells.length) {
+    throw new Error('Cell bullet patch alignment mismatch in ' + label + ': Deck Spec has '
+      + cells.length + ' cells but PPTX has ' + cellIndex);
+  }
+  return { xml: next, changed };
+}
+
+/** One table, walked row by row against the spec. */
+function applyTableCellBullets(frameXml, table, label) {
+  const rows = Array.isArray(table.rows) ? table.rows : [];
+  let rowIndex = 0;
+  let changed = false;
+  const next = frameXml.replace(/<a:tr\b[\s\S]*?<\/a:tr>/gu, (rowXml) => {
+    const cells = rows[rowIndex];
+    rowIndex += 1;
+    if (!Array.isArray(cells)) {
+      throw new Error('Cell bullet patch alignment mismatch in ' + label
+        + ': PPTX has more rows than the Deck Spec table');
+    }
+    const row = applyRowCellBullets(rowXml, cells, label + ', row ' + rowIndex);
+    if (row.changed) changed = true;
+    return row.xml;
+  });
+  if (rowIndex !== rows.length) {
+    throw new Error('Cell bullet patch alignment mismatch in ' + label + ': Deck Spec has '
+      + rows.length + ' rows but PPTX has ' + rowIndex);
+  }
+  return { xml: next, changed };
+}
+
+/**
+ * Escape a lone `&` in a slide's relationship part.
+ *
+ * The writer escapes a text run's hyperlink target but writes a picture's target raw, so the
+ * common case - a query string, `?a=1&b=2` - left a bare `&` in the rels part. That is not
+ * well-formed XML, and the reader answers it with a repair prompt. Only an `&` that does not
+ * already begin a character reference is touched, which keeps the text path escaped exactly
+ * once: a second run of this patch changes nothing.
+ */
+function applyRelsEscapes(xml) {
+  return xml.replace(/&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9A-Fa-f]+);)/gu, '&amp;');
+}
+
+async function patchHyperlinkRelEscapes(outputPath) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  const names = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/_rels\/[^/]+\.rels$/u.test(name));
+  let touched = 0;
+  for (const name of names) {
+    const xml = await zip.file(name).async('string');
+    const next = applyRelsEscapes(xml);
+    if (next === xml) continue;
+    zip.file(name, next);
+    touched += 1;
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
+const HYPERLINK_RELATIONSHIP = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
+
+/** A url as an XML attribute value: the one place a click target is written from the spec. */
+function attributeText(value) {
+  return String(value)
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
+}
+
+/** The reverse, so a target already in the part compares equal to the raw url in the spec. */
+function attributeValue(value) {
+  return String(value)
+    .replace(/&quot;/gu, '"')
+    .replace(/&apos;/gu, "'")
+    .replace(/&lt;/gu, '<')
+    .replace(/&gt;/gu, '>')
+    .replace(/&amp;/gu, '&');
+}
+
+/**
+ * What a slide's relationships part already holds: the last `rId` in use and the hyperlink id
+ * already written for each target. One relationship per distinct url is what keeps a card that
+ * links three objects to one entry, and what makes a second run of the patch find its own work.
+ */
+function hyperlinkRegistry(relsXml) {
+  const registry = { next: 0, byUrl: new Map(), added: [] };
+  const text = String(relsXml);
+  const pattern = /<Relationship\b([^>]*?)\/>/gu;
+  let match = pattern.exec(text);
+  while (match) {
+    const attributes = match[1];
+    const id = /Id="([^"]*)"/u.exec(attributes);
+    const type = /Type="([^"]*)"/u.exec(attributes);
+    const target = /Target="([^"]*)"/u.exec(attributes);
+    if (id) {
+      const numbered = /^rId(\d+)$/u.exec(id[1]);
+      if (numbered) registry.next = Math.max(registry.next, Number(numbered[1]));
+    }
+    if (id && type && target && type[1] === HYPERLINK_RELATIONSHIP) {
+      registry.byUrl.set(attributeValue(target[1]), id[1]);
+    }
+    match = pattern.exec(text);
+  }
+  return registry;
+}
+
+/** The id for a url, writing one relationship the first time that url is asked for. */
+function hyperlinkId(registry, url) {
+  const known = registry.byUrl.get(url);
+  if (known) return known;
+  registry.next += 1;
+  const id = 'rId' + registry.next;
+  registry.byUrl.set(url, id);
+  registry.added.push('<Relationship Id="' + id + '" Type="' + HYPERLINK_RELATIONSHIP
+    + '" Target="' + attributeText(url) + '" TargetMode="External"/>');
+  return id;
+}
+
+/**
+ * Put one click in a shape's non-visual properties.
+ *
+ * The writer closes `cNvPr` empty, so it is opened up to hold the child. A block that already
+ * carries a click is left exactly as it is: two `hlinkClick` children name two targets and no
+ * reader knows which one a click meant.
+ */
+function applyShapeClick(inner, id) {
+  const open = /<p:cNvPr\b[^>]*?(\/?)>/u.exec(inner);
+  if (!open) return inner;
+  const click = '<a:hlinkClick r:id="' + id + '" tooltip=""/>';
+  if (open[1] === '') {
+    const end = inner.indexOf('</p:cNvPr>', open.index);
+    if (end < 0) return inner;
+    const block = inner.slice(open.index, end);
+    if (/<a:hlinkClick\b/u.test(block)) return inner;
+    // `hlinkClick` precedes `extLst` in the schema, so it goes before one if the block has it.
+    const extension = block.indexOf('<a:extLst');
+    const at = extension < 0 ? end : open.index + extension;
+    return inner.slice(0, at) + click + inner.slice(at);
+  }
+  const opened = inner.slice(open.index, open.index + open[0].length - 2) + '>';
+  return inner.slice(0, open.index) + opened + click + '</p:cNvPr>'
+    + inner.slice(open.index + open[0].length);
+}
+
+/** The url an element wants its own box to navigate to, or '' when it wants no click. */
+function spHyperlinkUrl(element) {
+  if (!element) return '';
+  // A picture is `p:pic`, not `p:sp`, and carries its click from the writer's own option; a line
+  // is a hairline nobody can aim at, so it is not a click target either.
+  if (element.type !== 'text' && element.type !== 'shape') return '';
+  const url = element.hyperlink && element.hyperlink.url;
+  return url ? String(url) : '';
+}
+
+/**
+ * Shape-level hyperlinks: the click an `<a href>` around a block asks for.
+ *
+ * The writer can put a click on a shape, but for a text box it also links - and underlines -
+ * every run inside it, which is not the design's underline state. So the click is written here
+ * instead, into each object's own `cNvPr`, with one relationship per distinct url: a card links
+ * its surface and the words on it, and all of them name one relationship.
+ */
+async function patchShapeHyperlinks(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const linked = (element) => Boolean(spHyperlinkUrl(element));
+  const elements = supplied(laidOut, slides);
+  if (!elements.some((list) => list.some(linked))) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
+    if (!shapeElements.some(linked)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const relsName = 'ppt/slides/_rels/slide' + (slideIndex + 1) + '.xml.rels';
+    const file = zip.file(name);
+    const relsFile = zip.file(relsName);
+    if (!file) continue;
+    if (!relsFile) {
+      throw new Error('Shape hyperlink patch found no relationships part for slide '
+        + (slideIndex + 1));
+    }
+    const xml = await file.async('string');
+    const registry = hyperlinkRegistry(await relsFile.async('string'));
+    let shapeIndex = 0;
+    let patched = 0;
+    let missed = 0;
+    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapeElements[shapeIndex];
+      shapeIndex += 1;
+      const url = spHyperlinkUrl(element);
+      if (!url) return whole;
+      const updated = applyShapeClick(inner, hyperlinkId(registry, url));
+      if (updated === inner) {
+        // Already carries its click: the patch found its own work and leaves it alone.
+        if (/<a:hlinkClick\b/u.test(inner)) return whole;
+        missed += 1;
+        return whole;
+      }
+      patched += 1;
+      return '<p:sp>' + updated + '</p:sp>';
+    });
+    if (shapeIndex !== shapeElements.length) {
+      throw new Error('Shape hyperlink patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has '
+        + shapeIndex + ' p:sp elements');
+    }
+    if (missed) {
+      throw new Error('Shape hyperlink patch could not put a click on ' + missed
+        + ' linked shape(s) on slide ' + (slideIndex + 1));
+    }
+    if (registry.added.length) {
+      const rels = await relsFile.async('string');
+      zip.file(relsName, rels.replace('</Relationships>', registry.added.join('') + '</Relationships>'));
+    }
+    if (!patched) continue;
+    zip.file(name, next);
+    touched += 1;
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
+/**
+ * Bullet markers inside table cells.
+ *
+ * The writer emits one `<a:p>` per cell paragraph - verified - but drops the marker for a
+ * table cell, so a list in a cell arrived as plain stacked lines with no bullet at all. The
+ * spec knows which paragraph carries which marker, so each cell's paragraphs are walked
+ * against it and the marker is written where it belongs. A cell that declares no list is left
+ * exactly as the writer wrote it.
+ */
+async function patchCellBullets(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const listsIn = (element) => element && element.type === 'table'
+    && Array.isArray(element.rows)
+    && element.rows.some((row) => Array.isArray(row) && row.some(cellLists));
+  const elements = supplied(laidOut, slides);
+  if (!elements.some((slideElements) => slideElements.some(listsIn))) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    // Charts are `p:graphicFrame` shapes too, so only the frames that carry an `<a:tbl>` are
+    // tables - and they appear in the order the writer emitted them.
+    const tables = elements[slideIndex].filter((element) => element && element.type === 'table');
+    if (!tables.some(listsIn)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    const frames = (xml.match(/<p:graphicFrame>[\s\S]*?<\/p:graphicFrame>/gu) || [])
+      .filter((frame) => frame.includes('<a:tbl>'));
+    if (frames.length !== tables.length) {
+      throw new Error('Cell bullet patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + tables.length + ' table elements but PPTX has '
+        + frames.length + ' a:tbl graphicFrame elements');
+    }
+    let tableIndex = 0;
+    let changed = false;
+    const next = xml.replace(/<p:graphicFrame>[\s\S]*?<\/p:graphicFrame>/gu, (frame) => {
+      if (!frame.includes('<a:tbl>')) return frame;
+      const table = tables[tableIndex];
+      const position = tableIndex + 1;
+      tableIndex += 1;
+      if (!listsIn(table)) return frame;
+      const result = applyTableCellBullets(frame, table,
+        'slide ' + (slideIndex + 1) + ', table ' + position);
+      if (result.changed) changed = true;
+      return result.xml;
+    });
+    if (tableIndex !== tables.length) {
+      throw new Error('Cell bullet patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + tables.length + ' tables but PPTX has ' + tableIndex
+        + ' a:tbl graphicFrame elements');
+    }
+    if (!changed) continue;
+    zip.file(name, next);
+    touched += 1;
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
+/**
  * The start number each paragraph of a text shape really declares, in paragraph order.
  *
  * PptxGenJS writes `startAt` on every numbered paragraph it generates, and a reader reads that
@@ -1415,6 +1897,8 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchLevelIndents(outputPath, deck, result.laidOut);
   await patchMarkerColours(outputPath, deck, result.laidOut);
   await patchTextColumns(outputPath, deck, result.laidOut);
+  // Cell markers, which the writer drops for a table cell while it keeps the paragraphs.
+  await patchCellBullets(outputPath, deck, result.laidOut);
   // Every numbered paragraph carried `startAt`, which reads as "start here" - so lists repeated
   // one number. Runs after the columns patch, which rewrites the same text bodies.
   await patchListNumbering(outputPath, deck, result.laidOut);
@@ -1435,6 +1919,12 @@ async function generatePptx(deck, outputPath, options = {}) {
   }
   const cjkFace = (deck.theme && deck.theme.fonts && deck.theme.fonts.cjk) || (options.theme && options.theme.fonts && options.theme.fonts.cjk) || defaultTheme.fonts.cjk;
   await applyEastAsianFontPatch(outputPath, cjkFace);
+  // A picture's hyperlink target is written raw where a text run's is escaped, so the rels part
+  // could carry a lone `&` and no reader would open the deck without a repair prompt.
+  await patchHyperlinkRelEscapes(outputPath);
+  // The click an `<a href>` around a block asks for: written into each object's own `cNvPr`,
+  // after every patch that writes shapes, so the walk sees the nodes it expects.
+  await patchShapeHyperlinks(outputPath, deck, result.laidOut);
   const fontEmbedding = options.embedFonts ? await patchEmbeddedFonts(outputPath, deck, options) : { embedded: [], skipped: [] };
   // Last, after every patch that writes shapes: ids stay unique whatever the writer did.
   await patchShapeIds(outputPath);
@@ -1456,6 +1946,9 @@ async function generatePptx(deck, outputPath, options = {}) {
 module.exports = {
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
+  cellBulletMarker, applyCellBullets, patchCellBullets, bulletParagraphIndent, cellBulletIndentBase,
+  applyRelsEscapes, patchHyperlinkRelEscapes,
+  applyShapeClick, patchShapeHyperlinks, hyperlinkRegistry, hyperlinkId, spHyperlinkUrl,
   patchListNumbering, paragraphNumbering, applyListNumbering,
   applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
   applyTextIndent, patchTextIndents, applyMarkerColour,

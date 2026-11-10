@@ -18,8 +18,8 @@ generated from the source, so it cannot drift away from the code.
 
 <!-- generated:start -->
 
-Generated from `pipeline/analyzer.js`: **132 call sites**, **76 properties**,
-**119 distinct explanations**. Regenerate with `npm run limits:update`; a new report
+Generated from `pipeline/analyzer.js`: **143 call sites**, **82 properties**,
+**129 distinct explanations**. Regenerate with `npm run limits:update`; a new report
 without a line here fails the gate.
 
 | reported as | what the deck says it could not do |
@@ -27,6 +27,7 @@ without a line here fails the gate.
 | `::before` | Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute |
 | `::marker` | The items want different marker colours; a text box carries one bullet colour, so none was applied |
 | `'::' + pseudo` | A decoration on the slide root has no container to anchor to; put it on a card or panel<br>Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute<br>⟨reason⟩ |
+| `accentColor` | An accent colour has no native spelling here: only a progress bar or a meter is coloured by it |
 | `animation` | The slide draws the final state; the entrance or motion itself is not drawn |
 | `backgroundImage` | Only one picture layer and one linear gradient above it can be painted: ⟨what⟩ is dropped<br>Only one picture layer behind the text can be painted: ⟨what⟩ is dropped<br>⟨unreadableLayer⟩, so the layer is dropped and the box keeps its own fill<br>⟨unsupportedGradient⟩ cannot be translated (⟨why⟩), so the box keeps its geometry and is left unpainted |
 | `backgroundRepeat` | The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled |
@@ -60,30 +61,35 @@ without a line here fails the gate.
 | `data-chart-y-min` | Use a number |
 | `details` | A closed details element shows only its summary in a browser; its other content is kept here |
 | `display` | Inline flow is approximated as a block box |
-| `element` | A form control keeps its text; the reader`s control box (border, fill, padding) is not reproduced<br>Element type has no native translation<br>Text directly inside a block that also has element children does not share a line box with them, so it is not translated: wrap it in an element ("⟨ownText(domNode).slice(0, 32)⟩") |
+| `element` | A bar inside a line of text needs a box of its own, which a text run cannot carry: put it in its own block (a div, a flex row or an absolutely positioned box) to have it drawn<br>A form control keeps its text; the reader`s control box (border, fill, padding) is not reproduced<br>A video cannot be played in a static deck: its poster frame is drawn and the player itself is not<br>Element type has no native translation<br>Text directly inside a block that also has element children does not share a line box with them, so it is not translated: wrap it in an element ("⟨ownText(domNode).slice(0, 32)⟩") |
 | `filter` | No native spelling for ⟨entry.name⟩ on a picture: the image draws unfiltered for that function<br>⟨reason⟩ |
 | `flexWrap` | A wrapping column needs a definite height to break against<br>Every item of a wrapping column needs a declared width: a column takes its width from its items, and an auto width would be the item\u2019s max-content size<br>Only flex-wrap: wrap and nowrap are translated |
 | `float` | A block that follows a float is placed below it; the browser would wrap its lines beside the float<br>A floated box needs a declared width here: its shrink-to-fit width is not measured<br>Only float: left/right (and their inline-start/inline-end spellings) are laid out |
 | `fontVariant` | A table cell has no small-caps switch: the letters draw at their own size<br>Only small-caps has a native run property; this value has none<br>Small caps on an inline span is not carried: declare it on the block so the whole box can be patched |
 | `fontWeight` | A weight below 400 draws as regular: the format has bold or not, no light axis - name a Light family in font-family to get the cut<br>A weight between 501 and 599 draws as regular: no native spelling exists for intermediate weights |
 | `gridColumn` | Named grid lines and areas are not modelled; the item is auto-placed with its span width |
-| `href` | An in-page anchor has no slide to jump to in the deck; the link draws but does not navigate |
+| `href` | A link around a whole table cannot be drawn: the file format gives a table no click target, so its cells stay unlinked<br>A link around part of a cell cannot be drawn: a table cell has no runs, so linking it would make the whole cell clickable and the link is dropped<br>An in-page anchor has no slide to jump to in the deck; the link draws but does not navigate |
 | `inlineBox` | An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped |
 | `length` | This ⟨entry.property⟩ is not a length this shape can resolve, so the box falls back to the layout default instead of the declared value |
 | `listStyle` | Every marker draws as the native round bullet; the declared shape does not change it |
 | `listStyleImage` | A marker drawn from an image has no native spelling: the round bullet is used instead |
 | `margin` | An auto margin distributes the free space, which needs a declared width: this box hugs its text |
 | `maxHeight` | Clamping a container would need clipping, which native shapes cannot do |
+| `meter` | The gauge is drawn in the deck accent; the browser also tints it by where the value falls in the range, which this shape does not reproduce |
 | `name` | Unknown chart attribute; the styling it asks for is not applied |
 | `objectFit` | Unknown object-fit value: the picture is stretched to fill the box instead |
 | `opacity` | opacity fades the whole subtree; only this box's own fill and text are faded, its children keep full opacity |
 | `outline` | A shape carries one line: the outline sits beside a border here, so the border is what draws |
 | `overflowWrap` | A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break |
+| `poster` | ⟨posterProblem⟩, so no poster frame is drawn and the video area stays empty |
+| `progress` | A progress with no value animates a highlight across its track: the slide draws the empty track and cannot animate |
 | `property` | A ::first-letter declaration that changes layout is not carried: the letter keeps its place in the line, and only its type is applied<br>CSS feature has no native translation<br>No native spelling for ⟨note⟩: the box falls back to the flex default, and the alignment the design asked for is not applied<br>No native spelling outside a picture, where filter becomes a colour transform<br>Only the default glyph behaviour (mixed) is drawn: eaVert keeps CJK upright and rotates Latin, and no native spelling rotates Latin upright<br>Only the first text-shadow layer is drawn<br>Property is outside the supported subset<br>The marker would sit inside the text line: native bullets always hang in the margin<br>⟨reason⟩ |
 | `reversed` | The native numbered list counts up; there is no reverse switch, so the numbering would read in the wrong order |
 | `rowspan` | A rowspan reaching past the last row is clipped to the rows that exist |
+| `ruby` | A reading cannot be placed above its base text in the file format; the reading is written inline after the base text |
 | `src` | ⟨unreadable⟩, so the box keeps its place and stays unpainted - check the source, or inline the image as a data URI |
 | `srcset` | The deck always draws the src image; the variants srcset offers are not consulted |
+| `svgPicture` | An SVG picture travels as a vector behind PowerPoint's svgBlip extension: PowerPoint 2016 and later draw it, and a reader without that extension shows a placeholder - export the icon as a PNG to be portable |
 | `textDecoration` | Overline has no native run property; a line above every wrapped line cannot be drawn |
 | `textDecorationColor` | The decoration keeps the text colour; the writer emits no underline fill |
 | `textDecorationThickness` | The decoration draws at the reader`s default stroke width |

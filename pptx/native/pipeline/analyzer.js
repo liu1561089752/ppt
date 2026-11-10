@@ -388,7 +388,10 @@ const CAPTION_CLASS_HINTS = ['caption', 'note', 'footnote', 'meta', 'label', 'ki
 const BLOCK_TAGS = new Set([
   'div', 'section', 'article', 'header', 'footer', 'main', 'aside', 'nav',
   'figure', 'ul', 'ol', 'table', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'blockquote', 'hr', 'form', 'img', 'video', 'canvas', 'iframe', 'svg'
+  'blockquote', 'hr', 'form', 'img', 'video', 'canvas', 'iframe', 'svg',
+  // A progress bar and a meter are drawn as bars, which needs a box of their own: read as
+  // inline they were flattened into the text of their container and vanished.
+  'progress', 'meter'
 ]);
 
 function classList(node) {
@@ -841,6 +844,14 @@ function checkUnsupported(ctx, domNode, style) {
       }
       return;
     }
+    // `accent-color` on a progress bar or a meter is that bar's fill, which the gauge draws;
+    // on any other element the accent has no native spelling.
+    if (property === 'accentColor') {
+      if (domNode.tag === 'progress' || domNode.tag === 'meter') return;
+      recordUnsupported(ctx, domNode, 'accentColor', style[property],
+        'An accent colour has no native spelling here: only a progress bar or a meter is coloured by it');
+      return;
+    }
     if (UNSUPPORTED_ALWAYS.has(property)) {
       recordUnsupported(ctx, domNode, property, style[property], 'CSS feature has no native translation');
     } else if (!SUPPORTED_PROPERTIES.has(property)) {
@@ -1009,6 +1020,43 @@ function unreadableSourceReason(source, ctx) {
     return 'The picture file named by the source could not be read';
   }
   return null;
+}
+
+/**
+ * The picture sources that are vector files. A browser draws them all; the file format carries
+ * one only through PowerPoint's own extension, which is a fact about the reader, not the deck.
+ */
+function isSvgSource(source) {
+  const text = String(source || '').trim();
+  if (!text) return false;
+  if (/^data:image\/svg\+xml[\s,;]/iu.test(text)) return true;
+  // A file path carries its kind in the extension; a query or fragment is not part of the name.
+  return /\.svg(?:[?#].*)?$/iu.test(text);
+}
+
+/** A source short enough to sit in a report line - a data URI is thousands of characters. */
+function readableSource(source) {
+  const text = String(source || '').trim();
+  return text.length > 64 ? text.slice(0, 64) + '...' : text;
+}
+
+/**
+ * Name an SVG picture once per distinct source.
+ *
+ * A render proved what the tests could not: the writer embeds `<x>.svg` behind PowerPoint's
+ * `asvg:svgBlip` extension plus a grey PNG fallback, so PowerPoint 2016 and later draw the
+ * vector and every other reader shows a placeholder or a broken icon. Twenty identical icons
+ * are one line, not twenty; two different vectors are two, because the fix differs per file.
+ */
+function noteSvgPicture(source, domNode, ctx) {
+  if (!isSvgSource(source)) return;
+  const text = String(source).trim();
+  const named = ctx.svgPictures || (ctx.svgPictures = new Set());
+  if (named.has(text)) return;
+  named.add(text);
+  recordUnsupported(ctx, domNode, 'svgPicture', readableSource(text),
+    'An SVG picture travels as a vector behind PowerPoint\'s svgBlip extension: PowerPoint 2016 and later draw it,'
+      + ' and a reader without that extension shows a placeholder - export the icon as a PNG to be portable');
 }
 
 /**
@@ -1329,6 +1377,14 @@ function buildRuns(domNode, baseStyle, ctx) {
       recordUnsupported(ctx, node, 'element', node.tag, 'Element type has no native translation');
       return;
     }
+    // A bar inside a line of words is a shape, and a run carries characters only: the line is
+    // kept and the bar is named, because a walk that skipped it left the design's gauge out of
+    // the deck in silence. A bar in its own box is drawn by the gauge branch.
+    if (node.tag === 'progress' || node.tag === 'meter') {
+      recordUnsupported(ctx, node, 'element', node.tag,
+        'A bar inside a line of text needs a box of its own, which a text run cannot carry: put it in its own block (a div, a flex row or an absolutely positioned box) to have it drawn');
+      return;
+    }
     const style = ctx.styles.computed(node);
     // `<a href>` becomes a native run hyperlink, which also carries the underline the
     // browser draws; the URL is kept instead of being flattened into plain words.
@@ -1540,7 +1596,20 @@ function unresolvableLengths(style, context) {
   return found;
 }
 
-function resolveKind(domNode, style, children) {
+/**
+ * The poster frame a `<video>` shows before playback, as its source string ('' when none).
+ * A poster is a picture, and a picture is what this engine draws.
+ */
+function videoPosterOf(domNode) {
+  return String((domNode.attrs && domNode.attrs.poster) || '').trim();
+}
+
+function resolveKind(domNode, style, children, ctx) {
+  // A `<video>` is its poster frame: that is what the design's video area shows, and the
+  // player itself is drawn afterwards as a report. A poster whose bytes cannot be read is
+  // no picture at all, so the player stays the reported-but-undrawable element it was.
+  const poster = domNode.tag === 'video' ? videoPosterOf(domNode) : '';
+  if (poster && !unreadableSourceReason(poster, ctx)) return 'image';
   const tagKind = KIND_BY_TAG[domNode.tag];
   if (tagKind) return tagKind;
   const hasBlockChild = children.some((child) => BLOCK_TAGS.has(child.tag));
@@ -1815,6 +1884,59 @@ function insertOverlayNodes(node, ctx) {
     });
   });
   node.children.splice(0, node.children.length, ...decorated);
+}
+
+// The browser's own progress-bar skin, asked directly (Chrome, Windows, light mode): the
+// painted bar is 8px tall inside the 16px box the element is given, the track #EFEFEF under a
+// hairline #B2B2B2 edge, and the filled part the accent colour - #0075FF for a progress,
+// #107C10 for a meter. A declared height is the bar's own height (a 10px bar painted 10px).
+const GAUGE_BAR_PX = 8;
+const GAUGE_TRACK = 'EFEFEF';
+const GAUGE_EDGE = { width: 0.75, color: 'B2B2B2', transparency: 0, dash: null };
+const GAUGE_DEFAULT = {
+  progress: { width: 160, fill: '0075FF' },
+  meter: { width: 80, fill: '107C10' }
+};
+
+/**
+ * The colour the filled part is drawn in: the design's own accent where it names one, else the
+ * theme's - read from the same custom properties `deck_builder` derives the theme from, so the
+ * bar belongs to the deck it lands in rather than to the browser.
+ */
+function gaugeFillColour(domNode, style, ctx) {
+  const accent = parseColor(style.accentColor);
+  if (accent && accent.hex) return accent.hex;
+  const variables = (ctx.stylesheet && ctx.stylesheet.variables) || {};
+  const names = ['--accent', '--color-accent', '--highlight', '--primary', '--color-primary', '--brand'];
+  for (const name of names) {
+    const picked = variables[name] === undefined ? null : parseColor(variables[name]);
+    if (picked && picked.hex) return picked.hex;
+  }
+  return GAUGE_DEFAULT[domNode.tag].fill;
+}
+
+/**
+ * How much of its track a `<progress>`/`<meter>` fills, and whether the browser shows a state
+ * the deck cannot. `ratio` is null when there is nothing to fill: an indeterminate progress
+ * animates a highlight across an empty track, which a static slide drops.
+ */
+function gaugeFillRatio(domNode) {
+  const attrs = domNode.attrs || {};
+  const number = (value) => {
+    const text = String(value === undefined || value === null ? '' : value).trim();
+    const parsed = Number(text);
+    return text === '' || !Number.isFinite(parsed) ? null : parsed;
+  };
+  const meter = domNode.tag === 'meter';
+  const value = number(attrs.value);
+  const maximum = number(attrs.max);
+  // HTML's own defaults: a progress counts to 1, a meter counts 0..1.
+  const max = maximum === null ? 1 : maximum;
+  const min = meter && number(attrs.min) !== null ? number(attrs.min) : 0;
+  const ratio = value === null || !(max > min)
+    ? null
+    : Math.min(1, Math.max(0, (value - min) / (max - min)));
+  return { ratio, indeterminate: !meter && value === null };
 }
 
 function analyzeNode(domNode, slot, inherited, ctx) {
@@ -2256,7 +2378,7 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     recordUnsupported(ctx, domNode, 'details', 'closed',
       'A closed details element shows only its summary in a browser; its other content is kept here');
   }
-  const kind = resolveKind(domNode, style, elementKids);
+  const kind = resolveKind(domNode, style, elementKids, ctx);
   const displayValue = String(style.display || '').trim().toLowerCase();
   alignmentProblems(style, displayValue).forEach(({ property, value, note }) => {
     recordUnsupported(ctx, domNode, property, value,
@@ -2321,6 +2443,11 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     border: ring,
     children: []
   };
+  // A wrapping `<a href>` makes the box it wraps clickable - the "whole card is a link"
+  // pattern. The url travels on the anchor's own node, exactly as it does for a picture, and
+  // the deck builder hands it to the first shape the node paints. Nothing else is claimed
+  // here: the writer owns what a click target looks like.
+  if (domNode.tag === 'a' && domNode.attrs && domNode.attrs.href) node.href = String(domNode.attrs.href);
   // The radius family (mixed corners, elliptical percentages) is judged here for
   // every box; pictures judge their own later with their own wording.
   if (kind !== 'image') applyRadius(node, domNode, style, ctx);
@@ -2364,11 +2491,101 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
       'A form control keeps its text; the reader`s control box (border, fill, padding) is not reproduced');
   }
   if (kind === 'unsupported') {
+    // A video whose poster cannot be read is the same hole the picture path names: the design's
+    // video area would be empty for a reason the report has to carry.
+    const poster = domNode.tag === 'video' ? videoPosterOf(domNode) : '';
+    const posterProblem = poster ? unreadableSourceReason(poster, ctx) : null;
+    if (posterProblem) {
+      recordUnsupported(ctx, domNode, 'poster', poster,
+        posterProblem + ', so no poster frame is drawn and the video area stays empty');
+    }
     recordUnsupported(ctx, domNode, 'element', domNode.tag, 'Element type has no native translation');
     return null;
   }
 
   // Rotation and shift are applied in analyzeNode, once the box is measured.
+
+  // A `<progress>`/`<meter>` is a bar: the element's own box is the track and one child shape
+  // is the filled part. Two plain rectangles, so the deck shows the proportion the browser
+  // shows - before this a progress drew nothing at all and a meter drew its fallback text.
+  if (domNode.tag === 'progress' || domNode.tag === 'meter') {
+    const defaults = GAUGE_DEFAULT[domNode.tag];
+    const gauge = gaugeFillRatio(domNode);
+    const declaredWidth = declaresLength(style.width);
+    // A bar alone in its container gets the browser's own width (160px, 80px for a meter). A
+    // bar whose width a declaration or a flex/grid track already decided keeps that width:
+    // pinning the browser default there would overrule the design's own layout.
+    const parentStyle = domNode.parent && domNode.parent.type === 'element'
+      ? ctx.styles.computed(domNode.parent)
+      : null;
+    const parentDisplay = String((parentStyle && parentStyle.display) || '').toLowerCase();
+    const sizedByLayout = declaredWidth || style.flex !== undefined || /^(inline-)?(flex|grid)/u.test(parentDisplay);
+    // A box whose width no layout answered (an anchored bar with no width at all) still needs
+    // a bar to draw: the browser's own width stands in rather than a zero-width shape.
+    const measuredWidth = Number.isFinite(Number(width)) && Number(width) > 0
+      ? Number(width)
+      : defaults.width / 96;
+    // A bar is a box with paint: it must not be read as the fallback text a meter may carry
+    // (the browser does not show that text either once the gauge renders).
+    node.kind = 'block';
+    // A declared size is the design's; nothing declared is the browser's own bar, 8px tall.
+    node.h = explicitHeight === null ? GAUGE_BAR_PX / 96 : explicitHeight;
+    node.w = sizedByLayout ? measuredWidth : Math.min(measuredWidth, defaults.width / 96);
+    // A block with no declared width is stretched by whatever holds it, and this bar has the
+    // width measured here: the width travels as a declaration so it is not stretched again.
+    style.width = (Number(node.w) * 96).toFixed(2) + 'px';
+    node.fixedWidth = true;
+    if (!backgroundOf(style) && !gradientOf(style)) {
+      // The skin Chrome draws for a bar with no CSS: a light track under a hairline edge. A
+      // declared background or border is the design's, and it wins.
+      style.backgroundColor = '#' + GAUGE_TRACK;
+      if (!node.border) node.border = Object.assign({}, GAUGE_EDGE);
+    }
+    if (gauge.ratio !== null && gauge.ratio > 0) {
+      // The fill starts inside the track's own edge and padding, where the browser starts it.
+      const edge = node.border ? node.border.width / 72 : 0;
+      const boxW = Math.max(0.01, node.w - padding.left - padding.right - edge * 2);
+      const boxH = Math.max(0.01, node.h - padding.top - padding.bottom - edge * 2);
+      const filled = Math.max(0.01, boxW * gauge.ratio);
+      const fillStyle = {
+        width: (filled * 96).toFixed(2) + 'px',
+        height: (boxH * 96).toFixed(2) + 'px',
+        backgroundColor: '#' + gaugeFillColour(domNode, style, ctx)
+      };
+      node.children = [{
+        id: ctx.nextId++,
+        tag: domNode.tag,
+        classes: classList(domNode),
+        kind: 'shape',
+        style: fillStyle,
+        x: node.x + padding.left + edge,
+        y: node.y + padding.top + edge,
+        w: filled,
+        h: boxH,
+        contentWidth: filled,
+        radius: node.radius,
+        ellipse: node.ellipse,
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        border: null,
+        children: []
+      }];
+    }
+    if (gauge.indeterminate) {
+      recordUnsupported(ctx, domNode, 'progress', 'indeterminate',
+        'A progress with no value animates a highlight across its track: the slide draws the empty track and cannot animate');
+    }
+    // A meter tints its bar by where the value falls between low, high and optimum. The gauge
+    // is drawn in the deck accent, so a declared region colouring is the one thing lost.
+    const tint = ['low', 'high', 'optimum']
+      .filter((name) => domNode.attrs && domNode.attrs[name] !== undefined)
+      .map((name) => name + '=' + String(domNode.attrs[name]).trim());
+    if (tint.length) {
+      recordUnsupported(ctx, domNode, 'meter', tint.join(' '),
+        'The gauge is drawn in the deck accent; the browser also tints it by where the value falls in the range, which this shape does not reproduce');
+    }
+    applyRelativeShift(node, style, parentWidth);
+    return node;
+  }
 
   const chart = readChart(domNode, ctx);
   if (chart) {
@@ -2797,7 +3014,7 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       'No native spelling for ' + entry.name + ' on a picture: the image draws unfiltered for that function'));
     if (parsedFilter.applied) node.imageFilter = parsedFilter.applied;
     const layer = backgroundImageOf(style);
-    if (layer && domNode.tag !== 'img') {
+    if (layer && domNode.tag !== 'img' && domNode.tag !== 'video') {
       node.h = explicitHeight === null ? Math.max(width * 0.5625, 0.2) : explicitHeight;
       // A background that is the box's only paint becomes a picture here, so the same question
       // is asked: are there bytes behind the source? A layer with none used to reach the
@@ -2810,6 +3027,9 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       }
       node.src = layer.src;
       node.alt = '';
+      // A background picture is a picture: a vector layer meets the same reader the <img> path
+      // warned about, so it carries the same note.
+      noteSvgPicture(layer.src, domNode, ctx);
       // `background-size: auto` is a natural-size picture centred in the box, not a
       // stretched one: the geometry is resolved here, the emitter just draws it.
       if ((layer.size || 'auto') === 'auto') {
@@ -2846,7 +3066,9 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.w = width;
     node.x = x;
     node.h = height === null ? width * 0.5625 : height;
-    node.src = domNode.attrs.src || null;
+    // A `<video>` is drawn as its poster frame: that picture is what the design shows where the
+    // player would be, and the box is the video's own.
+    node.src = domNode.tag === 'video' ? videoPosterOf(domNode) : (domNode.attrs.src || null);
     // A source the engine cannot turn into bytes is a hole in the slide, and it used to be a
     // silent one: the spec claimed a picture, the package had none, and nothing was said. The
     // box keeps its place - the layout already measured it - and the report explains the gap.
@@ -2858,6 +3080,18 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
       node.undrawableSource = true;
     }
     node.alt = domNode.attrs.alt || '';
+    // A vector source is drawn, and only PowerPoint 2016 and later draws it: named here rather
+    // than let a designer meet a grey placeholder in front of an audience.
+    noteSvgPicture(sourceText, domNode, ctx);
+    if (domNode.tag === 'video') {
+      recordUnsupported(ctx, domNode, 'element', 'video',
+        'A video cannot be played in a static deck: its poster frame is drawn and the player itself is not');
+    }
+    // A link wrapped around the picture is the picture's own link; the writer needs it on the
+    // image element, and reading only the run walk dropped it: the `<a>` survived with no
+    // href and the slide showed an unclickable picture.
+    const anchor = domNode.parent && domNode.parent.tag === 'a' ? domNode.parent : null;
+    if (anchor && anchor.attrs && anchor.attrs.href) node.href = String(anchor.attrs.href);
     // `srcset` lets the browser pick a source per density or art direction; the
     // static deck always draws `src`. Same-layout different-pixels is close, but a
     // different crop silently changes the picture - name the choice.
@@ -2913,6 +3147,14 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     node.columnCount = table.columns;
     node.colWidths = table.colWidths;
     node.rowHeights = table.rowHeights;
+    // A native table is a frame of cells, and the file format has no click target for it: a
+    // link wrapped around a whole table would leave a table nobody can click. Named with the
+    // url so the design can move the link onto a shape beside it.
+    const tableAnchor = domNode.parent && domNode.parent.tag === 'a' ? domNode.parent : null;
+    if (tableAnchor && tableAnchor.attrs && tableAnchor.attrs.href) {
+      recordUnsupported(ctx, domNode, 'href', String(tableAnchor.attrs.href),
+        'A link around a whole table cannot be drawn: the file format gives a table no click target, so its cells stay unlinked');
+    }
     if (table.headerRows) node.headerRows = table.headerRows;
     // `border-collapse: collapse` makes the two declarations on a shared edge into
     // ONE line, and the browser picks the winner. The file format has no collapse
@@ -3507,16 +3749,18 @@ function anchoredSlot(style, contentBox, inherited) {
  */
 function applyAnchorHints(node, slot) {
   if (!node || !slot) return node;
+  // A bar is measured before its box is anchored, and a child keeps the absolute coordinates
+  // it was measured with: moving the owner alone left the child where the box used to be.
   if (slot.hugRight && Number.isFinite(slot.rightEdge)) {
     if (node.kind === 'text' && typeof node.text === 'string' && node.text.indexOf('\n') === -1) {
       const fontPt = node.fontSize || 18;
       const natural = (measureTextPt(node.text, fontPt) / 72) * 1.02;
       node.w = Math.max(0.2, Math.min(node.w, natural));
     }
-    node.x = slot.rightEdge - node.w;
+    shiftSubtree(node, 0, slot.rightEdge - node.w - node.x);
   }
   if (slot.hugBottom && Number.isFinite(slot.bottomEdge)) {
-    node.y = slot.bottomEdge - (Number.isFinite(node.h) ? node.h : 0);
+    shiftSubtree(node, slot.bottomEdge - (Number.isFinite(node.h) ? node.h : 0) - node.y, 0);
   }
   return node;
 }
@@ -3936,8 +4180,11 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
     lineNodes.forEach((node) => {
       const align = node.alignSelf || alignItems;
       if (align === 'stretch' && !node.fixedHeight) node.h = Math.max(node.h, lineCross);
-      else if (align === 'center') node.y = lineTop + (lineCross - node.h) / 2;
-      else if (align === 'end' || align === 'flex-end') node.y = lineTop + lineCross - node.h;
+      // The item and everything measured inside it move together: a child carries absolute
+      // coordinates, so assigning `y` alone left it behind its own box (a bar's fill drew
+      // above the track it belongs to).
+      else if (align === 'center') shiftSubtree(node, lineTop + (lineCross - node.h) / 2 - node.y, 0);
+      else if (align === 'end' || align === 'flex-end') shiftSubtree(node, lineTop + lineCross - node.h - node.y, 0);
     });
     lineGroups.push({ nodes: lineNodes, top: lineTop, height: tallestInLine });
     lineTop += tallestInLine + gap;
@@ -3961,9 +4208,9 @@ function layoutFlex(domNode, contentBox, inherited, ctx) {
         if (align === 'stretch' && !node.fixedHeight) node.h = lineHeight;
         // The cross-axis alignment is resolved against the *grown* line, so it is
         // recomputed here rather than before the distribution was known.
-        if (align === 'center') node.y = lineTop + (lineHeight - node.h) / 2;
-        else if (align === 'end' || align === 'flex-end') node.y = lineTop + lineHeight - node.h;
-        else node.y = lineTop;
+        if (align === 'center') shiftSubtree(node, lineTop + (lineHeight - node.h) / 2 - node.y, 0);
+        else if (align === 'end' || align === 'flex-end') shiftSubtree(node, lineTop + lineHeight - node.h - node.y, 0);
+        else shiftSubtree(node, lineTop - node.y, 0);
       });
       cursor += lineHeight + gap;
     });
@@ -5187,7 +5434,11 @@ function readTableCell(cell, ctx, rowBackground) {
   // words drew in their original case. The same helper is used, and the measurement below
   // reads the transformed string, so the column is sized to what is painted.
   const cellTransform = String(style.textTransform || '').trim().toLowerCase();
-  const text = cellTransform ? transformText(normalizedText(cell), cellTransform) : normalizedText(cell);
+  const flatText = cellTransform ? transformText(normalizedText(cell), cellTransform) : normalizedText(cell);
+  // A cell that holds a list draws one paragraph per item. Reading every block child into
+  // one string ran the items together ("甲乙") on a single unmarked line where the browser
+  // draws two marked lines. Any other cell keeps the flat string it always wrote.
+  const text = listCellParagraphs(cell, ctx, cellTransform) || flatText;
   // Properties a cell cannot carry are named once per table rather than dropped.
   if (String(style.wordSpacing || '').trim() && !ctx.cellWordSpacingNamed) {
     ctx.cellWordSpacingNamed = true;
@@ -5262,6 +5513,41 @@ function readTableCell(cell, ctx, rowBackground) {
   }
   if (colspan > 1) options.colspan = colspan;
   if (rowspan > 1) options.rowspan = rowspan;
+  // A link that spans a whole cell is the cell's own click target, which the writer does
+  // carry. A cell has no runs, so a link around *part* of its words cannot be drawn without
+  // making all of them clickable: that one is named rather than silently linked or dropped.
+  const cellAnchors = [];
+  const findAnchors = (parent) => {
+    (parent.children || []).forEach((child) => {
+      if (!child || child.type !== 'element') return;
+      // A nested table's cells run this function again with their own links.
+      if (child.tag === 'table') return;
+      if (child.tag === 'a' && child.attrs && child.attrs.href) {
+        cellAnchors.push(child);
+        return;
+      }
+      findAnchors(child);
+    });
+  };
+  findAnchors(cell);
+  if (cellAnchors.length) {
+    const words = (node) => normalizedText(node).replace(/\s+/gu, ' ');
+    const href = String(cellAnchors[0].attrs.href || '').trim();
+    // `#target` points at a place in a page, and a slide has nowhere to jump: the picture path
+    // drops the same url, and so does this one.
+    const drawable = href && !href.startsWith('#');
+    const spans = cellAnchors.length === 1 && words(cellAnchors[0]) === words(cell);
+    if (spans) {
+      if (drawable) options.hyperlink = { url: href };
+    } else if (drawable) {
+      recordUnsupported(ctx, cell, 'href', href,
+        'A link around part of a cell cannot be drawn: a table cell has no runs, so linking it would make the whole cell clickable and the link is dropped');
+    }
+  }
+  // The column width and the row height are measured from one string: a paragraph array
+  // would be measured as its source text. One line per paragraph is what is drawn, so the
+  // measurement sees every item.
+  const measuredText = Array.isArray(text) ? text.map((paragraph) => paragraph.text).join('\n') : text;
   return {
     node: cell,
     style,
@@ -5273,7 +5559,7 @@ function readTableCell(cell, ctx, rowBackground) {
       column: 0,
       colspan,
       rowspan,
-      text,
+      text: measuredText,
       fontSizePt,
       lineHeight: lineSpacingOf(style, fontSizePt).multiple,
       paddingTop: padding.top,
@@ -5338,6 +5624,109 @@ function readListItems(domNode, level = 0, out = [], parentOrdered = null) {
   elementChildren(domNode).filter((child) => child.tag === 'ul' || child.tag === 'ol')
     .forEach((nested) => readListItems(nested, level + 1, out, ordered));
   return out;
+}
+
+// The `type` attribute is the ordered list's own marker language: A/a/I/i/1.
+const OL_TYPE_STYLES = { A: 'upper-alpha', a: 'lower-alpha', I: 'upper-roman', i: 'lower-roman', '1': 'decimal' };
+
+/**
+ * The marker a list item in a cell asks for, in the paragraph bullet vocabulary
+ * (`{ type: 'bullet' }` / `{ type: 'number', style }`), or `false` for no marker.
+ */
+function cellListItemBullet(item, ctx) {
+  const declared = (item.list && ctx.styles.declared(item.list)) || {};
+  const marker = String(declared.listStyleType || declared.listStyle || '').trim().toLowerCase();
+  // `list-style: none` is the design asking for no marker at all; the writer's off switch
+  // is a falsy bullet, and null would reach PptxGenJS as an object and crash reading `.type`.
+  if (marker === 'none') return false;
+  if (!item.ordered) {
+    // A declared marker is a glyph, so the paragraph carries its code; an undeclared one is
+    // the round bullet the browser draws, which the writer spells from `type` alone.
+    const code = LIST_MARKER_CHARS[marker];
+    return code ? { type: 'bullet', characterCode: code } : { type: 'bullet' };
+  }
+  const typeAttr = String((item.list && item.list.attrs && item.list.attrs.type) || '').trim();
+  const language = marker || OL_TYPE_STYLES[typeAttr] || 'decimal';
+  return { type: 'number', style: LIST_MARKER_NUMBERS[language] || 'arabicPeriod' };
+}
+
+/**
+ * The paragraphs of a cell that holds a list, or null when it holds none.
+ *
+ * A cell was read as one string, so `<ul><li>甲</li><li>乙</li></ul>` inside it wrote "甲乙"
+ * on a single unmarked line where the browser draws one marked line per item. PptxGenJS
+ * writes one `<a:p>` per paragraph object, so a list becomes a paragraph per item, and a
+ * cell with no list keeps the plain string it always wrote.
+ */
+function listCellParagraphs(cell, ctx, transform) {
+  const isList = (node) => node.tag === 'ul' || node.tag === 'ol';
+  const holdsList = (node) => elementChildren(node).some((child) => isList(child) || holdsList(child));
+  if (!holdsList(cell)) return null;
+  const paragraphs = [];
+  const typed = (value) => (transform ? transformText(String(value || ''), transform) : String(value || ''));
+  const pushPlain = (value) => {
+    // A paragraph is one line, and the browser collapses space runs inside it; a `<br>` in
+    // there is the same flattening the plain cell string has always done.
+    const text = typed(value).replace(/\s+/gu, ' ').trim();
+    if (text) paragraphs.push({ text, options: {} });
+  };
+  const pushList = (list) => {
+    // One `startAt` per count, on the paragraph that really begins it: a reader reads the
+    // attribute as "start here", so a number on every item would count 1, 1, 1.
+    const started = new Set();
+    readListItems(list).forEach((item) => {
+      const text = typed(item.text);
+      if (!text) return;
+      const options = { bullet: cellListItemBullet(item, ctx) };
+      if (item.level > 0) options.indentLevel = item.level;
+      const attrs = (item.list && item.list.attrs) || {};
+      const begins = !started.has(item.level);
+      started.add(item.level);
+      if (item.ordered && options.bullet) {
+        const itemValue = Number(item.node && item.node.attrs ? item.node.attrs.value : NaN);
+        const declaredStart = Number(attrs.start);
+        const startAt = Number.isFinite(itemValue) && itemValue > 1 ? itemValue
+          : (begins && Number.isFinite(declaredStart) && declaredStart > 1 ? declaredStart : null);
+        if (startAt !== null) options.bullet.startAt = startAt;
+        // DrawingML has no reverse switch, so a list asked to count down would read in the
+        // wrong order; named rather than drawn forwards in silence.
+        if (begins && attrs.reversed !== undefined) {
+          recordUnsupported(ctx, item.list, 'reversed', attrs.reversed === null ? '' : String(attrs.reversed),
+            'The native numbered list counts up; there is no reverse switch, so the numbering would read in the wrong order');
+        }
+      }
+      paragraphs.push({ text, options });
+    });
+  };
+  // Source order: a sentence and a list in one cell both survive, and the words of a wrapper
+  // element (`<div>` around the `<ul>`) are not dropped on the way to its items.
+  const emit = (parent) => {
+    let inline = '';
+    const flush = () => {
+      if (inline.trim()) pushPlain(inline);
+      inline = '';
+    };
+    (parent.children || []).forEach((child) => {
+      if (child.type === 'text') { inline += child.text; return; }
+      if (child.type !== 'element') return;
+      if (isList(child)) { flush(); pushList(child); return; }
+      const childStyle = ctx.styles.computed(child);
+      const block = BLOCK_TAGS.has(child.tag)
+        || /^(block|flow-root|flex|grid|table|list-item)/u.test(String(childStyle.display || ''));
+      if (!block) { inline += normalizedText(child); return; }
+      flush();
+      if (holdsList(child)) emit(child);
+      else pushPlain(normalizedText(child));
+    });
+    flush();
+  };
+  emit(cell);
+  // Every paragraph but the last ends its own line: that `breakLine` is what makes the
+  // writer close the `<a:p>` where the browser ends the line.
+  paragraphs.forEach((paragraph, index) => {
+    if (index < paragraphs.length - 1) paragraph.options.breakLine = true;
+  });
+  return paragraphs.length ? paragraphs : null;
 }
 
 /**
@@ -6135,11 +6524,43 @@ function wrapAllAnonymousText(root, ctx) {
   visit(root);
 }
 
+/**
+ * `<ruby>` readings are written inline, and the report says so.
+ *
+ * DrawingML has no furigana: no run property draws a reading above its base text, so the
+ * text walk keeps the reading inline after the base ("漢字東京とうきょう"). Every word is
+ * kept - what the deck cannot do is place the reading. Reported once per element, and a
+ * hidden element is not drawn, so its reading is not a reading the deck loses.
+ */
+function reportRubyReadings(domNode, ctx) {
+  const visit = (node) => {
+    if (node.type !== 'element') return;
+    const style = ctx.styles.computed(node);
+    if (style.display === 'none' || style.visibility === 'hidden') return;
+    if (node.tag === 'ruby') {
+      const reading = elementChildren(node)
+        .filter((child) => child.tag === 'rt' || child.tag === 'rtc')
+        .map((child) => normalizedText(child).replace(/\s+/gu, ' '))
+        .filter(Boolean)
+        .join(' ');
+      if (reading) {
+        recordUnsupported(ctx, node, 'ruby', reading,
+          'A reading cannot be placed above its base text in the file format; the reading is written inline after the base text');
+      }
+    }
+    elementChildren(node).forEach(visit);
+  };
+  visit(domNode);
+}
+
 function analyzeHtml(html, options = {}) {
   const ctx = createContext(html, options);
   const pageSize = pageSizeInches(options);
   const slideElements = findSlideElements(ctx.root, options);
   const slides = [];
+  // Before the layout walk, and over the DOM: a reading inside a table cell or a list item
+  // is flattened by a reader of its own, so it is named here, where every element is seen.
+  slideElements.forEach((slideNode) => reportRubyReadings(slideNode, ctx));
 
   slideElements.forEach((slideNode, index) => {
     // Run before the style is read: the wrap changes the child list, not the root.

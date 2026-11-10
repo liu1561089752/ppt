@@ -5675,7 +5675,61 @@ test('every example deck is one the gates convert', () => {
     .map((name) => name.replace(/\.html$/u, ''))
     .sort();
   assert.deepEqual(listed, onDisk, 'the converter covers every pipeline example');
-  assert.equal(listed.length, 19, 'nineteen example decks today');
+  assert.equal(listed.length, 20, 'twenty example decks today');
+});
+
+test('a link, a cell list and a reading cross the pipeline end to end', async () => {
+  // The three contracts that two hands touched in the same round: the analyzer carries the
+  // anchor of a picture, the builder turns it into a picture hyperlink, the writer spells it as
+  // `a:hlinkClick` plus an external relationship; a list inside a table cell becomes one
+  // paragraph per item and the writer patches the marker a table cell never gets; a `<ruby>`
+  // reading cannot be placed above its base, so it is written inline and named. Each leg was
+  // built separately, so this is the test that proves they meet.
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAAAyCAIAAAC0m0JJAAAAWklEQVR4nO3NMQEAAAgDoC251a3gLzRgkjl3dgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOA1A3l0AAG8DQ0iAAAAAElFTkSuQmCC';
+  const result = pipeline.convertHtml([
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  td { font-size: 14px; }</style></head><body><main class="slide">',
+    '<a href="https://example.com/x?a=1&b=2"><img src="' + png + '" width="200" height="100" alt="图"></a>',
+    '<table style="width: 480px"><tr><td><ul><li>甲</li><li>乙</li></ul></td></tr></table>',
+    '<p style="font-size: 18px">漢字<ruby>東京<rt>とうきょう</rt></ruby></p>',
+    '</main></body></html>'
+  ].join('\n'));
+  const file = path.join(os.tmpdir(), 'native-contract-' + process.pid + '.pptx');
+  await generatePptx(result.deck, file);
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const slide = await zip.file('ppt/slides/slide1.xml').async('string');
+  const rels = await zip.file('ppt/slides/_rels/slide1.xml.rels').async('string');
+  fs.rmSync(file, { force: true });
+
+  // The link: one click target on the picture, and a relationship a reader can follow.
+  assert.equal((slide.match(/<a:hlinkClick /gu) || []).length, 1, 'the picture carries the link');
+  assert.match(rels, /Target="https:\/\/example\.com\/x\?a=1&amp;b=2"/u,
+    'and the url is escaped, so the part is well-formed XML');
+  // A lone ampersand anywhere in a rels part is what makes PowerPoint offer to repair a deck.
+  const loneAmpersand = /&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9A-Fa-f]+);)/u;
+  assert.ok(!loneAmpersand.test(rels), 'no unescaped ampersand in the relationships');
+
+  // The cell list: one paragraph per item, each with its marker, in the cell the list is in.
+  // Cut at the closing tag: splitting on the opening one leaves the rest of the slide in the
+  // segment, so the paragraph that follows the table counted as part of the cell.
+  const cells = slide.match(/<a:tc\b[\s\S]*?<\/a:tc>/gu) || [];
+  const listCell = cells.find((cell) => (cell.match(/<a:p>/gu) || []).length === 2);
+  assert.ok(listCell, 'the list cell holds two paragraphs');
+  assert.equal((listCell.match(/<a:buChar /gu) || []).length, 2, 'and each paragraph carries a marker');
+  assert.deepEqual([...listCell.matchAll(/<a:t>([^<]*)<\/a:t>/gu)].map((match) => match[1]), ['甲', '乙'],
+    'the items did not run together');
+
+  // The reading: kept as words, and named once because DrawingML cannot place it.
+  assert.deepEqual([...slide.matchAll(/<a:t>([^<]*)<\/a:t>/gu)].map((match) => match[1]),
+    ['甲', '乙', '漢字東京とうきょう'], 'the reading stays inline after its base');
+  const ruby = result.report.unsupportedDetails.filter((entry) => entry.property === 'ruby');
+  assert.equal(ruby.length, 1, 'the reading is named once');
+  assert.equal(ruby[0].value, 'とうきょう', 'and the report quotes it');
 });
 
 test('the catalogue of what the engine cannot draw matches the code', () => {

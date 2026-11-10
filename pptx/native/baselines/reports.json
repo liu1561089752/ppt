@@ -2,6 +2,21 @@
   "note": "Declarations the engine knowingly does not translate, one entry per deck. Refresh with --update.",
   "entries": [
     {
+      "deck": "pipeline-contract.html",
+      "property": "element",
+      "reason": "A video cannot be played in a static deck: its poster frame is drawn and the player itself is not"
+    },
+    {
+      "deck": "pipeline-contract.html",
+      "property": "ruby",
+      "reason": "A reading cannot be placed above its base text in the file format; the reading is written inline after the base text"
+    },
+    {
+      "deck": "pipeline-contract.html",
+      "property": "ruby",
+      "reason": "A reading cannot be placed above its base text in the file format; the reading is written inline after the base text"
+    },
+    {
       "deck": "pipeline-float.html",
       "property": "float",
       "reason": "A block that follows a float is placed below it; the browser would wrap its lines beside the float"

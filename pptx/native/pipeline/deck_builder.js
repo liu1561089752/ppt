@@ -378,6 +378,12 @@ function imageElementFromNode(node) {
   if (/^data:/iu.test(node.src) || /^https?:/iu.test(node.src)) element.data = node.src;
   else element.path = node.src;
   if (node.alt) element.altText = node.alt;
+  // An `<a href>` around a picture is a link a reader can click: the analyzer carries the raw
+  // href and the engine writes it as the picture's own hyperlink (`a:hlinkClick` plus an
+  // external relationship). The url travels verbatim - `mailto:` and a relative path included -
+  // because rewriting it would send the reader somewhere the author never named.
+  const pictureHref = anchorHrefOf(node);
+  if (pictureHref) element.hyperlink = { url: pictureHref };
   if (node.focus) element.focus = node.focus;
   if (node.radius) element.radius = node.radius;
   if (node.border) {
@@ -390,6 +396,63 @@ function imageElementFromNode(node) {
   // in: PptxGenJS has no option for them.
   if (node.imageFilter) element.imageFilter = node.imageFilter;
   return element;
+}
+
+/**
+ * The url a wrapping `<a href>` declares, or '' when it is not a link this deck can carry.
+ *
+ * A `#fragment` names a place in the HTML page; the deck has no slide to jump to, so an
+ * external relationship to it would navigate nowhere.
+ */
+function anchorHrefOf(node) {
+  const href = node && typeof node.href === 'string' ? node.href : '';
+  return href && !href.startsWith('#') ? href : '';
+}
+
+/**
+ * Shape, text box and picture are the objects a reader can click; a group has no `cNvPr` of
+ * its own. A chart frame is left out because the writer takes no click for one, and a line
+ * because a 0.02in stroke is not something a reader can aim at - a card is better linked by
+ * the words inside it than by its hairline.
+ */
+const ANCHOR_LINK_TYPES = new Set(['shape', 'text', 'image']);
+
+/** Would a link on this object draw, or does it already carry one of its own? */
+function anchorLinkFits(element) {
+  if (!element || !ANCHOR_LINK_TYPES.has(element.type)) return false;
+  // A picture inside an anchor already carries the link, and a text box whose runs link is
+  // already clickable: a second, shape-level link on either would be a duplicate.
+  if (element.hyperlink) return false;
+  if (element.type === 'text' && Array.isArray(element.text)
+    && element.text.some((run) => run && run.options && run.options.hyperlink)) return false;
+  return true;
+}
+
+/**
+ * Put the anchor's url on EVERY object a reader can click in the subtree, and say how many took
+ * it.
+ *
+ * A card is a container, and a container is layout-only - it has no `cNvPr` of its own, so the
+ * link has to land on the objects inside it. All of them, not just the first: the copy usually
+ * covers most of a tile, and a reader who clicks the headline rather than the margin is still
+ * clicking the card. Zero means nothing in this subtree can carry a link.
+ */
+function anchorLinkObjects(element, href) {
+  if (!element) return 0;
+  if (element.type === 'container') {
+    let linked = 0;
+    if (element.background && anchorLinkFits(element.background)) {
+      element.background.hyperlink = { url: href };
+      linked += 1;
+    }
+    (element.children || []).forEach((child) => {
+      linked += anchorLinkObjects(child, href);
+    });
+    return linked;
+  }
+  if (!anchorLinkFits(element)) return 0;
+  element.hyperlink = { url: href };
+  return 1;
 }
 
 /** Column widths must sum to the table width, or PowerPoint draws a ragged table. */
@@ -1179,11 +1242,27 @@ function containerChild(node, parentPlan, context) {
   element._z = zIndexOf(node);
   probes.set(node.id, boxOf(node));
   owners.set(node.id, ownerId);
+  // A child that is itself an anchor - a linked tile inside a card - links its own objects.
+  const childHref = anchorHrefOf(node);
+  if (childHref) anchorLinkObjects(element, childHref);
   return element;
 }
 
 /** Emit a node (and its subtree) at explicit coordinates. */
 function emitAbsolute(node, context) {
+  const start = (context.elements || []).length;
+  emitNodeAtBox(node, context);
+  // An `<a href>` around a block is the "whole card is clickable" pattern: one url for
+  // everything the anchor produced, written on every object a reader can click - the surface
+  // and the words above it - so a click on the headline navigates like the margin does.
+  const href = anchorHrefOf(node);
+  if (!href) return;
+  (context.elements || []).slice(start)
+    .forEach((element) => anchorLinkObjects(element, href));
+}
+
+/** Emit one node at its own box: the surface, its children, its overlays. */
+function emitNodeAtBox(node, context) {
   const { resolvedTheme, elements, report, state, probes, owners, ownerId } = context;
   if (!node || node.hidden || node.w <= 0.01 || node.h <= 0.01) return;
   // Pictures and scrims above them are held back until the box that holds them is emitted:
@@ -1594,6 +1673,9 @@ module.exports = {
   textElementFromNode,
   surfaceElementFromNode,
   imageElementFromNode,
+  anchorHrefOf,
+  anchorLinkFits,
+  anchorLinkObjects,
   tableElementFromNode,
   containerPlan,
   containerElement,
