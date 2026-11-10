@@ -22,11 +22,6 @@
       "reason": "Collapsed borders resolve to one line in the browser; adjacent cells disagree on 0.75pt solid E4DECF against 1.5pt solid 17332F on one shared horizontal edge, and a native table cell keeps both edges"
     },
     {
-      "deck": "pipeline-reference.html",
-      "property": "objectFit",
-      "reason": "Without object-fit a picture is cover-cropped here, where CSS would stretch it to the box: write object-fit: fill to stretch, or cover to say the crop is intended"
-    },
-    {
       "deck": "pipeline-vertical.html",
       "property": "overflowWrap",
       "reason": "A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break"

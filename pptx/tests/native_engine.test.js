@@ -1153,7 +1153,9 @@ test('html pipeline output stays editable once written to PPTX', async () => {
     assert.equal(report.errors, 0);
     assert.equal(report.totals.tables, 1);
     assert.equal(report.totals.pictures, 2);
-    assert.equal(report.totals.croppedPictures, 2);
+    // Only the figure crops: `object-fit: cover` in a 300px-tall box. The square logo in a
+    // square box is stretched by the browser and by this engine alike, so it needs no crop.
+    assert.equal(report.totals.croppedPictures, 1);
     assert.ok(report.totals.characters > 500);
     report.slides.forEach((slide) => assert.ok(slide.textShapes >= 2, slide.part + ' must keep editable text'));
   });
@@ -8327,11 +8329,12 @@ test('a length object-position crops and places the picture it names', async () 
   assert.ok(Math.abs(corner.x - 0.4167) < 0.002, 'the keyword form still lands top left: ' + corner.x);
 });
 
-test('a picture with no object-fit is named where that box crops it', () => {
-  // CSS stretches an undeclared object-fit; this deck crops to cover so a photo is never
-  // distorted. That is a different picture, so it is named - but only where a fixed box
-  // makes the crop possible, because an auto-sized box already takes the picture's own
-  // proportions and loses nothing.
+test('a picture with no object-fit is stretched, the way CSS stretches it', () => {
+  // CSS stretches a picture whose box does not match its proportions (`object-fit: fill` is
+  // the initial value). This engine used to cover-crop instead - a designer's opinion about
+  // not distorting a photo, honestly named, and still a different picture from the browser's.
+  // Fidelity won: the box decides the shape, and `object-fit: cover` is how a design says
+  // otherwise. Nothing is reported now, because silence is right when the drawing agrees.
   const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAgCAYAAAA1xQ0wAAAAIklEQVR42mNkYPjPQARgZCAGjCocVTiqcFThqMJRhcNKIQBcFwIB/8K7zQAAAABJRU5ErkJggg==';
   const build = (rule) => pipeline.convertHtml([
     '<html><head><style>',
@@ -8341,20 +8344,26 @@ test('a picture with no object-fit is named where that box crops it', () => {
     '<img src="' + PNG + '">',
     '</main></body></html>'
   ].join('\n'));
-  const fitReports = (rule) => build(rule).report.unsupportedDetails
+  const fitOf = (rule) => {
+    const image = build(rule).deck.slides[0].elements.find((element) => element.type === 'image');
+    return image && (image.objectFit || image.fit);
+  };
+  const reportOf = (rule) => build(rule).report.unsupportedDetails
     .filter((entry) => entry.property === 'objectFit');
 
-  const cropped = fitReports('img { width: 300px; height: 120px; }');
-  assert.equal(cropped.length, 1, 'an undeclared fit in a fixed box is named');
-  assert.match(cropped[0].reason, /object-fit: fill/u, 'with the way out: ' + cropped[0].reason);
-
-  assert.deepEqual(fitReports('img { width: 300px; height: 120px; object-fit: fill; }'), [],
-    'a declared stretch is what CSS does, so nothing to say');
-  assert.deepEqual(fitReports('img { width: 300px; height: 120px; object-fit: cover; }'), [],
-    'and a declared crop is the design being explicit');
-  assert.deepEqual(fitReports('img { width: 300px; }'), [],
-    'an auto height takes the picture proportions: no crop, no noise');
+  assert.equal(fitOf('img { width: 300px; height: 120px; }'), 'stretch',
+    'an undeclared fit stretches to the box, as CSS does');
+  assert.deepEqual(reportOf('img { width: 300px; height: 120px; }'), [],
+    'and there is nothing to report: the drawing agrees with the CSS');
+  assert.equal(fitOf('img { width: 300px; height: 120px; object-fit: cover; }'), 'cover',
+    'a declared crop is the design being explicit');
+  assert.equal(fitOf('img { width: 300px; height: 120px; object-fit: contain; }'), 'contain');
+  assert.equal(fitOf('img { width: 300px; }'), 'stretch',
+    'an auto height already takes the picture proportions');
+  assert.deepEqual(reportOf('img { width: 300px; height: 120px; object-fit: sideways; }').length, 1,
+    'an unknown fit is still named');
 });
+
 
 test('a data label position the writer cannot spell is named', () => {
   // The writer filters label positions per chart shape and deletes the rest without a
