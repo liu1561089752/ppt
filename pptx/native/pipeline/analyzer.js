@@ -1585,6 +1585,22 @@ function measureTextElement(domNode, style, availableWidth, resolvedFontPx, ctx,
   // A run with its own size is measured at that size: charging `12 个夹具` to the 33pt
   // number reserved two lines for one, and every box below it slid down by a line.
   const width = Math.max(0.2, availableWidth);
+  // A word wider than its box is the one place where `overflow-wrap: normal` and this layout
+  // disagree: CSS lets the word stick out of the box, a reader breaks it. The break is what the
+  // box is measured with (the words would wrap anyway once opened), so the difference is named
+  // rather than left to look like a coincidence. `break-word`/`anywhere`/`break-all` ask for
+  // exactly this break, so they stay silent.
+  const allowsWordBreak = /^(break-word|anywhere)$/u.test(String(style.overflowWrap || style.wordWrap || '').toLowerCase())
+    || /^(break-all|break-word)$/u.test(String(style.wordBreak || '').toLowerCase());
+  if (!allowsWordBreak && !noWrap) {
+    const widest = String(built.text || '').split(/\s+/u)
+      .filter((token) => token && !/[\u2E80-\u9FFF\uF900-\uFAFF\u3000-\u303F\uFF00-\uFFEF]/u.test(token))
+      .reduce((best, token) => (measureTextPt(token, fontSizePt) > measureTextPt(best, fontSizePt) ? token : best), '');
+    if (widest && measureTextPt(widest, fontSizePt) / 72 > width) {
+      recordUnsupported(ctx, domNode, 'overflowWrap', style.overflowWrap || style.wordWrap || 'normal',
+        'A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break');
+    }
+  }
   const sized = built.hasFormatting && (built.runs || []).some((run) => run.options
     && Number.isFinite(Number(run.options.fontSize))
     && Math.abs(Number(run.options.fontSize) - fontSizePt) > 0.5);
@@ -5696,8 +5712,36 @@ function columnPlanOf(domNode, style, contentWidth, fontSizePx, ctx) {
     recordUnsupported(ctx, domNode, 'columns', style.columns || style.columnCount, reason);
     return null;
   };
-  if (!children.length || ownText(domNode)) {
-    return bail('A column block has to hold paragraph elements; text of its own is a line box this shape does not model');
+  if (!children.length) {
+    // `<p style="columns: 2">words</p>` is the commonest way to ask for columns at all: the
+    // element's own text is the paragraph, and a native text box splits it just as it splits a
+    // block of child paragraphs. It used to be refused as a line box with nowhere to go.
+    const built = buildRuns(domNode, style, ctx);
+    const words = String(built.text || '').trim();
+    if (!words) return null;
+    const paragraph = { text: words, runs: built.hasFormatting ? built.runs : null };
+    const gapOwn = columnGapIn(style, fontSizePx, contentWidth);
+    const ownWidth = Math.max(0.4, (contentWidth - gapOwn * (count - 1)) / count);
+    const ownSizePt = Number((fontSizePx * 0.75).toFixed(2));
+    const ownSpacing = lineSpacingOf(style, fontSizePx);
+    const ownNeeded = estimateTextHeight(words, ownWidth, ownSizePt,
+      { lineHeight: ownSpacing.multiple, safetyFactor: 0.92 });
+    const ownRow = ownSizePt * ownSpacing.multiple / 72;
+    const ownRows = Math.max(1, Math.ceil(Math.round(ownNeeded / ownRow) / count));
+    return {
+      kind: 'text',
+      role: 'body',
+      text: paragraph.runs ? paragraph.runs : words,
+      runs: null,
+      fontSizePt: ownSizePt,
+      lineSpacingMultiple: ownSpacing.multiple,
+      textHeight: Number((ownRows * ownRow).toFixed(4)),
+      columns: { count, gapIn: Number(gapOwn.toFixed(4)) },
+      ...(String(style.fontVariant || '').toLowerCase().trim() === 'small-caps' ? { smallCaps: true } : {})
+    };
+  }
+  if (ownText(domNode)) {
+    return bail('A column block with both its own text and block children mixes a line box with paragraph elements');
   }
   // `column-span: all` pulls one child out of the column flow to span every column:
   // the native text box columns cannot exempt a paragraph, so the design is named

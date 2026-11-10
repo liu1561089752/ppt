@@ -4705,7 +4705,6 @@ test('every unsupported declaration is reported exactly once, by name', () => {
     // One text-shadow layer reaches the run properties now; the second has nowhere to go.
     textShadow: '.box { width: 400px; font-size: 20px; text-shadow: 0 2px 8px #000, 0 0 2px #FFF; }',
     filter: '.box { width: 400px; height: 80px; background: #EEE; filter: blur(2px); }',
-    columns: '.box { width: 600px; columns: 2; font-size: 14px; }',
     wordSpacing: '.box { width: 400px; font-size: 20px; word-spacing: 6px; }',
     direction: '.box { width: 400px; font-size: 16px; direction: rtl; }',
     backgroundBlendMode: '.box { width: 400px; height: 80px; background-color: #345; background-image: linear-gradient(45deg, #000, #FFF); background-blend-mode: multiply; }',
@@ -4727,6 +4726,30 @@ test('every unsupported declaration is reported exactly once, by name', () => {
     assert.ok(properties.includes(expected),
       expected + ' is not in the report: ' + JSON.stringify(properties));
   });
+
+  // `columns: 2` on an element that holds its own text is a native columned text box now
+  // (numCol/spcCol on bodyPr), so it belongs with the quiet cases; the block-child shapes
+  // that cannot be poured into a column are still named.
+  const columned = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: 600px; columns: 2; column-gap: 30px; font-size: 14px; }',
+    '</style></head><body><main class="slide"><p class="box">分栏文字，写长一点好让它真的排成两栏。</p></main></body></html>'
+  ].join('\n'));
+  const columnElement = columned.deck.slides[0].elements[0];
+  assert.equal(columnElement.type, 'text');
+  assert.equal(columnElement.columns, 2);
+  assert.ok(Math.abs(columnElement.columnGap * 96 - 30) < 0.5, 'gap: ' + (columnElement.columnGap * 96));
+  assert.deepEqual(columned.report.unsupportedDetails, [], 'a columned paragraph says nothing');
+  const poured = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  .box { width: 600px; columns: 2; font-size: 14px; }',
+    '  .card { background: #EEE; padding: 8px; }',
+    '</style></head><body><main class="slide"><div class="box"><p class="card">一</p></div></main></body></html>'
+  ].join('\n'));
+  assert.ok(poured.report.unsupportedDetails.some((entry) => entry.property === 'columns'),
+    'a column child that paints its own box is still named');
 
   // And the other half of the contract: a declaration that changes no pixel stays silent.
   const quiet = pipeline.convertHtml([
@@ -5627,6 +5650,28 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.padding.left * 96 - 26) < 0.2, 'left inset: ' + (card.padding.left * 96).toFixed(2));
   assert.ok(Math.abs(card.padding.right * 96 - 22) < 0.2, 'right inset: ' + (card.padding.right * 96).toFixed(2));
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
+});
+
+test('a word wider than its box is named, not silently broken', () => {
+  // CSS `overflow-wrap: normal` lets a long word stick out of its box; a reader breaks it
+  // instead, and the box has to be measured with that break or the next block would sit a line
+  // too high. So the break is kept and the difference is named - once, and only where it bites.
+  const build = (css, body) => pipeline.convertHtml([
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; } ' + css + '</style>',
+    '</head><body><main class="slide">' + body + '</main></body></html>'
+  ].join('\n'));
+  const reports = (result) => result.report.unsupportedDetails
+    .filter((entry) => entry.property === 'overflowWrap')
+    .map((entry) => entry.value);
+  const word = 'Supercalifragilisticexpialidocious';
+  assert.deepEqual(reports(build('.w { width: 120px; font-size: 14px; }', '<p class="w">' + word + '</p>')),
+    ['normal'], 'the default has to be named where it bites');
+  assert.deepEqual(reports(build('.w { width: 120px; font-size: 14px; overflow-wrap: break-word; }',
+    '<p class="w">' + word + '</p>')), [], 'break-word asks for exactly this break');
+  assert.deepEqual(reports(build('.w { width: 600px; font-size: 14px; }', '<p class="w">ordinary words</p>')),
+    [], 'a box whose words fit says nothing');
+  assert.deepEqual(reports(build('.w { width: 60px; font-size: 14px; }', '<p class="w">中文按字符换行</p>')),
+    [], 'CJK breaks between characters anyway');
 });
 
 test('a border band follows the rounded corner it sits on', async () => {
