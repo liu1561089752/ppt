@@ -771,6 +771,42 @@ async function patchClipGeometry(outputPath, deck, laidOut) {
   return true;
 }
 
+/**
+ * Clear the alt text the writer invented.
+ *
+ * pptxgenjs writes `descr` as `altText || the image source`, so a picture with no `alt` carried
+ * `descr="F:\\path\\to\\stress-photo.png"` - a build machine's folder layout inside the alt text of
+ * a deliverable, offered to a screen reader as if it described the picture. A picture with no
+ * description has no description; the source path belongs in the shape name at most.
+ */
+function looksLikeSourcePath(value) {
+  return value === 'preencoded.png' || /[\\/]/u.test(value) || /^[A-Za-z]:/u.test(value);
+}
+
+function applyPictureAltText(xml) {
+  return xml.replace(/<p:cNvPr ([^>]*?)descr="([^"]*)"([^>]*?)>/gu, (whole, before, descr, after) => {
+    if (!looksLikeSourcePath(descr)) return whole;
+    return '<p:cNvPr ' + before + 'descr=""' + after + '>';
+  });
+}
+
+async function patchPictureAltText(outputPath) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  const names = Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name));
+  for (const name of names) {
+    const xml = await zip.file(name).async('string');
+    const next = applyPictureAltText(xml);
+    if (next === xml) continue;
+    zip.file(name, next);
+    touched += 1;
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 /** `cap="small"` is DrawingML's small caps, and the writer has no option for it. */
 function applySmallCaps(xml) {
   return xml.replace(/<a:rPr([^>]*?)(\/?)>/gu, (whole, attrs, selfClose) => {
@@ -1233,6 +1269,7 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);
   await patchTitlePlaceholders(outputPath, deck, result.laidOut);
+  await patchPictureAltText(outputPath);
   if (laidOutShapes.some((elements) => elements.some((element) => element.textShadow))) {
     await patchTextShadows(outputPath, deck, result.laidOut);
   }
@@ -1269,5 +1306,6 @@ module.exports = {
   applyTextIndent, patchTextIndents, applyMarkerColour,
   innerShadowXml, applyInnerShadow, patchInnerShadows,
   applyTextShadow, patchTextShadows, collectDeckFaces, patchEmbeddedFonts,
-  applyTitlePlaceholder, patchTitlePlaceholders
+  applyTitlePlaceholder, patchTitlePlaceholders,
+  looksLikeSourcePath, applyPictureAltText, patchPictureAltText
 };

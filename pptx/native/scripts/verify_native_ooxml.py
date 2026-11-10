@@ -251,6 +251,25 @@ def audit_enums(root: ET.Element) -> list[str]:
     return problems
 
 
+def audit_alt_text(root: ET.Element) -> list[str]:
+    """Alt text describes; a source path or a file name is not a description.
+
+    The writer fills `descr` with the image source when no alt text is given, which put
+    `F:\\build\\photo.png` - a build machine's folder layout - into the alt text a screen reader
+    reads out. The pipeline clears it now; this keeps it cleared.
+    """
+    problems: list[str] = []
+    for element in root.iter():
+        if local_name(element.tag) != "cNvPr":
+            continue
+        descr = element.get("descr")
+        if not descr:
+            continue
+        if descr == "preencoded.png" or "\\" in descr or "/" in descr or re.match(r"^[A-Za-z]:", descr):
+            problems.append(f'alt text names a file instead of describing one: "{descr}"')
+    return problems
+
+
 def inspect(path: Path) -> dict[str, int]:
     # `path` is reused below for geometry path elements; the file is kept under its own name.
     package_path = path
@@ -282,6 +301,7 @@ def inspect(path: Path) -> dict[str, int]:
         for name in slide_names:
             root = ET.fromstring(archive.read(name))
             problems.extend(audit_enums(root))
+            problems.extend(audit_alt_text(root))
             problems.extend(audit_child_order(root))
             problems.extend(audit_tables(root))
             counts["shapes"] += len(root.findall(".//p:sp", NS))
@@ -387,6 +407,7 @@ def self_test() -> int:
     check has to reject - including the invented element that shipped before the
     ordering check existed."""
     drawing = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    presentation = "http://schemas.openxmlformats.org/presentationml/2006/main"
     controls = [
         ("a good pPr", "<a:pPr><a:spcBef/><a:buChar char='x'/><a:defRPr/></a:pPr>", False),
         ("a bullet before its spacing", "<a:pPr><a:buChar char='x'/><a:spcBef/></a:pPr>", True),
@@ -398,6 +419,8 @@ def self_test() -> int:
         ("a valid underline", "<a:rPr u='wavy'/>", False),
         ("an underline spelled the CSS way", "<a:rPr u='double'/>", True),
         ("an invalid strike", "<a:rPr strike='double'/>", True),
+        ("an alt text that describes", "<p:cNvPr descr='一张流程图'/>", False),
+        ("an alt text that names a file", "<p:cNvPr descr='assets/flow.png'/>", True),
         # A table row has to fill its grid exactly once: short is as broken as long.
         ("a text body in order", "<a:txBody><a:bodyPr/><a:p/></a:txBody>", False),
         ("a paragraph before its body properties",
@@ -423,11 +446,12 @@ def self_test() -> int:
     failures: list[str] = []
     for label, body, should_flag in controls:
         try:
-            root = ET.fromstring(f'<root xmlns:a="{drawing}">{body}</root>')
+            root = ET.fromstring(
+                f'<root xmlns:a="{drawing}" xmlns:p="{presentation}">{body}</root>')
         except ET.ParseError as error:
             failures.append(f"{label}: the control itself does not parse ({error})")
             continue
-        found = audit_child_order(root) + audit_tables(root) + [
+        found = audit_child_order(root) + audit_tables(root) + audit_alt_text(root) + [
             problem for child in list(root) for problem in audit_enums(child)
         ] + audit_enums(root)
         if should_flag and not found:

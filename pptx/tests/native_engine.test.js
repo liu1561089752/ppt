@@ -5652,6 +5652,39 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('a picture with no alt text carries no alt text', async () => {
+  // The writer fills `descr` with the image source when no alt is given, which put a build
+  // machine's path into the alt text a screen reader reads out. A picture with no description
+  // has no description; the check that keeps it that way lives in the integrity audit.
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGOQtTYDAAEHAI9Yd1qPAAAAAElFTkSuQmCC';
+  const html = [
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style></head><body>',
+    '<main class="slide">',
+    '  <img src="data:image/png;base64,' + png + '" width="120" height="80">',
+    '  <img src="data:image/png;base64,' + png + '" alt="一张流程图" width="120" height="80">',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const engine = require('../native/engine/native_pptx');
+  const file = path.join(os.tmpdir(), 'native-alt-' + process.pid + '.pptx');
+  await engine.generatePptx(result.deck, file);
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+  fs.unlinkSync(file);
+  const descriptions = [...xml.matchAll(/descr="([^"]*)"/gu)].map((match) => match[1]);
+  assert.deepEqual(descriptions, ['', '一张流程图'], 'the invented alt text is gone, the author`s is kept');
+  assert.ok(!xml.includes('preencoded.png'), 'and no source name reaches the package');
+
+  assert.equal(engine.looksLikeSourcePath('preencoded.png'), true);
+  assert.equal(engine.looksLikeSourcePath('F:\\work\\photo.png'), true);
+  assert.equal(engine.looksLikeSourcePath('assets/flow.png'), true);
+  assert.equal(engine.looksLikeSourcePath('一张流程图'), false);
+});
+
 test('a decoration style keeps the vocabulary the schema uses', async () => {
   // CSS says `double` and `dashed`; the schema says `dbl` and `dash`. Passing the CSS word
   // through wrote u="double", which no reader on this machine complained about - so the
