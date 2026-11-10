@@ -5896,13 +5896,23 @@ function assignRoles(slideNodes) {
   const sizes = texts.map((node) => node.fontSizePt).sort((a, b) => b - a);
   const largest = sizes[0];
   const smallest = sizes[sizes.length - 1];
+  // One title per slide, chosen by priority. A slide can hold two elements that both look like
+  // titles - the chart fixture has a 96px rotated watermark beside its h1 - and a writer that
+  // marks whichever comes first gives the placeholder to the decoration. An h1 outranks the
+  // largest word, and a rotated word is never the title.
+  const upright = (node) => !node.rotate && !/rotate\(/u.test(String(node.transformSource || '') );
+  const title = texts.find((node) => node.tag === 'h1')
+    || texts.find((node) => hasHint(node.classes, TITLE_CLASS_HINTS) && upright(node))
+    || texts.find((node) => upright(node) && node.fontSizePt >= largest - 0.01 && largest >= 20)
+    || null;
   texts.forEach((node) => {
+    if (node === title) { node.role = 'title'; return; }
     // Order matters: "subtitle" contains "title", and "kicker" is caption-like.
     if (hasHint(node.classes, CAPTION_CLASS_HINTS)) { node.role = 'caption'; return; }
     if (hasHint(node.classes, HEADING_CLASS_HINTS)) { node.role = 'heading'; return; }
-    if (hasHint(node.classes, TITLE_CLASS_HINTS)) { node.role = 'title'; return; }
-    if (node.tag === 'h1' || (node.fontSizePt >= largest - 0.01 && largest >= 20)) { node.role = 'title'; return; }
-    if (node.tag === 'h2' || node.tag === 'h3' || node.fontSizePt >= largest * 0.8) { node.role = 'heading'; return; }
+    // A second element that calls itself a title is a heading: a slide has one title.
+    if (hasHint(node.classes, TITLE_CLASS_HINTS)) { node.role = 'heading'; return; }
+    if (node.tag === 'h1' || node.tag === 'h2' || node.tag === 'h3' || node.fontSizePt >= largest * 0.8) { node.role = 'heading'; return; }
     if (node.fontSizePt <= smallest + 0.01 && smallest <= 11) { node.role = 'caption'; return; }
     node.role = 'body';
   });

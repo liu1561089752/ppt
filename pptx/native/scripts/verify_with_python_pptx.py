@@ -32,7 +32,11 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 def shape_counts(slide) -> dict:
     """Shapes by kind, walking into groups: a group is one shape to a reader, several to a design."""
     counts = {"shapes": 0, "pictures": 0, "charts": 0, "tables": 0, "groups": 0,
-              "text_shapes": 0, "text_characters": 0, "rotated": 0}
+              "text_shapes": 0, "text_characters": 0, "rotated": 0, "titles": 0}
+    # A slide whose heading is a plain text box has no title: no outline entry, no
+    # accessibility name, and nothing for `Reset slide` to reset.
+    if slide.shapes.title is not None:
+        counts["titles"] = 1
     stack = list(slide.shapes)
     while stack:
         shape = stack.pop()
@@ -86,9 +90,11 @@ def describe(path: Path, round_trip: bool) -> dict:
     report["opened"] = True
     report["slides"] = len(presentation.slides)
     totals = {"shapes": 0, "pictures": 0, "charts": 0, "tables": 0, "groups": 0,
-              "text_shapes": 0, "text_characters": 0, "rotated": 0}
+              "text_shapes": 0, "text_characters": 0, "rotated": 0, "titles": 0}
     for index, slide in enumerate(presentation.slides, start=1):
         counts = shape_counts(slide)
+        if counts["titles"] and not slide.shapes.title.text.strip():
+            report["problems"].append(f"slide {index}: the title placeholder is empty")
         for key, value in counts.items():
             totals[key] += value
         facts = chart_facts(slide)
@@ -113,11 +119,11 @@ def describe(path: Path, round_trip: bool) -> dict:
             report["problems"].append(
                 f"round trip lost slides: {report['slides']} became {len(again.slides)}")
         second = {"shapes": 0, "pictures": 0, "charts": 0, "tables": 0, "groups": 0,
-                  "text_shapes": 0, "text_characters": 0, "rotated": 0}
+                  "text_shapes": 0, "text_characters": 0, "rotated": 0, "titles": 0}
         for slide in again.slides:
             for key, value in shape_counts(slide).items():
                 second[key] += value
-        for key in ("charts", "tables", "pictures"):
+        for key in ("charts", "tables", "pictures", "titles"):
             if second[key] != totals[key]:
                 report["problems"].append(
                     f"round trip changed {key}: {totals[key]} became {second[key]}")
@@ -192,6 +198,7 @@ def main() -> int:
                   f"charts {report['totals'].get('charts', 0):>2}  "
                   f"tables {report['totals'].get('tables', 0):>2}  "
                   f"pictures {report['totals'].get('pictures', 0):>3}  "
+                  f"titles {report['totals'].get('titles', 0):>2}  "
                   f"chars {report['totals'].get('text_characters', 0):>5}")
             for problem in report["problems"]:
                 print("    ! " + problem)

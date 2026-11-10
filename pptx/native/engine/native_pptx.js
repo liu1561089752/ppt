@@ -1162,6 +1162,62 @@ async function patchEmbeddedFonts(outputPath, deck, options = {}) {
   return { embedded: entries, skipped };
 }
 
+/**
+ * Declare the slide's title as a title placeholder.
+ *
+ * Every heading this engine writes is a text box, which renders exactly right and is invisible to
+ * PowerPoint's outline view, to accessibility names, to `Reset slide` and to any tool that reads
+ * `slide.shapes.title`. A `<p:ph type="title"/>` in the shape's non-visual properties is all the
+ * difference: the shape keeps its position, geometry and runs, and simply becomes the title.
+ * The name in the selection pane follows it, so a title is findable by name too.
+ */
+function applyTitlePlaceholder(xml) {
+  const withPh = xml.replace(/<p:nvPr>\s*<\/p:nvPr>/u, '<p:nvPr><p:ph type="title"/></p:nvPr>');
+  if (withPh !== xml) return withPh.replace(/<p:cNvPr (id="\d+") name="[^"]*"/u, '<p:cNvPr $1 name="Title"');
+  // A non-visual property block that already carries something (a hyperlink, a hidden flag).
+  return xml.replace(/<p:nvPr>/u, '<p:nvPr><p:ph type="title"/>');
+}
+
+async function patchTitlePlaceholders(outputPath, deck, laidOut) {
+  const slides = (deck && deck.slides) || [];
+  const titled = (element) => Boolean(element && element.placeholderType === 'title' && element.type === 'text');
+  if (!supplied(laidOut, slides).some((elements) => elements.some(titled))) return false;
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let touched = 0;
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex += 1) {
+    const shapeElements = serializedShapes(laidOut, slideIndex, deck);
+    const target = shapeElements.findIndex(titled);
+    if (target < 0) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = await file.async('string');
+    let shapeIndex = 0;
+    let patched = 0;
+    const next = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const position = shapeIndex;
+      shapeIndex += 1;
+      if (position !== target) return whole;
+      const updated = applyTitlePlaceholder(inner);
+      if (updated !== inner) patched += 1;
+      return '<p:sp>' + updated + '</p:sp>';
+    });
+    if (shapeIndex !== shapeElements.length) {
+      throw new Error('Title placeholder patch alignment mismatch on slide ' + (slideIndex + 1)
+        + ': Deck Spec has ' + shapeElements.length + ' elements but PPTX has ' + shapeIndex + ' p:sp elements');
+    }
+    if (patched !== 1) {
+      throw new Error('Title placeholder patch missed on slide ' + (slideIndex + 1));
+    }
+    zip.file(name, next);
+    touched += 1;
+  }
+  if (!touched) return false;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+  return true;
+}
+
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
   const result = await buildPresentation(deck, options);
@@ -1176,6 +1232,7 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchTextColumns(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);
+  await patchTitlePlaceholders(outputPath, deck, result.laidOut);
   if (laidOutShapes.some((elements) => elements.some((element) => element.textShadow))) {
     await patchTextShadows(outputPath, deck, result.laidOut);
   }
@@ -1211,5 +1268,6 @@ module.exports = {
   applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
   applyTextIndent, patchTextIndents, applyMarkerColour,
   innerShadowXml, applyInnerShadow, patchInnerShadows,
-  applyTextShadow, patchTextShadows, collectDeckFaces, patchEmbeddedFonts
+  applyTextShadow, patchTextShadows, collectDeckFaces, patchEmbeddedFonts,
+  applyTitlePlaceholder, patchTitlePlaceholders
 };

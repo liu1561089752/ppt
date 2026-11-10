@@ -187,6 +187,10 @@ function textElementFromNode(node, theme, resolvedTheme) {
   const element = {
     type: 'text',
     role,
+    // A PowerPoint slide has a title placeholder or it has none, and a deck whose headings are
+    // plain text boxes has no outline, no accessibility name and no Reset. The role is decided
+    // in the analyzer; carrying it here lets the writer declare the shape as the title.
+    ...(role === 'title' ? { placeholderType: 'title' } : {}),
     text: node.runs || node.text,
     x: Number(xOf(node).toFixed(4)),
     y: Number(yOf(node).toFixed(4)),

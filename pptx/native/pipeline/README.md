@@ -122,6 +122,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | page 9 visual | LibreOffice render verified (underlines, baselines, auto margin); WPS gates green on 20 fixtures |
 | form controls | placeholder visible; closed select shows only the chosen option (was empty / read all options) |
 | third reader | `verify:pptx` opens each deck with python-pptx, reads chart series back into numbers, and round-trips the package; a truncated part is caught by its self-check |
+| the slide title | one per slide, by priority (an `h1` beats the largest word; a rotated word is never the title), declared as `<p:ph type="title"/>` and named `Title`, so the outline view, accessibility names and `Reset slide` all see it - with no pixel moved |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |
 | q quotes | synthesized “ ” join the content (was bare words); declared pseudos win |

@@ -5652,6 +5652,44 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('the slide title is a title placeholder, not a text box'
+  , async () => {
+  // A heading written as a plain text box renders exactly right and is invisible to PowerPoint's
+  // outline view, to accessibility names, to `Reset slide` and to any tool reading
+  // `slide.shapes.title`. One `<p:ph type="title"/>` makes it the title, and changes no pixel.
+  const html = [
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  h1 { font-size: 30px; } p { font-size: 14px; }',
+    '  .mark { position: absolute; right: 20px; top: 200px; font-size: 96px; transform: rotate(-9deg); }',
+    '</style></head><body><main class="slide">',
+    '  <div class="mark">NATIVE</div><h1>真正的标题</h1><p>正文</p>',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const elements = result.deck.slides[0].elements;
+  const titled = elements.filter((element) => element.placeholderType === 'title');
+  assert.equal(titled.length, 1, 'one title per slide');
+  assert.equal(titled[0].text, '真正的标题', 'the h1 outranks the 96px rotated watermark');
+  assert.equal(elements.filter((element) => element.role === 'title').length, 1, 'and only one element claims the role');
+
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const file = path.join(os.tmpdir(), 'native-title-' + process.pid + '.pptx');
+  await generatePptx(result.deck, file);
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+  fs.unlinkSync(file);
+  assert.equal((xml.match(/<p:ph type="title"\/>/gu) || []).length, 1, 'the package declares one title');
+  assert.ok(/<p:cNvPr id="\d+" name="Title"/u.test(xml), 'and the shape is named Title for the selection pane');
+  // The point of the change: nothing about the box or the runs moves.
+  const title = elements.find((element) => element.placeholderType === 'title');
+  assert.ok(title.w > 0 && title.h > 0 && title.fontSize > 0);
+});
+
 test('a form control keeps the words the browser shows', () => {
   // A filled input shows its value - the placeholder only stands in while it is empty. Reading
   // the placeholder alone left a mock-up with `<input value="name@example.com">` empty where
