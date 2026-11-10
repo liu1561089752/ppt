@@ -34,6 +34,7 @@ const {
   parseColor,
   parseBoxShadow,
   parseInnerShadow,
+  parseTextShadow,
   backgroundOf,
   backgroundOverlayGradientOf,
   evaluateInches,
@@ -243,6 +244,10 @@ function textElementFromNode(node, theme, resolvedTheme) {
   // `writing-mode: vertical-rl` becomes `bodyPr vert="eaVert"`; the box is the
   // author's, because in vertical text the height is the line length.
   if (node.vert) element.vert = node.vert;
+  // A text shadow is a run effect the writer has no option for: every `a:rPr` of the shape
+  // gets `<a:effectLst><a:outerShdw>` after the file is written.
+  const textShadow = parseTextShadow((node.style || {}).textShadow || '');
+  if (textShadow) element.textShadow = textShadow;
   return element;
 }
 

@@ -530,6 +530,59 @@ function applyInnerShadow(shapeXml, shadow) {
   return xml.replace(/<\/p:spPr>/u, '<a:effectLst>' + node + '</a:effectLst></p:spPr>');
 }
 
+/**
+ * A text shadow is a run property: every `<a:rPr>` of the shape gets its own
+ * `<a:effectLst><a:outerShdw>`. PptxGenJS writes no run effects at all, so the nodes are
+ * patched in here. WPS draws them; LibreOffice ignores them (same as `<a:innerShdw>`).
+ */
+function applyTextShadow(shapeXml, shadow) {
+  const direction = Math.round((((Number(shadow.angle) || 0) % 360) + 360) % 360 * 60000);
+  const node = '<a:effectLst><a:outerShdw blurRad="'
+    + Math.round((Number(shadow.blur) || 0) * EMU_PER_POINT) + '"'
+    + ' dist="' + Math.round((Number(shadow.distance) || 0) * EMU_PER_POINT) + '"'
+    + ' dir="' + direction + '" algn="t" rotWithShape="0">'
+    + '<a:srgbClr val="' + cleanColor(shadow.color, '000000') + '">'
+    + '<a:alpha val="' + Math.round((Number(shadow.opacity) || 0.2) * 100000) + '"/>'
+    + '</a:srgbClr></a:outerShdw></a:effectLst>';
+  let patched = 0;
+  // Idempotent, and it keeps whatever the run already carried: the effect list goes in at
+  // the end of the run properties, which is where CT_TextCharacterProperties allows it.
+  const xml = shapeXml
+    .replace(/<a:rPr([^>]*)\/>/gu, (whole, attrs) => { patched += 1; return '<a:rPr' + attrs + '>' + node + '</a:rPr>'; })
+    .replace(/<a:rPr([^>]*)>((?:(?!<\/a:rPr>)[\s\S])*?)<\/a:rPr>/gu, (whole, attrs, inner) => {
+      if (inner.includes('<a:effectLst')) return whole;
+      patched += 1;
+      return '<a:rPr' + attrs + '>' + inner + node + '</a:rPr>';
+    });
+  return patched ? xml : null;
+}
+
+async function patchTextShadows(outputPath, deck, laidOut) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
+  let patched = 0;
+  for (let slideIndex = 0; slideIndex < deck.slides.length; slideIndex++) {
+    const shapes = serializedShapes(laidOut, slideIndex, deck);
+    if (!shapes.some((element) => element.textShadow)) continue;
+    const name = 'ppt/slides/slide' + (slideIndex + 1) + '.xml';
+    const file = zip.file(name);
+    if (!file) continue;
+    let xml = await file.async('string');
+    let shapeIndex = 0;
+    xml = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/gu, (whole, inner) => {
+      const element = shapes[shapeIndex++];
+      if (!element || !element.textShadow) return whole;
+      const next = applyTextShadow(inner, element.textShadow);
+      if (!next) return whole;
+      patched += 1;
+      return '<p:sp>' + next + '</p:sp>';
+    });
+    zip.file(name, xml);
+  }
+  if (!patched) return;
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(outputPath, buffer);
+}
+
 async function patchInnerShadows(outputPath, deck, laidOut) {
   const zip = await JSZip.loadAsync(fs.readFileSync(outputPath));
   let patched = 0;
@@ -971,6 +1024,9 @@ async function generatePptx(deck, outputPath, options = {}) {
   await patchTextColumns(outputPath, deck, result.laidOut);
   await patchSmallCaps(outputPath, deck, result.laidOut);
   await patchClipGeometry(outputPath, deck, result.laidOut);
+  if (laidOutShapes.some((elements) => elements.some((element) => element.textShadow))) {
+    await patchTextShadows(outputPath, deck, result.laidOut);
+  }
   if (laidOutShapes.some((elements) => elements.some((element) => element.innerShadow))) {
     await patchInnerShadows(outputPath, deck, result.laidOut);
   }
@@ -999,5 +1055,6 @@ module.exports = {
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects, applyTextColumns, patchTextColumns,
   applySmallCaps, patchSmallCaps, clipGeometryXml, applyClipGeometry, patchClipGeometry,
   applyTextIndent, patchTextIndents, applyMarkerColour,
-  innerShadowXml, applyInnerShadow, patchInnerShadows
+  innerShadowXml, applyInnerShadow, patchInnerShadows,
+  applyTextShadow, patchTextShadows
 };

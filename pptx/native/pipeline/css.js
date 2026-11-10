@@ -1485,6 +1485,18 @@ function parseShadowLayer(body) {
 }
 
 /**
+ * `text-shadow: 0 4px 12px rgba(0,0,0,.35)` - the first layer, in the same shape a box
+ * shadow takes. CSS has no inset text shadow, so there is nothing to filter out.
+ */
+function parseTextShadow(value) {
+  const text = String(value || '').trim();
+  if (!text || text === 'none') return null;
+  const body = splitTopLevel(text, ',').filter((layer) => !/\binset\b/iu.test(layer))[0] || null;
+  if (!body) return null;
+  return parseShadowLayer(body);
+}
+
+/**
  * The inset layer of a `box-shadow` declaration - DrawingML's `<a:innerShdw>`. The geometry
  * is the same as an outer shadow; only the side of the box it paints on differs.
  */
@@ -1731,6 +1743,8 @@ module.exports = {
   untranslatedBackgroundLayers,
   parseBoxShadow,
   parseInnerShadow,
+  parseTextShadow,
+  splitTopLevel,
   parseBorder,
   backgroundOf,
   gradientOf,

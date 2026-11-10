@@ -64,6 +64,18 @@
   .lifted { box-shadow: 0 10px 26px rgba(23, 51, 47, 0.22); }
   .both { box-shadow: inset 0 4px 18px rgba(23, 51, 47, 0.38), 0 10px 26px rgba(23, 51, 47, 0.22); }
 
+  /* ---- 文字阴影 ---- */
+  /* text-shadow 写在 run 属性里：<a:rPr><a:effectLst><a:outerShdw>，不是形状的效果。 */
+  .stage { margin-top: 10px; background: #17332F; border-radius: 16px; padding: 44px 40px; }
+  .hero { margin: 0; font-size: 52px; line-height: 1.2; font-weight: 700; color: #F7F4EA;
+          text-shadow: 0 6px 18px rgba(0, 0, 0, 0.65); }
+  /* 硬偏移阴影要看得见，底色就得比阴影亮：奶油色小牌 + 橙色硬影 */
+  /* 显式宽度：容器子元素默认拉伸，牌子要按内容宽度画，就自己声明 */
+  .stamp { width: 260px; margin: 18px 0 0; padding: 7px 16px; border-radius: 8px;
+           background: #F7F4EA; font-size: 17px; letter-spacing: 2px; color: #17332F;
+           text-shadow: 3px 3px 2px #F2A24C; }
+  .plain { margin: 20px 0 0; font-size: 13px; line-height: 1.9; color: #A8BAB5; width: 780px; }
+
   .foot { position: absolute; left: 64px; bottom: 36px; font-size: 11px; color: #9AA5A1; }
 </style>
 </head>
@@ -157,6 +169,17 @@
     </div>
   </div>
   <div class="foot">内阴影与外阴影都是可编辑的形状效果，不是贴图。</div>
+</main>
+
+<main class="slide">
+  <div class="kicker">Depth · 文字</div>
+  <h1>字也能落影</h1>
+  <div class="stage">
+    <p class="hero">投影落在笔画后面</p>
+    <p class="stamp">OFFSET · 3PX</p>
+    <p class="plain">text-shadow 是 run 属性里的 effectLst，不是形状效果：模糊 18px 换成 13.5pt，偏移 6px 换成 4.5pt、方向 90°。WPS 画得出来但比声明更紧，LibreOffice 完全忽略，所以这页不进双读取器比对。表格单元格里的文字阴影仍是平的，报告里写着。</p>
+  </div>
+  <div class="foot">一层柔光、一层硬偏移，都是可编辑的文字效果。</div>
 </main>
 
 </body>

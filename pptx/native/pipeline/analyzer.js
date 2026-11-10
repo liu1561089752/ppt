@@ -39,7 +39,8 @@ const {
   backgroundOverlayGradientOf,
   untranslatedBackgroundLayers,
   backgroundImageOf,
-  parseBackgroundFocus
+  parseBackgroundFocus,
+  splitTopLevel
 } = require('./css');
 const { estimateTextHeight, estimateRichTextHeight, estimateLineCount, measureTextPt, clampText } = require('../engine/text_measure');
 const { normalLineHeight } = require('../engine/font_manager');
@@ -105,7 +106,7 @@ const UNSUPPORTED_ALWAYS = new Set([
   'borderCollapse', 'filter', 'backdropFilter', 'mask', 'mixBlendMode',
   // writing-mode is translated (see applyWritingMode) or reported there.
   'animation', 'transition',
-  'backgroundClip', 'textShadow',
+  'backgroundClip',
   'hyphens', 'inset'
 ]);
 
@@ -715,6 +716,16 @@ function checkUnsupported(ctx, domNode, style) {
     if (property === 'listStylePosition' && String(style[property]).trim().toLowerCase() === 'inside') {
       recordUnsupported(ctx, domNode, property, style[property],
         'The marker would sit inside the text line: native bullets always hang in the margin');
+      return;
+    }
+    // `text-shadow` has a native spelling now: `<a:effectLst><a:outerShdw>` inside the run
+    // properties, patched in after the file is written. Only a second layer is a residue,
+    // and inside a table cell the letters still draw flat (the cell note says so).
+    if (property === 'textShadow') {
+      if (splitTopLevel(String(style.textShadow || ''), ',').length > 1) {
+        recordUnsupported(ctx, domNode, property, style.textShadow,
+          'Only the first text-shadow layer is drawn');
+      }
       return;
     }
     if (UNSUPPORTED_ALWAYS.has(property)) {

@@ -149,6 +149,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | fixed columns wider than the table | scaled into the box and named (`12.50in of columns in a 8.33in table`) |
 | row height | a minimum: `tr` height is the row box, `td` height is a content height (+ padding), content wins when taller |
 | `box-shadow` inset layer | written as `<a:innerShdw>` in the same `effectLst` as the outer one (WPS draws it; LibreOffice ignores it) |
+| `text-shadow` | `<a:rPr><a:effectLst><a:outerShdw>` on every run of the shape (WPS draws it tighter than declared; LibreOffice ignores run effects) |
+| `text-shadow` inside a table cell | not written - a cell is `a:tbl` - and the report names the flat letters |
 | `box-shadow` with both kinds | each kind keeps its first layer instead of the whole declaration being dropped |
 | `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |
 | cell text-transform | applied to the characters before measuring |

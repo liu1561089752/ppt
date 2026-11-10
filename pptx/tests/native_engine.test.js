@@ -4695,7 +4695,8 @@ test('every unsupported declaration is reported exactly once, by name', () => {
   // The honesty contract: what this shape cannot do has to leave a trace, and the trace has
   // to name the declaration. One case per report, so a regression shows up as a missing name.
   const cases = {
-    textShadow: '.box { width: 400px; font-size: 20px; text-shadow: 0 2px 8px #000; }',
+    // One text-shadow layer reaches the run properties now; the second has nowhere to go.
+    textShadow: '.box { width: 400px; font-size: 20px; text-shadow: 0 2px 8px #000, 0 0 2px #FFF; }',
     filter: '.box { width: 400px; height: 80px; background: #EEE; filter: blur(2px); }',
     columns: '.box { width: 600px; columns: 2; font-size: 14px; }',
     wordSpacing: '.box { width: 400px; font-size: 20px; word-spacing: 6px; }',
@@ -5340,11 +5341,19 @@ test('typography either reaches the file or is named', async () => {
   const pre = await xmlOf('p.x { white-space: pre; }', '两  个');
   assert.match(pre.xml, /<a:t>两  个<\/a:t>/u, 'pre keeps the double space');
 
+  // A text shadow is a run effect: 4px of blur is 3pt (38100 EMU), a 1px offset straight
+  // right is 0.75pt (9525) at 0 degrees, and the node sits inside the run properties.
+  const shadowed = await xmlOf('p.x { text-shadow: 1px 0 4px #000; }');
+  assert.match(shadowed.xml, /<a:outerShdw blurRad="38100" dist="9525" dir="0"[^>]*algn="t"/u,
+    'the text shadow reaches the run properties');
+  assert.deepEqual(shadowed.report.unsupportedDetails.map((entry) => entry.property), [],
+    'a single text shadow is not a gap');
+
   // The rest have no native spelling and say so.
   for (const [css, property] of [
     ['p.x { word-spacing: 8px; }', 'wordSpacing'],
     ['p.x { hyphens: auto; }', 'hyphens'],
-    ['p.x { text-shadow: 2px 2px 4px #000; }', 'textShadow'],
+
     ['p.x { font-stretch: condensed; }', 'fontStretch'],
     ['p.x { font-weight: 300; }', 'fontWeight']
   ]) {
