@@ -5652,6 +5652,21 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('the example decks lose nothing that the baseline does not already name', async () => {
+  // The fixtures are the designs this engine claims to translate whole. Every declaration it
+  // cannot translate is already listed in baselines/reports.json with the reason; a new name
+  // means a design that used to come through now loses something, which is the one regression
+  // the geometry and look gates cannot see.
+  const { collectEntries, readBaseline } = require('../native/scripts/audit_report_baseline');
+  const baseline = readBaseline();
+  assert.ok(baseline && baseline.length, 'the baseline exists');
+  const known = new Set(baseline.map((entry) => entry.deck + '|' + entry.property + '|' + entry.reason));
+  const entries = await collectEntries();
+  const added = entries.filter((entry) => !known.has(entry.deck + '|' + entry.property + '|' + entry.reason));
+  assert.deepEqual(added.map((entry) => entry.deck + ': ' + entry.property), [],
+    'a newly named declaration has to be understood, then blessed with --update');
+});
+
 test('embedding a face carries the font inside the package', async () => {
   // A deck that names a font nobody installed renders in the reader's substitute. Opting in
   // puts the font's own bytes in the package (p:embeddedFontLst + ppt/fonts/*.fntdata), which

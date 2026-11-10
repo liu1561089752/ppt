@@ -1,0 +1,40 @@
+{
+  "note": "Declarations the engine knowingly does not translate, one entry per deck. Refresh with --update.",
+  "entries": [
+    {
+      "deck": "pipeline-float.html",
+      "property": "float",
+      "reason": "A block that follows a float is placed below it; the browser would wrap its lines beside the float"
+    },
+    {
+      "deck": "pipeline-media.html",
+      "property": "filter",
+      "reason": "brightness(0.85) is drawn as a luminance offset of -15%, where CSS multiplies every channel: mid-tones match, the ends of the curve do not"
+    },
+    {
+      "deck": "pipeline-paginate.html",
+      "property": "borderCollapse",
+      "reason": "Collapsed borders resolve to one line in the browser; adjacent cells disagree on 0.75pt solid E4DECF against 1.5pt solid 17332F on one shared horizontal edge, and a native table cell keeps both edges"
+    },
+    {
+      "deck": "pipeline-patterns.html",
+      "property": "borderCollapse",
+      "reason": "Collapsed borders resolve to one line in the browser; adjacent cells disagree on 0.75pt solid E4DECF against 1.5pt solid 17332F on one shared horizontal edge, and a native table cell keeps both edges"
+    },
+    {
+      "deck": "pipeline-reference.html",
+      "property": "objectFit",
+      "reason": "Without object-fit a picture is cover-cropped here, where CSS would stretch it to the box: write object-fit: fill to stretch, or cover to say the crop is intended"
+    },
+    {
+      "deck": "pipeline-vertical.html",
+      "property": "overflowWrap",
+      "reason": "A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break"
+    },
+    {
+      "deck": "pipeline-vertical.html",
+      "property": "overflowWrap",
+      "reason": "A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break"
+    }
+  ]
+}
