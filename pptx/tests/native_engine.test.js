@@ -5803,6 +5803,73 @@ test('an inset shadow is written as an inner effect, beside the outer one', asyn
   }
 });
 
+test('a first letter is its own run, in place, and a floated one is named', () => {
+  // `::first-letter` styles the first glyph without moving it, which is a run property: the
+  // paragraph keeps one text box, one paragraph, and the letter carries its own size, colour
+  // and weight. A declaration that would push the rest of the line away has no run spelling.
+  const drop = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  p { width: 600px; font-size: 20px; line-height: 1.8; color: #2C3634; }',
+    '  p.drop::first-letter { font-size: 3em; color: #C2703F; font-weight: 700; }',
+    '</style></head><body><main class="slide">',
+    '<p class="drop">排版的第一笔</p>',
+    '</main></body></html>'
+  ].join('\n'));
+  const paragraph = drop.deck.slides[0].elements[0];
+  assert.ok(Array.isArray(paragraph.text), 'the paragraph travels as runs');
+  assert.equal(paragraph.text.length, 2, 'the letter is split from the rest of the line');
+  assert.equal(paragraph.text[0].text, '排', 'one character, not one word');
+  assert.equal(paragraph.text[0].options.color, 'C2703F');
+  assert.equal(paragraph.text[0].options.bold, true);
+  // 3em of a 20px block is 60px, which is 45pt.
+  assert.equal(Math.round(paragraph.text[0].options.fontSize), 45);
+  assert.equal(paragraph.text[1].text, '版的第一笔');
+  assert.equal(paragraph.text[1].options, undefined, 'the rest keeps the paragraph type');
+  assert.equal(paragraph.text.map((run) => run.text).join(''), '排版的第一笔');
+  assert.deepEqual(drop.report.unsupportedDetails, [], 'carrying it is not a gap');
+
+  const floated = pipeline.convertHtml([
+    '<html><head><style>',
+    '  .slide { width: 1280px; height: 720px; padding: 40px; }',
+    '  p { width: 600px; font-size: 20px; color: #2C3634; }',
+    '  p.f::first-letter { float: left; margin-right: 8px; font-size: 3em; }',
+    '</style></head><body><main class="slide">',
+    '<p class="f">浮动首字会把后面的字挤开</p>',
+    '</main></body></html>'
+  ].join('\n'));
+  const named = floated.report.unsupportedDetails.map((entry) => entry.property);
+  assert.ok(named.includes('float'), 'a floated first letter is named');
+  assert.ok(named.includes('marginRight'), 'and so is the margin that goes with it');
+  // The type still lands: only the layout part is refused.
+  const letter = floated.deck.slides[0].elements[0].text[0];
+  assert.equal(Math.round(letter.options.fontSize), 45);
+});
+
+test('a line is as tall as the tallest run on it, not the tallest run in the box', () => {
+  // Chrome, measured: the same paragraph is 74px tall without a drop cap and 155.39px with a
+  // 3.2em first letter - the first line grows, the second does not. Charging the largest run
+  // to every line reserved 236.8px, so the box was half a line too tall and everything below
+  // it slid down by the difference.
+  const html = (drop) => [
+    '<html><head><style>',
+    '  * { box-sizing: border-box; }',
+    '  .slide { width: 1280px; height: 720px; padding: 60px; }',
+    '  p { width: 760px; font-size: 20px; line-height: 1.85; color: #2C3634; margin: 0; }',
+    '  p.drop::first-letter { font-size: 3.2em; font-weight: 700; }',
+    '  p.plain { margin-top: 30px; }',
+    '</style></head><body><main class="slide">',
+    '<p class="' + (drop ? 'drop' : 'plain') + '">排版的第一笔，往往是首字下沉。编辑设计用它把一页正文的入口敞开，让读者先看见一个放大的字，再顺着行走进内容。</p>',
+    '</main></body></html>'
+  ].join('\n');
+  const tall = pipeline.convertHtml(html(true)).deck.slides[0].elements[0];
+  const plain = pipeline.convertHtml(html(false)).deck.slides[0].elements[0];
+  assert.equal(Number((plain.h * 96).toFixed(1)), 74);
+  // 3.2em is 64px; 64 x 1.85 plus one 20px line at 1.85 is 155.4.
+  assert.equal(Number((tall.h * 96).toFixed(1)), 155.4, 'the big letter grows one line only');
+  assert.ok(tall.h < 2, 'and not every line: the box used to reserve 2.47in');
+});
+
 test('a box-shadow parses its hex colour and its first layer', () => {
   const build = (css) => pipeline.convertHtml([
     '<html><head><style>',

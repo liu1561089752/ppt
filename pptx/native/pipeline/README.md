@@ -150,6 +150,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | row height | a minimum: `tr` height is the row box, `td` height is a content height (+ padding), content wins when taller |
 | `box-shadow` inset layer | written as `<a:innerShdw>` in the same `effectLst` as the outer one (WPS draws it; LibreOffice ignores it) |
 | `text-shadow` | `<a:rPr><a:effectLst><a:outerShdw>` on every run of the shape (WPS draws it tighter than declared; LibreOffice ignores run effects) |
+| `::first-letter` type | its own run on the first grapheme (size, colour, weight, style, family) |
+| `::first-letter` layout (`float`, `margin`, `padding`, `line-height`) | named: the letter keeps its seat in the line |
 | `text-shadow` inside a table cell | not written - a cell is `a:tbl` - and the report names the flat letters |
 | `box-shadow` with both kinds | each kind keeps its first layer instead of the whole declaration being dropped |
 | `word-wrap` | read as `overflow-wrap` (the legacy name), so it is not reported |

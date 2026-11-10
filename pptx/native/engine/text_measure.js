@@ -199,18 +199,26 @@ function estimateRichTextHeight(runs, widthIn, fontSizePt, options = {}) {
   const list = Array.isArray(runs) ? runs : [];
   const indentPt = Number(options.firstLineIndentPt) > 0 ? Number(options.firstLineIndentPt) : 0;
   let limit = Math.max(1, usableWidthPt - indentPt);
+  // A line's height comes from the tallest run *on that line*, not from the tallest run in
+  // the box. A 3.2em first letter is on the first line only, and charging it to every line
+  // reserved 236.8px where Chrome draws 155.4 - a box half a line too tall, and everything
+  // below it slid down by the difference.
   let lines = 1;
+  let line = 0;
   let lineWidth = 0;
-  let tallest = fontSizePt;
+  const lineSizes = [];
+  const bump = (index, size) => {
+    if (!(lineSizes[index] >= size)) lineSizes[index] = size;
+  };
   list.forEach((run) => {
     const value = typeof run === 'string' ? run : (run && run.text) || '';
     const runSize = typeof run === 'string'
       ? fontSizePt
       : Number(run && run.options && run.options.fontSize) || fontSizePt;
-    if (runSize > tallest) tallest = runSize;
     Array.from(String(value)).forEach((character) => {
       if (character === '\n') {
         lines += 1;
+        line += 1;
         lineWidth = 0;
         limit = usableWidthPt;
         return;
@@ -218,14 +226,18 @@ function estimateRichTextHeight(runs, widthIn, fontSizePt, options = {}) {
       const width = measureTextPt(character, runSize, options);
       if (lineWidth > 0 && lineWidth + width > limit) {
         lines += 1;
+        line += 1;
         lineWidth = 0;
         limit = usableWidthPt;
       }
+      bump(line, runSize);
       lineWidth += width;
     });
   });
+  let tall = 0;
+  for (let index = 0; index < lines; index++) tall += lineSizes[index] || fontSizePt;
   const paddingPt = (options.verticalInsetIn === undefined ? 0 : options.verticalInsetIn) * 72;
-  return (lines * tallest * lineHeight + paddingPt) / 72;
+  return (tall * lineHeight + paddingPt) / 72;
 }
 
 module.exports = {

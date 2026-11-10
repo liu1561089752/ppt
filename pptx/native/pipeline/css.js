@@ -244,7 +244,10 @@ function collectRules(css, viewport, state) {
             specificity: parsed.specificity
           });
         }
-        if (parsed.pseudoName === 'before' || parsed.pseudoName === 'after') {
+        // `::first-letter` styles a glyph that *is* in the line, so its declarations are
+        // kept too: the first letter can be split into its own run.
+        if (parsed.pseudoName === 'before' || parsed.pseudoName === 'after'
+          || parsed.pseudoName === 'first-letter') {
           state.decorationRules.push({
             selectorText: rawSelector.trim(),
             parts: parsed.parts,

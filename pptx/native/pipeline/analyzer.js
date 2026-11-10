@@ -1034,26 +1034,35 @@ function buildRuns(domNode, baseStyle, ctx) {
     // reported by the sweep below rather than emitted as an element no reader knows.
     return options;
   };
+  /**
+   * The type a style carries, as run options. A `::first-letter` declaration is applied
+   * through the same function, because a first letter is a run like any other.
+   */
+  const runTypography = (style) => {
+    const options = {};
+    if (!style) return options;
+    const color = parseColor(style.color);
+    if (color && color.hex && color.hex !== base.color) options.color = color.hex;
+    const weight = String(style.fontWeight || '').toLowerCase();
+    const bold = weight === 'bold' || weight === 'bolder' || Number(weight) >= 600;
+    if (bold !== base.bold) options.bold = bold;
+    const italic = String(style.fontStyle || '').toLowerCase() === 'italic';
+    if (italic !== base.italic) options.italic = italic;
+    const sizePt = parseLength(style.fontSize);
+    if (sizePt) {
+      const inches = toInches(sizePt, { fontSizePx: fontPxOf(baseStyle, 16) });
+      const rounded = inches ? Math.round(inches * 72 * 100) / 100 : null;
+      if (rounded && rounded !== base.fontSize) options.fontSize = rounded;
+    }
+    const face = runFontFamily(style.fontFamily);
+    if (face && face !== base.fontFace) options.fontFace = face;
+    return options;
+  };
   const pushText = (value, style, inline) => {
     if (!value) return;
-    const options = {};
+    const options = runTypography(style);
     const tag = inline && inline.tag ? inline.tag : '';
     if (style) {
-      const color = parseColor(style.color);
-      if (color && color.hex && color.hex !== base.color) options.color = color.hex;
-      const weight = String(style.fontWeight || '').toLowerCase();
-      const bold = weight === 'bold' || weight === 'bolder' || Number(weight) >= 600;
-      if (bold !== base.bold) options.bold = bold;
-      const italic = String(style.fontStyle || '').toLowerCase() === 'italic';
-      if (italic !== base.italic) options.italic = italic;
-      const sizePt = parseLength(style.fontSize);
-      if (sizePt) {
-        const inches = toInches(sizePt, { fontSizePx: fontPxOf(baseStyle, 16) });
-        const rounded = inches ? Math.round(inches * 72 * 100) / 100 : null;
-        if (rounded && rounded !== base.fontSize) options.fontSize = rounded;
-      }
-      const face = runFontFamily(style.fontFamily);
-      if (face && face !== base.fontFace) options.fontFace = face;
       // `cap="small"` applies to a whole run, and a box is patched as a unit: a span that
       // asks for small caps inside an ordinary paragraph would apply to every run or to
       // none, so it is named rather than half-applied.
@@ -1200,6 +1209,42 @@ function buildRuns(domNode, baseStyle, ctx) {
     if (!resolved.text) return;
     pushText(resolved.text, declaration, null);
   };
+  /**
+   * `::first-letter` styles the first glyph *in place*: it keeps its seat in the line, so it
+   * can be a run of its own and the reader's type applies to one character. A declaration
+   * that would move it instead - a float, margins, padding, a different line height - has no
+   * run spelling, so it is named: a drop cap that quietly stays an ordinary letter would be a
+   * lie about the design.
+   */
+  const firstLetterRun = () => {
+    const declaration = ctx.styles.decoration(domNode, 'first-letter');
+    if (!declaration) return;
+    ['float', 'clear', 'display', 'position', 'margin', 'marginTop', 'marginRight',
+      'marginBottom', 'marginLeft', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom',
+      'paddingLeft', 'lineHeight', 'verticalAlign', 'letterSpacing', 'background', 'border'
+    ].forEach((property) => {
+      if (declaration[property] === undefined) return;
+      recordUnsupported(ctx, domNode, property, declaration[property],
+        'A ::first-letter declaration that changes layout is not carried: the letter keeps its place in the line, and only its type is applied');
+    });
+    // Nothing type-side to say means nothing to split: a rule that only carries layout
+    // should not turn one run into three.
+    const typography = runTypography(declaration);
+    if (!Object.keys(typography).length) return;
+    const target = runs.find((run) => /\S/u.test(run.text || ''));
+    if (!target) return;
+    const glyphs = Array.from(target.text);
+    const index = glyphs.findIndex((glyph) => /\S/u.test(glyph));
+    if (index < 0) return;
+    const head = glyphs.slice(0, index).join('');
+    const tail = glyphs.slice(index + 1).join('');
+    const replacement = [];
+    if (head) replacement.push({ text: head, options: target.options });
+    replacement.push({ text: glyphs[index], options: Object.assign({}, target.options, typography) });
+    if (tail) replacement.push({ text: tail, options: target.options });
+    runs.splice(runs.indexOf(target), 1, ...replacement);
+  };
+
   pseudoRun('before');
   if (domNode.tag === 'input') {
     // A text input shows its placeholder: the visible words of the mock.
@@ -1221,6 +1266,7 @@ function buildRuns(domNode, baseStyle, ctx) {
   }
   (domNode.children || []).forEach((child) => visit(child, baseStyle, null));
   pseudoRun('after');
+  firstLetterRun();
   const text = runs.map((run) => run.text).join('');
   const hasFormatting = runs.some((run) => run.options);
   return { runs, text, hasFormatting };
