@@ -943,7 +943,7 @@ function leafElementRotationFree(node, resolvedTheme, report) {
     if (!node.text && !node.runs) return null;
     // A background picture behind text: the image element first (document order
     // paints it beneath), then the text on top - both stay editable.
-    if (node.bgImage && node.bgImage.src) {
+    if (node.bgImage && node.bgImage.src && !node.bgImage.undrawable) {
       // `background-size: auto` draws the picture at its natural size, centred in
       // the box - not stretched. The intrinsic dimensions come from the image
       // header (PNG, JPEG, GIF); anything unreadable falls back to the box fill.
@@ -1194,7 +1194,7 @@ function emitAbsolute(node, context) {
     while (deferredPaint.length) elements.push(deferredPaint.shift());
   };
 
-  if (node.backgroundImage) {
+  if (node.backgroundImage && !node.backgroundImage.undrawable) {
     // `background-size` decides the drawn size: the natural size, a length, a percentage, or
     // the box itself for `cover`/`contain`. `backgroundPictureGeometry` resolves the first
     // three - including the clip a picture bigger than its box needs.

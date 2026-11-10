@@ -18,7 +18,7 @@ generated from the source, so it cannot drift away from the code.
 
 <!-- generated:start -->
 
-Generated from `pipeline/analyzer.js`: **128 call sites**, **76 properties**,
+Generated from `pipeline/analyzer.js`: **130 call sites**, **76 properties**,
 **117 distinct explanations**. Regenerate with `npm run limits:update`; a new report
 without a line here fails the gate.
 
@@ -28,7 +28,7 @@ without a line here fails the gate.
 | `::marker` | The items want different marker colours; a text box carries one bullet colour, so none was applied |
 | `'::' + pseudo` | A decoration on the slide root has no container to anchor to; put it on a card or panel<br>Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute<br>⟨reason⟩ |
 | `animation` | The slide draws the final state; the entrance or motion itself is not drawn |
-| `backgroundImage` | Only one picture layer and one linear gradient above it can be painted: ⟨what⟩ is dropped<br>Only one picture layer behind the text can be painted: ⟨what⟩ is dropped<br>⟨unsupportedGradient⟩ cannot be translated (⟨why⟩), so the box keeps its geometry and is left unpainted |
+| `backgroundImage` | Only one picture layer and one linear gradient above it can be painted: ⟨what⟩ is dropped<br>Only one picture layer behind the text can be painted: ⟨what⟩ is dropped<br>⟨unreadableLayer⟩, so the layer is dropped and the box keeps its own fill<br>⟨unsupportedGradient⟩ cannot be translated (⟨why⟩), so the box keeps its geometry and is left unpainted |
 | `backgroundRepeat` | The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled |
 | `border` | A native shape outline is uniform; declare every side the same, or use a separate rule/shape |
 | `borderCollapse` | Collapsed borders resolve to one line in the browser; adjacent cells disagree on ⟨conflicts⟩, and a native table cell keeps both edges |
@@ -82,7 +82,7 @@ without a line here fails the gate.
 | `property` | A ::first-letter declaration that changes layout is not carried: the letter keeps its place in the line, and only its type is applied<br>CSS feature has no native translation<br>No native spelling for ⟨note⟩: the box falls back to the flex default, and the alignment the design asked for is not applied<br>No native spelling outside a picture, where filter becomes a colour transform<br>Only the default glyph behaviour (mixed) is drawn: eaVert keeps CJK upright and rotates Latin, and no native spelling rotates Latin upright<br>Only the first text-shadow layer is drawn<br>Property is outside the supported subset<br>The marker would sit inside the text line: native bullets always hang in the margin<br>⟨reason⟩ |
 | `reversed` | The native numbered list counts up; there is no reverse switch, so the numbering would read in the wrong order |
 | `rowspan` | A rowspan reaching past the last row is clipped to the rows that exist |
-| `src` | A remote picture is not downloaded: this converter never touches the network, so the box keeps its place and stays unpainted - inline the image as a data URI or point at a local file<br>The picture file named by the source could not be read, so the box keeps its place and stays unpainted - check the path, or inline the image as a data URI |
+| `src` | ⟨unreadable⟩, so the box keeps its place and stays unpainted - check the source, or inline the image as a data URI |
 | `srcset` | The deck always draws the src image; the variants srcset offers are not consulted |
 | `textDecoration` | Overline has no native run property; a line above every wrapped line cannot be drawn |
 | `textDecorationColor` | The decoration keeps the text colour; the writer emits no underline fill |

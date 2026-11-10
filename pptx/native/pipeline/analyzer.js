@@ -974,6 +974,44 @@ function borderBandOutline(side, length, thickness, radius) {
 }
 
 /**
+ * Why this picture source has no bytes behind it, or null when it may have some.
+ *
+ * Three ways to have nothing to draw used to reach the writer: a remote url (this converter
+ * never touches the network), a data URI that is not an image or not base64, and a file that is
+ * not there. The first two were silent - a hole in the slide - and a garbled data URI killed the
+ * whole conversion with "Invalid base64 input" while the package was being assembled. So the
+ * question is answered here, where the report is, and every caller says what it does instead.
+ */
+function unreadableSourceReason(source, ctx) {
+  const text = String(source || '').trim();
+  if (!text) return 'The picture has no source at all';
+  if (/^(?:https?:)?\/\//iu.test(text)) {
+    return 'A remote picture is not downloaded: this converter never touches the network';
+  }
+  if (/^data:/iu.test(text)) {
+    const parts = /^data:([^;,]*)((?:;[^,]*)*),(.*)$/isu.exec(text);
+    if (!parts) return 'The data URI is malformed, so there is no image in it';
+    const mime = String(parts[1] || '').toLowerCase();
+    if (mime && !/^image\//u.test(mime)) return 'The data URI is not an image (' + mime + ')';
+    if (!/;base64/iu.test(parts[2] || '')) return 'The data URI is not base64-encoded';
+    const payload = String(parts[3] || '').replace(/\s+/gu, '');
+    if (!payload) return 'The data URI carries no bytes';
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(payload) || payload.length % 4 !== 0) {
+      return 'The data URI payload is not valid base64, so there is no image in it';
+    }
+    if (Buffer.from(payload, 'base64').length < 12) return 'The data URI carries too few bytes to be a picture';
+    return null;
+  }
+  // A file path. Without a base directory it may still resolve at write time, so it travels.
+  const base = ctx.options && ctx.options.baseDir;
+  const file = path.isAbsolute(text) ? text : (base ? path.resolve(base, text) : null);
+  if (file && !fs.existsSync(file)) {
+    return 'The picture file named by the source could not be read';
+  }
+  return null;
+}
+
+/**
  * A CSS `text-decoration-style` keyword as the schema's underline type.
  *
  * The two vocabularies are close enough to look interchangeable and they are not: CSS says
@@ -2358,7 +2396,13 @@ function analyzeNodeTree(domNode, slot, inherited, ctx) {
     // vanishing behind the words.
     const textLayer = backgroundImageOf(style);
     if (textLayer) {
-      node.bgImage = { src: textLayer.src, fit: textLayer.fit, size: textLayer.size || 'auto', focus: textLayer.focus };
+      const unreadableLayer = unreadableSourceReason(textLayer.src, ctx);
+      node.bgImage = { src: textLayer.src, fit: textLayer.fit, size: textLayer.size || 'auto', focus: textLayer.focus,
+        undrawable: Boolean(unreadableLayer) };
+      if (unreadableLayer) {
+        recordUnsupported(ctx, domNode, 'backgroundImage', String(textLayer.src),
+          unreadableLayer + ', so the layer is dropped and the box keeps its own fill');
+      }
       untranslatedBackgroundLayers(style).forEach((what) => {
         recordUnsupported(ctx, domNode,
           'backgroundImage', style.backgroundImage || style.background,
@@ -2748,6 +2792,15 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     const layer = backgroundImageOf(style);
     if (layer && domNode.tag !== 'img') {
       node.h = explicitHeight === null ? Math.max(width * 0.5625, 0.2) : explicitHeight;
+      // A background that is the box's only paint becomes a picture here, so the same question
+      // is asked: are there bytes behind the source? A layer with none used to reach the
+      // geometry resolver and fail the whole conversion with a message about pixel sizes.
+      const unreadableLayer = unreadableSourceReason(layer.src, ctx);
+      if (unreadableLayer) {
+        recordUnsupported(ctx, domNode, 'backgroundImage', String(layer.src),
+          unreadableLayer + ', so the layer is dropped and the box keeps its own fill');
+        node.undrawableSource = true;
+      }
       node.src = layer.src;
       node.alt = '';
       // `background-size: auto` is a natural-size picture centred in the box, not a
@@ -2791,21 +2844,11 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
     // silent one: the spec claimed a picture, the package had none, and nothing was said. The
     // box keeps its place - the layout already measured it - and the report explains the gap.
     const sourceText = String(node.src || '');
-    if (/^(?:https?:)?\/\//iu.test(sourceText)) {
+    const unreadable = unreadableSourceReason(sourceText, ctx);
+    if (unreadable) {
       recordUnsupported(ctx, domNode, 'src', sourceText,
-        'A remote picture is not downloaded: this converter never touches the network, so the box keeps its place and stays unpainted - inline the image as a data URI or point at a local file');
+        unreadable + ', so the box keeps its place and stays unpainted - check the source, or inline the image as a data URI');
       node.undrawableSource = true;
-    } else if (sourceText && !/^data:/iu.test(sourceText)) {
-      // A file path: readable or not, decided now, where the report lives.
-      const base = ctx.options && ctx.options.baseDir;
-      const file = path.isAbsolute(sourceText) ? sourceText : (base ? path.resolve(base, sourceText) : null);
-      // Without a base directory the path may still resolve at write time (the caller's cwd),
-      // so the picture travels and the writer reports it if the bytes are really not there.
-      if (file && !fs.existsSync(file)) {
-        recordUnsupported(ctx, domNode, 'src', sourceText,
-          'The picture file named by the source could not be read, so the box keeps its place and stays unpainted - check the path, or inline the image as a data URI');
-        node.undrawableSource = true;
-      }
     }
     node.alt = domNode.attrs.alt || '';
     // `srcset` lets the browser pick a source per density or art direction; the
@@ -2893,6 +2936,12 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
 
   const backgroundLayer = backgroundImageOf(style);
   if (backgroundLayer) {
+    const unreadableLayer = unreadableSourceReason(backgroundLayer.src, ctx);
+    if (unreadableLayer) {
+      recordUnsupported(ctx, domNode, 'backgroundImage', String(backgroundLayer.src),
+        unreadableLayer + ', so the layer is dropped and the box keeps its own fill');
+      backgroundLayer.undrawable = true;
+    }
     node.backgroundImage = backgroundLayer;
     // The scrim above the picture is painted by the emitter (deck_builder reads the
     // layer); what matters here is reporting the layers nothing can paint.

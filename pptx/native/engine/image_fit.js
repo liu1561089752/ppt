@@ -327,7 +327,11 @@ function resolveImageGeometry(element, options = {}) {
   }
 
   if (!natural) {
-    throw new Error('Image fit "' + fit + '" needs the natural pixel size; provide a readable path/data source or an explicit naturalSize { width, height }');
+    // The source size is unknown - a picture whose bytes the analyzer could not read, or a data
+    // URI it could not decode. The analyzer has already named the source; failing the whole
+    // conversion here would take every other slide down with it, so the geometry degrades to a
+    // stretch, which is what a reader draws for a picture it cannot measure anyway.
+    return { fit: 'stretch', box, srcRect: null, natural: null, fitFallback: fit };
   }
 
   if (fit === 'contain') {

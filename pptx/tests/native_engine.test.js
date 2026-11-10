@@ -622,12 +622,18 @@ test('explicit crop fractions map onto the source rectangle', () => {
   }), /less than 1/);
 });
 
-test('image fit resolves natural size from data URIs and reports a helpful error otherwise', () => {
+test('image fit resolves a natural size from data URIs, and degrades when it cannot', () => {
   const dataUri = 'data:image/png;base64,' + makePng(120, 60).toString('base64');
   assert.deepEqual(imageFit.readImageSize({ type: 'image', data: dataUri }), { width: 120, height: 60 });
-  assert.throws(() => imageFit.resolveImageGeometry({
+  // A fit that keeps proportions needs the source size. When it is unknown - a picture the
+  // analyzer already named, or a data URI it could not decode - the geometry used to throw and
+  // take the whole conversion with it. It now degrades to a stretch and says which fit it lost.
+  const degraded = imageFit.resolveImageGeometry({
     type: 'image', path: 'does-not-exist.png', x: 0, y: 0, w: 2, h: 2, fit: 'cover'
-  }), /natural pixel size/);
+  });
+  assert.equal(degraded.fit, 'stretch', 'the box is filled, not abandoned');
+  assert.equal(degraded.fitFallback, 'cover', 'and the lost fit is named on the geometry');
+  assert.equal(degraded.srcRect, null);
 });
 
 test('schema rejects invalid image fit, focus, zoom, and picture effect tokens', () => {
@@ -5750,6 +5756,51 @@ test('a picture this engine cannot read is named, not silently missing', async (
   const xml = await zip.file('ppt/slides/slide1.xml').async('string');
   fs.unlinkSync(file);
   assert.equal((xml.match(/<p:pic>/gu) || []).length, 0, 'no picture element for a picture with no bytes');
+});
+
+test('every way of having no bytes for a picture is named', async () => {
+  // Probing the image edge cases found four more: an empty src, a missing src attribute, a data
+  // URI that is not base64 or not an image, and a background layer with an unreadable source. The
+  // first three were silent holes; the last two aborted the whole conversion while the package
+  // was being assembled, with a message about pixel sizes. Each is one line in the report now,
+  // and the geometry degrades rather than throwing.
+  const svg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iNTAiPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNTAiIGZpbGw9IiNGMkEyNEMiLz48L3N2Zz4=';
+  const page = (body) => pipeline.convertHtml([
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style></head>',
+    '<body><main class="slide">' + body + '</main></body></html>'
+  ].join('\n'));
+  const kindsOf = (result) => (result.deck.slides[0].elements || []).map((element) => element.type);
+  const sourcesOf = (result) => result.report.unsupportedDetails
+    .filter((entry) => entry.property === 'src' || entry.property === 'backgroundImage');
+
+  [['an empty source', '<img src="" width="200" height="100">', 'src'],
+    ['no source attribute', '<img width="200" height="100">', 'src'],
+    ['a payload that is not base64', '<img src="data:image/png;base64,not-actually-png" width="200" height="100">', 'src'],
+    ['a data URI that is not an image', '<img src="data:text/plain;base64,aGVsbG8gd29ybGQ=" width="200" height="100">', 'src'],
+    ['a remote background', '<div style="width: 300px; height: 200px; background: #2F5D50 url(https://e.example/bg.jpg)"></div>', 'backgroundImage'],
+    ['a background on text', '<p style="background-image: url(https://e.example/x.jpg); width: 300px; height: 60px; font-size: 14px">文字</p>', 'backgroundImage']
+  ].forEach(([label, body, property]) => {
+    const result = page(body);
+    assert.ok(!kindsOf(result).includes('image'), label + ' draws no picture');
+    const reported = sourcesOf(result).filter((entry) => entry.property === property);
+    assert.equal(reported.length, 1, label + ' is named once');
+    assert.ok(String(reported[0].reason).length > 20, label + ' explains itself: ' + reported[0].reason);
+  });
+
+  // A data URI that decodes is still drawn.
+  assert.ok(kindsOf(page('<img src="' + svg + '" width="200" height="100">')).includes('image'),
+    'a decodable data URI is a picture');
+
+  // And none of it throws on the way to a package.
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { generatePptx } = require('../native/engine/native_pptx');
+  const fragile = page('<div style="width: 300px; height: 200px; background-image: url(nope.jpg)"></div>');
+  const file = path.join(os.tmpdir(), 'native-nobytes-' + process.pid + '.pptx');
+  const written = await generatePptx(fragile.deck, file);
+  fs.unlinkSync(file);
+  assert.ok(Array.isArray(written.droppedPictures), 'the writer reports what it could not read');
 });
 
 test('a picture with no alt text carries no alt text', async () => {

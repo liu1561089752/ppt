@@ -129,6 +129,7 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | the catalogue of refusals | `LIMITS.md` is generated from the analyzer and drift-checked by `npm run limits` and by a test, so a report that is added but not documented fails the suite |
 | building the corpus | `npm run pipeline:all` converts every example; the reader and package gates call it first, so a fresh clone needs no setup beyond `npm install` |
 | a picture's source | a `data:` URI or a readable file is drawn; a remote URL, a missing file, or a path with no base directory is named and the box keeps its place - never a silent hole, never an aborted write |
+| a source with no bytes | an empty `src`, a non-base64 or non-image data URI, a remote URL, a missing file: one helper decides, every caller names it, the box keeps its place, and the geometry degrades to a stretch rather than throwing |
 | chart bounds/format/secondary | y-min/max, label-format, secondary-axis map natively (were named unknown) |
 | image alt/srcset | alt → p:cNvPr descr pinned; srcset named (deck draws src) |
 | q quotes | synthesized “ ” join the content (was bare words); declared pseudos win |
