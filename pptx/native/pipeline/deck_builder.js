@@ -382,6 +382,9 @@ function imageElementFromNode(node) {
   }
   if (node.transparency !== undefined) element.transparency = node.transparency;
   if (node.crop) element.crop = node.crop;
+  // A `filter` on a picture becomes `<a:blip>` colour transforms, which the writer patches
+  // in: PptxGenJS has no option for them.
+  if (node.imageFilter) element.imageFilter = node.imageFilter;
   return element;
 }
 

@@ -1488,6 +1488,55 @@ function parseShadowLayer(body) {
 }
 
 /**
+ * The `filter` functions a picture can carry natively. DrawingML spells three of them as
+ * `<a:blip>` children - `<a:grayscl/>`, `<a:lum bright contrast/>` and `<a:alphaModFix/>` -
+ * and nothing else in CSS's filter list has a colour-transform equivalent.
+ *
+ * `contrast(k)` maps exactly: CSS scales about 0.5 and so does DrawingML, so `c = k - 1`.
+ * `brightness(k)` does not: CSS multiplies, DrawingML adds a luminance offset, so the two
+ * agree at mid-tones and part company at the ends of the curve - the caller says so.
+ */
+function parseImageFilter(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  const applied = {};
+  const unhandled = [];
+  const notes = [];
+  if (!text || text === 'none') return { applied: null, unhandled, notes };
+  const pattern = /([a-z][a-z-]*)\(([^()]*)\)/giu;
+  let seen = 0;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    seen += 1;
+    const name = match[1].toLowerCase();
+    const source = match[0];
+    const raw = match[2].trim();
+    const fraction = /^-?[\d.]+%$/u.test(raw) ? Number(raw.slice(0, -1)) / 100 : Number(raw);
+    if (!Number.isFinite(fraction)) { unhandled.push({ name, source }); continue; }
+    if (name === 'grayscale') {
+      // `<a:grayscl/>` is on or off: a partial greyscale has no colour transform here.
+      if (fraction >= 1) applied.grayscale = true;
+      else unhandled.push({ name, source });
+    } else if (name === 'contrast') {
+      applied.contrast = Math.round((fraction - 1) * 100 * 100) / 100;
+    } else if (name === 'brightness') {
+      applied.brightness = Math.round((fraction - 1) * 100 * 100) / 100;
+      if (fraction !== 1) {
+        notes.push('brightness(' + raw + ') is drawn as a luminance offset of ' + applied.brightness
+          + '%, where CSS multiplies every channel: mid-tones match, the ends of the curve do not');
+      }
+    } else if (name === 'opacity') {
+      applied.opacity = Math.max(0, Math.min(1, fraction));
+    } else {
+      unhandled.push({ name, source });
+    }
+  }
+  // A `filter` with no function at all (`filter: url(#mask)`, a bare keyword) is unhandled.
+  if (!seen && !unhandled.length) unhandled.push({ name: text, source: text });
+  const carried = Object.keys(applied).length > 0;
+  return { applied: carried ? applied : null, unhandled, notes };
+}
+
+/**
  * `text-shadow: 0 4px 12px rgba(0,0,0,.35)` - the first layer, in the same shape a box
  * shadow takes. CSS has no inset text shadow, so there is nothing to filter out.
  */
@@ -1747,6 +1796,7 @@ module.exports = {
   parseBoxShadow,
   parseInnerShadow,
   parseTextShadow,
+  parseImageFilter,
   splitTopLevel,
   parseBorder,
   backgroundOf,

@@ -36,6 +36,38 @@ function validateShadowOptions(prefix, element, errors, key = 'shadow') {
   }
 }
 
+/**
+ * `imageFilter` carries what a picture's `filter` becomes: `<a:grayscl/>`, `<a:lum bright contrast/>`
+ * and `<a:alphaModFix/>`. Brightness and contrast are percentages relative to the original,
+ * which is why they are bounded.
+ */
+function validateImageFilter(prefix, element, errors) {
+  const filter = element.imageFilter;
+  if (filter === undefined) return;
+  const field = prefix + '.imageFilter';
+  if (!filter || typeof filter !== 'object' || Array.isArray(filter)) {
+    errors.push(field + ' must be an options object');
+    return;
+  }
+  const allowed = ['grayscale', 'brightness', 'contrast', 'opacity'];
+  Object.keys(filter).forEach((key) => {
+    if (!allowed.includes(key)) errors.push(field + '.' + key + ' is not a picture filter');
+  });
+  if (filter.grayscale !== undefined && typeof filter.grayscale !== 'boolean') {
+    errors.push(field + '.grayscale must be a boolean');
+  }
+  ['brightness', 'contrast'].forEach((key) => {
+    const value = filter[key];
+    if (value === undefined) return;
+    if (!Number.isFinite(value) || value < -100 || value > 100) {
+      errors.push(field + '.' + key + ' must be between -100 and 100');
+    }
+  });
+  if (filter.opacity !== undefined && (!Number.isFinite(filter.opacity) || filter.opacity < 0 || filter.opacity > 1)) {
+    errors.push(field + '.opacity must be between 0 and 1');
+  }
+}
+
 function validateImageFit(prefix, element, errors) {
   if (element.fit !== undefined && !IMAGE_FITS.has(String(element.fit).toLowerCase())) {
     errors.push(prefix + '.fit must be one of: cover, contain, crop, stretch');
@@ -357,8 +389,8 @@ function validateElement(p, element, errors) {
       if (element.type === 'image') {
         validateImageFit(p, element, errors);
         validateShadowOptions(p, element, errors);
-  validateShadowOptions(p, element, errors, 'innerShadow');
-    validateShadowOptions(p, element, errors, 'innerShadow');
+        validateShadowOptions(p, element, errors, 'innerShadow');
+        validateImageFilter(p, element, errors);
       }
       if (element.type === 'line' && element.width !== undefined &&
           (!Number.isFinite(element.width) || element.width <= 0)) {

@@ -151,6 +151,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `box-shadow` inset layer | written as `<a:innerShdw>` in the same `effectLst` as the outer one (WPS draws it; LibreOffice ignores it) |
 | `text-shadow` | `<a:rPr><a:effectLst><a:outerShdw>` on every run of the shape (WPS draws it tighter than declared; LibreOffice ignores run effects) |
 | `::first-letter` type | its own run on the first grapheme (size, colour, weight, style, family) |
+| `filter` on a picture: `grayscale(1)`, `contrast()`, `brightness()`, `opacity()` | `<a:blip>` colour transforms (`grayscl`, `lum`, `alphaModFix`); contrast is exact, brightness is an additive approximation and is named |
+| `filter` on anything else, and `sepia`/`saturate`/`hue-rotate`/`invert`/`blur` | named |
 | `::first-letter` layout (`float`, `margin`, `padding`, `line-height`) | named: the letter keeps its seat in the line |
 | `text-shadow` inside a table cell | not written - a cell is `a:tbl` - and the report names the flat letters |
 | `box-shadow` with both kinds | each kind keeps its first layer instead of the whole declaration being dropped |

@@ -5803,6 +5803,60 @@ test('an inset shadow is written as an inner effect, beside the outer one', asyn
   }
 });
 
+test('a picture filter becomes blip colour transforms, and the rest is named', async () => {
+  // DrawingML spells three of CSS's filter functions on a picture: <a:grayscl/>, <a:lum
+  // bright contrast/> and <a:alphaModFix/>. Contrast maps exactly (both scale about 0.5);
+  // brightness does not (CSS multiplies, DrawingML adds), so it is drawn and said out loud.
+  assert.deepEqual(css.parseImageFilter('grayscale(1) contrast(1.25) brightness(0.85)').applied,
+    { grayscale: true, contrast: 25, brightness: -15 });
+  assert.deepEqual(css.parseImageFilter('opacity(60%)').applied, { opacity: 0.6 });
+  const unsupported = css.parseImageFilter('sepia(0.5) blur(4px)');
+  assert.equal(unsupported.applied, null, 'nothing there has a native spelling');
+  assert.deepEqual(unsupported.unhandled.map((entry) => entry.name), ['sepia', 'blur']);
+  assert.equal(css.parseImageFilter('grayscale(0.4)').applied, null, 'half a greyscale is not on or off');
+
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
+  const { generatePptx } = require('../native/engine/native_pptx');
+  // A one-pixel PNG, so the deck needs no fixture image on disk.
+  const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGOQtTYDAAEHAI9Yd1qPAAAAAElFTkSuQmCC';
+  const html = [
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style></head><body>',
+    '<main class="slide">',
+    '<img src="data:image/png;base64,' + pixel + '" style="width:200px;height:120px;filter:grayscale(1)">',
+    '<img src="data:image/png;base64,' + pixel + '" style="width:200px;height:120px;filter:contrast(1.25) brightness(0.85)">',
+    '<img src="data:image/png;base64,' + pixel + '" style="width:200px;height:120px;filter:opacity(0.55) sepia(0.3)">',
+    '</main></body></html>'
+  ].join('\n');
+  const result = pipeline.convertHtml(html);
+  const images = result.deck.slides[0].elements.filter((element) => element.type === 'image');
+  assert.equal(images.length, 3);
+  assert.deepEqual(images[0].imageFilter, { grayscale: true });
+  assert.deepEqual(images[1].imageFilter, { contrast: 25, brightness: -15 });
+  assert.deepEqual(images[2].imageFilter, { opacity: 0.55 });
+  const reasons = result.report.unsupportedDetails.filter((entry) => entry.property === 'filter');
+  assert.equal(reasons.length, 2, 'one for the brightness approximation, one for sepia');
+  assert.ok(reasons.some((entry) => entry.reason.includes('luminance offset')));
+  assert.ok(reasons.some((entry) => entry.reason.includes('sepia')));
+
+  const file = path.join(os.tmpdir(), 'image-filter-' + process.pid + '.pptx');
+  try {
+    await generatePptx(result.deck, file);
+    const zip = await JSZip.loadAsync(fs.readFileSync(file));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    const blips = [...xml.matchAll(/<a:blip[^>]*>([\s\S]*?)<\/a:blip>/gu)].map((match) => match[1]);
+    assert.equal(blips[0], '<a:grayscl/>');
+    assert.equal(blips[1], '<a:lum bright="-15000" contrast="25000"/>',
+      '-15% of full scale and +25% of contrast is what -0.15 and +0.25 mean');
+    assert.equal(blips[2], '<a:alphaModFix amt="55000"/>');
+    assert.equal((xml.match(/<a:grayscl\/>/gu) || []).length, 1, 'the patch is idempotent');
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
 test('a first letter is its own run, in place, and a floated one is named', () => {
   // `::first-letter` styles the first glyph without moving it, which is a run property: the
   // paragraph keeps one text box, one paragraph, and the letter carries its own size, colour

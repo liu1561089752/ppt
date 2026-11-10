@@ -40,6 +40,7 @@ const {
   untranslatedBackgroundLayers,
   backgroundImageOf,
   parseBackgroundFocus,
+  parseImageFilter,
   splitTopLevel
 } = require('./css');
 const { estimateTextHeight, estimateRichTextHeight, estimateLineCount, measureTextPt, clampText } = require('../engine/text_measure');
@@ -103,7 +104,7 @@ const POST_LAYOUT_PROPERTIES = new Set(['overflow']);
 
 const UNSUPPORTED_ALWAYS = new Set([
   // clip-path is translated when it is a polygon on a box with a declared height.
-  'borderCollapse', 'filter', 'backdropFilter', 'mask', 'mixBlendMode',
+  'borderCollapse', 'backdropFilter', 'mask', 'mixBlendMode',
   // writing-mode is translated (see applyWritingMode) or reported there.
   'animation', 'transition',
   'backgroundClip',
@@ -721,6 +722,17 @@ function checkUnsupported(ctx, domNode, style) {
     // `text-shadow` has a native spelling now: `<a:effectLst><a:outerShdw>` inside the run
     // properties, patched in after the file is written. Only a second layer is a residue,
     // and inside a table cell the letters still draw flat (the cell note says so).
+    // `filter` on a picture is three native colour transforms (see parseImageFilter); on
+    // anything else it has no spelling, and the image branch reports the functions it
+    // cannot carry one by one.
+    if (property === 'filter') {
+      const picture = domNode.tag === 'img' || Boolean(backgroundImageOf(style));
+      if (!picture) {
+        recordUnsupported(ctx, domNode, property, style[property],
+          'No native spelling outside a picture, where filter becomes a colour transform');
+      }
+      return;
+    }
     if (property === 'textShadow') {
       if (splitTopLevel(String(style.textShadow || ''), ',').length > 1) {
         recordUnsupported(ctx, domNode, property, style.textShadow,
@@ -2502,6 +2514,14 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
   }
 
   if (kind === 'image') {
+    // A photo's `filter` becomes `<a:blip>` colour transforms. What DrawingML cannot spell is
+    // named per function rather than per declaration, so a design that asks for sepia hears
+    // about sepia and still keeps the greyscale beside it.
+    const parsedFilter = parseImageFilter(style.filter);
+    parsedFilter.notes.forEach((reason) => recordUnsupported(ctx, domNode, 'filter', style.filter, reason));
+    parsedFilter.unhandled.forEach((entry) => recordUnsupported(ctx, domNode, 'filter', entry.source,
+      'No native spelling for ' + entry.name + ' on a picture: the image draws unfiltered for that function'));
+    if (parsedFilter.applied) node.imageFilter = parsedFilter.applied;
     const layer = backgroundImageOf(style);
     if (layer && domNode.tag !== 'img') {
       node.h = explicitHeight === null ? Math.max(width * 0.5625, 0.2) : explicitHeight;

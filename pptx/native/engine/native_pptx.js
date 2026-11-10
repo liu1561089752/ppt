@@ -266,6 +266,11 @@ function buildImagePlan(el, geometry) {
     plan.shadow = normalizeShadowOptions(el.shadow);
     required = true;
   }
+  // A photo filter is a set of `<a:blip>` colour transforms; PptxGenJS writes none of them.
+  if (el.imageFilter) {
+    plan.blip = el.imageFilter;
+    required = true;
+  }
   return required ? plan : null;
 }
 
@@ -292,8 +297,41 @@ function imageSpPrExtras(plan) {
   return parts.join('');
 }
 
+/**
+ * The `<a:blip>` colour transforms: `<a:grayscl/>`, then `<a:lum bright contrast/>`, then
+ * `<a:alphaModFix/>`. ECMA-376 allows them in any order inside the blip.
+ */
+function blipTransformXml(filter) {
+  const parts = [];
+  if (filter.grayscale) parts.push('<a:grayscl/>');
+  const bright = Number(filter.brightness) || 0;
+  const contrast = Number(filter.contrast) || 0;
+  if (bright || contrast) {
+    parts.push('<a:lum bright="' + Math.round(bright * 1000) + '" contrast="' + Math.round(contrast * 1000) + '"/>');
+  }
+  if (filter.opacity !== undefined && Number(filter.opacity) < 1) {
+    parts.push('<a:alphaModFix amt="' + Math.round(Math.max(0, Number(filter.opacity)) * 100000) + '"/>');
+  }
+  return parts.join('');
+}
+
+function applyBlipTransforms(xml, filter) {
+  const transforms = blipTransformXml(filter);
+  if (!transforms) return xml;
+  const pattern = /<a:blip([^>]*?)(\/?)>([\s\S]*?)<\/a:blip>|<a:blip([^>]*?)\/>/u;
+  if (!pattern.test(xml)) throw new Error('Unable to locate the picture blip for a filter patch');
+  return xml.replace(/<a:blip([^>]*?)\/>|<a:blip([^>]*?)>([\s\S]*?)<\/a:blip>/u,
+    (whole, selfAttrs, openAttrs, inner) => {
+      const attrs = selfAttrs !== undefined ? selfAttrs : openAttrs;
+      // Idempotent: a repeated patch drops its own transforms before writing them again.
+      const kept = String(inner || '').replace(/<a:(grayscl|lum|alphaModFix)\b[^>]*\/>|<a:lum\b[^>]*\/>/gu, '');
+      return '<a:blip' + attrs + '>' + transforms + kept + '</a:blip>';
+    });
+}
+
 function applyImagePlan(picXml, plan) {
   let xml = picXml;
+  if (plan.blip) xml = applyBlipTransforms(xml, plan.blip);
   if (plan.srcRect) {
     const attributes = srcRectAttributes(plan.srcRect);
     if (/<a:srcRect\b[^>]*\/>/u.test(xml)) {
