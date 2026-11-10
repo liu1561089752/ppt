@@ -2620,7 +2620,11 @@ node.h = explicitHeight === null ? node.textHeight + insetTop + insetBottom : ex
   }
 
   if (kind === 'table') {
-    const table = readTable(domNode, ctx, contentWidth);
+    // `width: auto` (or no width at all) means shrink to content; anything declared wins.
+    const declaredWidth = String(style.width === undefined ? '' : style.width).trim().toLowerCase();
+    const shrinkToFit = declaredWidth === '' || declaredWidth === 'auto';
+    const table = readTable(domNode, ctx, contentWidth, { shrinkToFit });
+    if (shrinkToFit) node.w = table.width;
     node.rows = table.rows;
     node.columnCount = table.columns;
     node.colWidths = table.colWidths;
@@ -4749,7 +4753,10 @@ function readTableCell(cell, ctx, rowBackground) {
   const background = backgroundOf(style) || rowBackground;
   const weight = String(style.fontWeight || '').toLowerCase();
   const sizePt = parseLength(style.fontSize);
-  const fontSizePt = sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(2)) : 10.5;
+  // A cell with no declared size is drawn at the table's default, which the writer sets to
+  // 11pt. Measuring it at a different default sized the column for text 5% smaller than
+  // the text that was drawn, so an auto-width column wrapped its own header.
+  const fontSizePt = sizePt ? Number((toInches(sizePt, {}) * 72).toFixed(2)) : 11;
   // An OOXML table cell has no corner geometry; a styled radius would silently
   // square off. Named once per table (the flag lives on the ctx).
   if (radiusOf(style) && !ctx.cellRadiusNamed) {
@@ -4963,7 +4970,35 @@ function captionOf(domNode, ctx, contentWidth) {
   return caption;
 }
 
-function readTable(domNode, ctx, contentWidth) {
+/**
+ * The width each column needs to draw its widest cell on one line, in inches. A colspan
+ * cell spreads its need over the columns it covers, which is what the browser's own
+ * table-layout: auto does before it starts wrapping.
+ */
+function columnMaxContent(metrics, columns) {
+  const widths = Array.from({ length: Math.max(1, columns) }, () => 0);
+  (metrics || []).forEach((cells) => {
+    (cells || []).forEach((cell) => {
+      const lines = String(cell.text || '').split('\n');
+      const widest = lines.reduce((max, line) => Math.max(max, measureTextPt(line, cell.fontSizePt) / 72), 0);
+      // The inset the *file* carries, not the one CSS asked for: a cell margin is floored
+      // at a point, and those points come out of this width. A column sized to the exact
+      // text wrapped in the reader ("产品线" broke into two lines inside its own column),
+      // so auto columns also carry a hundredth of an inch of rounding.
+      const inset = (side) => Math.max(1, Number((side * 72).toFixed(2))) / 72;
+      const need = widest + inset(cell.paddingLeft) + inset(cell.paddingRight) + 0.01;
+      const span = Math.max(1, Math.min(cell.colspan || 1, widths.length - (cell.column || 0)));
+      const share = need / span;
+      for (let offset = 0; offset < span; offset += 1) {
+        const index = (cell.column || 0) + offset;
+        if (index < widths.length) widths[index] = Math.max(widths[index], share);
+      }
+    });
+  });
+  return widths.map((value) => Number(value.toFixed(4)));
+}
+
+function readTable(domNode, ctx, contentWidth, options) {
   const rows = [];
   const rowNodes = [];
   // A row or section may carry the background a browser paints behind its cells -
@@ -5099,9 +5134,22 @@ function readTable(domNode, ctx, contentWidth) {
     metrics.push(rowMetrics);
   });
 
-  let colWidths = resolveColumnWidths(domNode, ctx, columns, contentWidth, rows, 16);
-  // Nothing declared: the browser's own answer, measured from the cells.
-  if (!colWidths) colWidths = intrinsicColumnWidths(metrics, columns, contentWidth);
+  // A table with no declared width is as wide as its widest content, not as wide as the
+  // page: Chrome measured 98px for a three-column table inside a 1280px slide. The
+  // intrinsic width is the sum of the columns' max-content widths, capped by whatever
+  // holds the table.
+  const maxContent = columnMaxContent(metrics, columns);
+  const fitToContent = Boolean(options && options.shrinkToFit);
+  const width = fitToContent
+    ? Math.min(contentWidth, Math.max(0.4, maxContent.reduce((sum, value) => sum + value, 0)))
+    : contentWidth;
+  let colWidths = resolveColumnWidths(domNode, ctx, columns, width, rows, 16);
+  // Nothing declared: the browser's own answer, measured from the cells. A table sized to
+  // its content keeps those measured widths, because they are what its total came from -
+  // re-splitting them from the text alone lost the cell insets and wrapped the columns.
+  if (!colWidths) {
+    colWidths = fitToContent ? maxContent : intrinsicColumnWidths(metrics, columns, width);
+  }
   // A row is as tall as its tallest cell: the measured line boxes plus the padding the
   // CSS declared. `rowH` then makes PowerPoint draw that height instead of its own
   // guess, so the reserved box and the drawing agree instead of drifting apart.
@@ -5181,7 +5229,7 @@ function readTable(domNode, ctx, contentWidth) {
   // Only leading `<thead>` rows can be repeated at the top of a continuation page.
   let headerRows = 0;
   while (headerRows < rowNodes.length && rowNodes[headerRows].header) headerRows += 1;
-  return { rows, columns, colWidths, rowHeights, headerRows };
+  return { rows, columns, colWidths, rowHeights, headerRows, width };
 }
 
 /**

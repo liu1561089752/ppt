@@ -5837,6 +5837,31 @@ test('an unstyled document still reads as a document', () => {
   assert.ok(!styledHeading.bold, 'and the weight is the author\u2019s too');
 });
 
+test('a table with no declared width is as wide as its content', () => {
+  // Chrome draws such a table at 98px inside a 1280px slide, not across the whole page.
+  const html = (tableStyle) => [
+    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }</style></head><body>',
+    '<main class="slide"><table style="' + tableStyle + '">',
+    '<thead><tr><th>产品线</th><th>收入</th><th>同比</th></tr></thead>',
+    '<tbody><tr><td>第一条</td><td>3,120</td><td>+4%</td></tr></tbody></table></main></body></html>'
+  ].join('\n');
+  const auto = pipeline.convertHtml(html(''));
+  const autoTable = auto.deck.slides[0].elements.find((element) => element.type === 'table');
+  assert.ok(autoTable.w < 3, 'shrink to fit: ' + autoTable.w.toFixed(2) + 'in');
+  // Every auto column fits its own longest cell, insets included, or the reader wraps it.
+  const insets = 2 / 72;
+  const widths = autoTable.options.colW;
+  assert.equal(widths.length, 3);
+  assert.ok(widths[0] * 72 >= 33 + 2, '产品线 needs 33pt of text plus its insets, got ' + (widths[0] * 72).toFixed(2));
+  assert.ok(Math.abs(widths.reduce((sum, value) => sum + value, 0) - autoTable.w) < 0.01,
+    'the columns add up to the table width');
+  assert.ok(insets > 0);
+  // A declared width still wins: the same table asked to fill the page does.
+  const stretched = pipeline.convertHtml(html('width: 100%'));
+  const stretchedTable = stretched.deck.slides[0].elements.find((element) => element.type === 'table');
+  assert.ok(Math.abs(stretchedTable.w * 96 - 1200) < 2, 'width: 100% is the container: ' + (stretchedTable.w * 96).toFixed(1) + 'px');
+});
+
 test('a table row is tall enough for the reader that draws it', async () => {
   // Two measurements that only a renderer knows: a cell margin below one point is written
   // 72x too large, and a CJK line box is 1.5em where the Latin one is 1.2em. Both were

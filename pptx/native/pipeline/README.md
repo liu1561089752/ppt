@@ -152,6 +152,8 @@ The CLI prints a mapping summary and, importantly, the CSS features it could
 | `text-shadow` | `<a:rPr><a:effectLst><a:outerShdw>` on every run of the shape (WPS draws it tighter than declared; LibreOffice ignores run effects) |
 | `::first-letter` type | its own run on the first grapheme (size, colour, weight, style, family) |
 | an unstyled document (`h1`-`h6`, `ul`/`ol`, `th`/`td`) | the browser's own sizes, weights, list indents and cell defaults, applied before author rules |
+| a table with no declared width | shrink to fit: sum of the columns' max-content widths (text + the insets the file carries), capped by the container |
+| `width: 100%`, a declared length, `<col width>` | unchanged - a declared width always wins over the content width |
 | UA block margins (`p`, headings, lists) | not applied yet - vertical rhythm is tighter than a browser |
 | a table cell inset below 1pt | floored at 1pt (PptxGenJS writes a sub-point margin 72x too large) |
 | a row of CJK cell text | measured at a 1.5em line box, because a CJK face draws ~1.49em where the Latin face draws 1.2em |
