@@ -37,33 +37,41 @@ npm run audit:stress    # per-slide editability audit, fails on warnings
 
 `node scripts/audit_deck.js <deck.pptx>` is the machine check for "content is still editable": it reports editable text shapes, characters, pictures, charts and tables per slide and flags `TEXT_AS_IMAGE`, `NO_EDITABLE_TEXT` and `POSSIBLE_FULL_SLIDE_RASTER`.
 
-### HTML → Native pipeline
+### The native generator
 
-`pptx/native/pipeline/` implements the staged migration: **HTML → DOM Analyzer → Layout Analyzer → Style Mapper → Native Deck Spec → PPTX**. Text keeps semantic roles, cards stay editable surfaces plus their own text boxes, `<table>` becomes a native table, `<ul>` becomes bulleted native text, and images keep an editable crop rectangle.
+`pptx/native/` is the product: **Deck Spec → validate → layout → OOXML → .pptx**. It owns no HTML
+parser and no stylesheet. A spec (JSON, or a JS module that calls the components) declares content
+and design intent; the engine measures the text, places the boxes and writes PowerPoint's own
+objects — text runs, `a:tbl` tables, charts with an embedded workbook, shapes with their own fill.
 
 ```bash
 cd pptx/native
-node pipeline/cli.js ../examples/pipeline-reference.html \
-  --out converted/deck.json --report converted/report.json --pptx converted/deck.pptx
+node cli.js ../examples/native_deck_spec.js deck.pptx --report deck.json
+node cli.js ../examples/native-cover.spec.json cover.pptx --layout-out layout.json
+node cli.js deck.spec.json --check          # validate only, writes nothing
 ```
 
-Both paths can be inspected without LibreOffice: `python scripts/preview_deck.py <deck.pptx> --sheet preview/sheet.png` renders the real OOXML geometry, fills, gradients, tables, picture crops and text wrapping to PNG with Pillow. It is a layout preview, not a faithful Office render.
+`cli.js --strict` turns a layout warning into a failure: out of bounds, text taller than its box, two
+text boxes on top of each other. `pptx/native/README.md` is the manual, `pptx/native/LIMITS.md` is the
+catalogue of what the writer refuses (generated from its own `throw` sites), and
+`pptx/native/golden/specs.json` is the corpus every gate builds.
 
-The pipeline reports every CSS feature it could not translate instead of dropping it silently. See `pptx/native/pipeline/README.md` for the supported subset and the explicit limitations — it is a deliberate subset translator, not a browser engine.
+Previews need no Office: `python scripts/preview_deck.py <deck.pptx> --sheet preview/sheet.png`
+draws the real OOXML geometry, fills, gradients, tables, picture crops and text wrapping to PNG with
+Pillow. It is a layout preview, not a faithful Office render; `render_check.py` goes through
+LibreOffice when the picture matters.
 
-Batch conversion is available through `node pptx/batch_native_pptx.js --input-dir <deck-spec-directory> --output-dir <output-directory>`. Each JSON Deck Spec is rendered to a separate editable PPTX; see `pptx/SKILL.md` for options.
+Batch generation is available through `node pptx/batch_native_pptx.js --input-dir <deck-spec-directory> --output-dir <output-directory>`. Each JSON Deck Spec is rendered to a separate editable PPTX; see `pptx/SKILL.md` for options.
 Reference PPTX analysis for Native mode is available with `python pptx/scripts/extract_native_design.py reference.pptx extracted-design/`; it samples all slides and exports design tokens, layout geometry, repeated component signatures, and font usage.
-The legacy HTML batch converter also now preserves source slide order under concurrent rendering by assigning each job a pre-created slide slot.
 
 ## Visual design continuity
 
 Native mode is not intended to downgrade or simplify the design language of the HTML workflow. A shared design-token resolver now supports palette, typography, spacing, radii, layout rhythm, and effect preferences across Native templates and text/card components.
 
-For an HTML or CSS reference, extract a first-pass Native theme:
+For an existing deck, extract a first-pass Native theme:
 
 ```bash
-python pptx/scripts/extract_html_design_tokens.py reference.html extracted-design/
-# or pass a standalone .css file
+python pptx/scripts/extract_native_design.py reference.pptx extracted-design/
 ```
 
 Review `theme.json` and `design-tokens.json`, then apply the theme to the Deck Spec's `theme` field. The original CSS is retained as `source.css` for design review. Extraction is best-effort: complex selectors, gradients, filters, animations, and browser-specific layout still need deliberate translation into native PowerPoint elements or vector assets. Do not replace distinctive layouts with generic templates merely because the renderer changed.

@@ -21,7 +21,6 @@ const {
   patchSeriesLineStyles,
   seriesDashToken
 } = require('../native/engine/native_pptx');
-const pipeline = require('../native/pipeline/index');
 const {
   resolveImageGeometry,
   fitDrawnSize,
@@ -334,18 +333,21 @@ test('a declared crop and a fit mode compose instead of one of them winning', ()
 // validator accepts and silently drops it for a doughnut, an area and a radar - so the position
 // is put into the part after the write, and these tests read the part.
 
-const chartDeck = (attributes, type = 'bar') => pipeline.convertHtml([
-  '<html><head><style>',
-  '  .slide { width: 1280px; height: 720px; padding: 40px; }',
-  '  .chart { width: 900px; height: 420px; }',
-  '</style></head><body><main class="slide">',
-  '  <table class="chart" data-chart="' + type + '" ' + attributes + '>',
-  '    <thead><tr><th>季度</th><th>收入</th><th>成本</th></tr></thead>',
-  '    <tbody><tr><td>Q1</td><td>320</td><td>210</td></tr>',
-  '    <tr><td>Q2</td><td>418</td><td>246</td></tr></tbody>',
-  '  </table>',
-  '</main></body></html>'
-].join('\n'));
+// The charts these tests need, written as specs. The converter used to build them from a table's
+// data-chart-* attributes; those attributes were shorthand for exactly these options.
+const chartDeck = (options, type = 'bar') => ({
+  pageSize: 'wide',
+  slides: [{
+    elements: [{
+      type: 'chart', chartType: type, x: 0.42, y: 0.42, w: 9.4, h: 4.4,
+      data: [
+        { name: '收入', labels: ['Q1', 'Q2'], values: [320, 418] },
+        { name: '成本', labels: ['Q1', 'Q2'], values: [210, 246] }
+      ],
+      options: options || {}
+    }]
+  }]
+});
 
 const chartElements = (deck) => {
   const found = [];
@@ -368,11 +370,10 @@ async function chartParts(output) {
 }
 
 test('a doughnut keeps the data-label position the writer throws away', async () => {
-  const converted = chartDeck('data-chart-colors="#F2A24C,#4FB3A8" data-chart-labels="percent"'
-    + ' data-chart-label-position="outEnd"', 'doughnut');
-  const [chart] = chartElements(converted.deck);
+  const deck = chartDeck({ chartColors: ['F2A24C', '4FB3A8'], showPercent: true, dataLabelPosition: 'outEnd' }, 'doughnut');
+  const [chart] = chartElements(deck);
   assert.equal(chart.options.dataLabelPosition, 'outEnd', 'the spec carries the position');
-  const output = await writePptx(converted.deck);
+  const output = await writePptx(deck);
   try {
     const [partName] = await chartParts(output);
     const part = await output.xml(partName);
@@ -389,16 +390,15 @@ test('a doughnut keeps the data-label position the writer throws away', async ()
 });
 
 test('an area chart gets the position on every label block, once', async () => {
-  const converted = chartDeck('data-chart-colors="#F2A24C,#4FB3A8" data-chart-labels="value"'
-    + ' data-chart-label-position="t"', 'area');
-  const output = await writePptx(converted.deck);
+  const deck = chartDeck({ chartColors: ['F2A24C', '4FB3A8'], showValue: true, dataLabelPosition: 't' }, 'area');
+  const output = await writePptx(deck);
   try {
     const [partName] = await chartParts(output);
     const part = await output.xml(partName);
     const positions = part.match(/<c:dLblPos val="t"\/>/gu) || [];
     assert.equal(positions.length, 3, 'two series and the chart share one value: ' + positions.length);
     // Idempotent: the second pass finds the position already right and writes nothing.
-    const again = await patchDataLabelPositions(output.output, converted.deck, output.result.laidOut);
+    const again = await patchDataLabelPositions(output.output, deck, output.result.laidOut);
     assert.equal(again, false, 'a second run changes nothing');
     const after = await output.xml(partName);
     assert.equal(after, part, 'and leaves the part byte-identical');
@@ -409,14 +409,13 @@ test('an area chart gets the position on every label block, once', async () => {
 
 test('a bar the writer already places keeps one position, not two', async () => {
   // A clustered bar accepts ctr/inBase/inEnd, and the writer writes the element itself.
-  const converted = chartDeck('data-chart-colors="#F2A24C" data-chart-labels="value"'
-    + ' data-chart-label-position="inEnd"');
-  const output = await writePptx(converted.deck);
+  const deck = chartDeck({ chartColors: ['F2A24C'], showValue: true, dataLabelPosition: 'inEnd' }, 'bar');
+  const output = await writePptx(deck);
   try {
     const [partName] = await chartParts(output);
     const part = await output.xml(partName);
     assert.equal((part.match(/<c:dLblPos val="inEnd"\/>/gu) || []).length, 3, 'the writer wrote it');
-    assert.equal(await patchDataLabelPositions(output.output, converted.deck, output.result.laidOut), false,
+    assert.equal(await patchDataLabelPositions(output.output, deck, output.result.laidOut), false,
       'so the patch has nothing to do');
   } finally {
     output.cleanup();
@@ -431,8 +430,8 @@ test('a position is folded onto the schema spelling, and an unknown one is an er
   assert.equal(dataLabelPositionToken(''), null, 'nothing declared, nothing to write');
   assert.equal(dataLabelPositionToken('sideways'), null, 'a typo is not guessed at');
 
-  const converted = chartDeck('data-chart-colors="#F2A24C" data-chart-labels="value"', 'doughnut');
-  const output = await writePptx(converted.deck);
+  const deck = chartDeck({ chartColors: ['F2A24C'], showValue: true }, 'doughnut');
+  const output = await writePptx(deck);
   try {
     const broken = { slides: [{ elements: [{ type: 'chart', chartType: 'doughnut',
       options: { dataLabelPosition: 'sideways' } }] }] };
@@ -458,23 +457,23 @@ test('a position is folded onto the schema spelling, and an unknown one is an er
 // A table cell's own typography: line spacing is `a:pPr/a:lnSpc`, letter spacing `a:rPr/@spc`.
 
 test('a cell keeps its own line spacing and letter spacing', async () => {
-  const converted = pipeline.convertHtml([
-    '<html><head><style>',
-    '  .slide { width: 1280px; height: 720px; padding: 40px; font-family: "Segoe UI", sans-serif; font-size: 16px; }',
-    '  table { width: 700px; border-collapse: collapse; line-height: 1.1; }',
-    '  td, th { padding: 10px 12px; border: 1px solid #D8D4CC; }',
-    '  td.tall { line-height: 2.4; }',
-    '  td.wide { letter-spacing: 4px; }',
-    '  td.pixels { line-height: 28px; }',
-    '</style></head><body><main class="slide">',
-    '  <table>',
-    '    <thead><tr><th>列</th><th>行距</th><th>字距</th><th>像素行距</th></tr></thead>',
-    '    <tbody><tr><td>基准</td><td class="tall">两倍行距</td><td class="wide">四像素字距</td>',
-    '      <td class="pixels">二十八像素</td></tr></tbody>',
-    '  </table>',
-    '</main></body></html>'
-  ].join('\n'));
-  const output = await writePptx(converted.deck);
+  const deck = {
+    pageSize: 'wide',
+    slides: [{
+      elements: [{
+        type: 'table', x: 0.42, y: 0.42, w: 9.2, h: 1.6,
+        options: { fontSize: 12, lineSpacingMultiple: 1.1 },
+        rows: [
+          [{ text: '列' }, { text: '行距' }, { text: '字距' }, { text: '像素行距' }],
+          [{ text: '基准', options: { lineSpacingMultiple: 1.1 } },
+            { text: '两倍行距', options: { lineSpacingMultiple: 2.4 } },
+            { text: '四像素字距', options: { charSpacing: 3 } },
+            { text: '二十八像素', options: { lineSpacing: 21 } }]
+        ]
+      }]
+    }]
+  };
+  const output = await writePptx(deck);
   try {
     const slide = await output.slide();
     const rows = (/<a:tbl>[\s\S]*?<\/a:tbl>/u.exec(slide) || [''])[0].match(/<a:tr[\s\S]*?<\/a:tr>/gu) || [];
@@ -490,8 +489,9 @@ test('a cell keeps its own line spacing and letter spacing', async () => {
       return found ? Number(found[1]) : null;
     };
 
-    // The table's own 1.1 is the baseline; the cell that declares 2.4 must not inherit it.
-    assert.equal(spacing(cells[0]), 'pct:110000', 'the plain cell keeps the table line spacing');
+    // There is no cascade in a spec: a cell carries the spacing it declares, and the table-level
+    // default does not reach it. The cell that declares 2.4 is 2.4, not 1.1 times 2.4.
+    assert.equal(spacing(cells[0]), 'pct:110000', 'the plain cell keeps the spacing it declares');
     assert.equal(spacing(cells[1]), 'pct:240000', 'the cell own line-height is per cell: ' + spacing(cells[1]));
     assert.equal(spacing(cells[3]), 'pts:2100', 'a px line-height is 21pt, in points not percent');
     // 4px of tracking is 3pt, and the run carries it in 1/100 pt.
@@ -507,18 +507,26 @@ test('a run inside a cell keeps its own letter spacing now', async () => {
   // `<span style="letter-spacing">` had nowhere to go and the cell wrote one `a:r`. The run now
   // rides in `cell.runs`, the builder hands it to the writer as `rowsPayload`, and the cell is
   // three runs with the tracking on the middle one.
-  const converted = pipeline.convertHtml([
-    '<html><head><style>',
-    '  .slide { width: 1280px; height: 720px; padding: 40px; font-size: 16px; }',
-    '  table { width: 700px; border-collapse: collapse; }',
-    '  td, th { padding: 10px 12px; }',
-    '  span.wide { letter-spacing: 6px; }',
-    '</style></head><body><main class="slide">',
-    '  <table><thead><tr><th>列</th></tr></thead>',
-    '  <tbody><tr><td>前缀<span class="wide">间距</span>后缀</td></tr></tbody></table>',
-    '</main></body></html>'
-  ].join('\n'));
-  const output = await writePptx(converted.deck);
+  const deck = {
+    pageSize: 'wide',
+    slides: [{
+      elements: [{
+        type: 'table', x: 0.42, y: 0.42, w: 7.3, h: 1.2,
+        options: { fontSize: 12 },
+        rows: [
+          [{ text: '列' }],
+          [{
+            text: [
+              { text: '前缀' },
+              { text: '间距', options: { bold: true, charSpacing: 4.5 } },
+              { text: '后缀' }
+            ]
+          }]
+        ]
+      }]
+    }]
+  };
+  const output = await writePptx(deck);
   try {
     const slide = await output.slide();
     const rows = (/<a:tbl>[\s\S]*?<\/a:tbl>/u.exec(slide) || [''])[0].match(/<a:tr[\s\S]*?<\/a:tr>/gu) || [];
@@ -544,19 +552,20 @@ test('a run inside a cell keeps its own letter spacing now', async () => {
 // `chart.options.seriesLineStyles` - handed to the spec directly here, which is the only way
 // to test this half while the attribute is being added.
 
-const threeSeriesDeck = (type) => pipeline.convertHtml([
-  '<html><head><style>',
-  '  .slide { width: 1280px; height: 720px; padding: 40px; }',
-  '  .chart { width: 900px; height: 420px; }',
-  '</style></head><body><main class="slide">',
-  '  <table class="chart" data-chart="' + type + '" data-chart-colors="#2F5D50,#4FB3A8,#F2A24C"',
-  '         data-chart-legend="bottom" data-chart-grid="false">',
-  '    <thead><tr><th>季度</th><th>收入</th><th>成本</th><th>利润</th></tr></thead>',
-  '    <tbody><tr><td>Q1</td><td>320</td><td>210</td><td>110</td></tr>',
-  '    <tr><td>Q2</td><td>418</td><td>246</td><td>172</td></tr></tbody>',
-  '  </table>',
-  '</main></body></html>'
-].join('\n'));
+const threeSeriesDeck = (type) => ({
+  pageSize: 'wide',
+  slides: [{
+    elements: [{
+      type: 'chart', chartType: type, x: 0.42, y: 0.42, w: 9.4, h: 4.4,
+      data: [
+        { name: '收入', labels: ['Q1', 'Q2'], values: [320, 418] },
+        { name: '成本', labels: ['Q1', 'Q2'], values: [210, 246] },
+        { name: '利润', labels: ['Q1', 'Q2'], values: [110, 172] }
+      ],
+      options: { chartColors: ['2F5D50', '4FB3A8', 'F2A24C'], showLegend: true, legendPos: 'b' }
+    }]
+  }]
+});
 
 /** The dash of each series' OWN line, in series order (the marker's line is skipped). */
 const seriesDashes = (part) => (part.match(/<c:ser>[\s\S]*?<\/c:ser>/gu) || []).map((series) => {
@@ -575,11 +584,11 @@ const markerDashes = (part) => (part.match(/<c:marker>[\s\S]*?<\/c:marker>/gu) |
 });
 
 test('one dash per series lands in the part, in series order', async () => {
-  const converted = threeSeriesDeck('line');
-  const [chart] = chartElements(converted.deck);
+  const deck = threeSeriesDeck('line');
+  const [chart] = chartElements(deck);
   assert.equal(chart.data.length, 3, 'three series in the spec');
   chart.options.seriesLineStyles = ['dashed', 'solid', 'dotted'];
-  const output = await writePptx(converted.deck);
+  const output = await writePptx(deck);
   try {
     const [partName] = await chartParts(output);
     const part = await output.xml(partName);
@@ -591,7 +600,7 @@ test('one dash per series lands in the part, in series order', async () => {
     // A marker's line is its own `c:spPr`, and it keeps the chart-wide dash.
     assert.deepEqual(markerDashes(part), ['solid', 'solid', 'solid'], 'markers are left alone');
     // Idempotent: the second pass finds every dash already right.
-    assert.equal(await patchSeriesLineStyles(output.output, converted.deck, output.result.laidOut), false);
+    assert.equal(await patchSeriesLineStyles(output.output, deck, output.result.laidOut), false);
     assert.equal(await output.xml(partName), part, 'byte-identical on a second run');
   } finally {
     output.cleanup();
@@ -599,10 +608,10 @@ test('one dash per series lands in the part, in series order', async () => {
 });
 
 test('a bar series gets an a:ln created for its dash, in schema order', async () => {
-  const converted = threeSeriesDeck('bar');
-  const [chart] = chartElements(converted.deck);
+  const deck = threeSeriesDeck('bar');
+  const [chart] = chartElements(deck);
   chart.options.seriesLineStyles = ['dashed', 'solid', 'dotted'];
-  const output = await writePptx(converted.deck);
+  const output = await writePptx(deck);
   try {
     const [partName] = await chartParts(output);
     const part = await output.xml(partName);
@@ -618,10 +627,10 @@ test('a bar series gets an a:ln created for its dash, in schema order', async ()
 });
 
 test('a short dash list leaves the rest of the series alone', async () => {
-  const converted = threeSeriesDeck('line');
-  const [chart] = chartElements(converted.deck);
+  const deck = threeSeriesDeck('line');
+  const [chart] = chartElements(deck);
   chart.options.seriesLineStyles = ['dashed'];
-  const output = await writePptx(converted.deck);
+  const output = await writePptx(deck);
   try {
     const [partName] = await chartParts(output);
     assert.deepEqual(seriesDashes(await output.xml(partName)), ['dash', 'solid', 'solid'],
@@ -665,21 +674,21 @@ test('a dash the schema does not know, or more dashes than series, is an error',
   assert.equal(seriesDashToken(''), null);
   assert.equal(seriesDashToken('toString'), null, 'a prototype key is not a dash');
 
-  const converted = threeSeriesDeck('line');
-  const [chart] = chartElements(converted.deck);
+  const deck = threeSeriesDeck('line');
+  const [chart] = chartElements(deck);
   chart.options.seriesLineStyles = ['dashed', 'solid'];
-  const output = await writePptx(converted.deck);
+  const output = await writePptx(deck);
   try {
     // A token that is not a dash: refused with the value, never defaulted.
     chart.options.seriesLineStyles = ['dashed', 'nonsense'];
     await assert.rejects(
-      () => patchSeriesLineStyles(output.output, converted.deck, output.result.laidOut),
+      () => patchSeriesLineStyles(output.output, deck, output.result.laidOut),
       /Series line style patch: unknown dash "nonsense"/u
     );
     // Four dashes for three series: a list that would style a series that does not exist.
     chart.options.seriesLineStyles = ['solid', 'solid', 'solid', 'solid'];
     await assert.rejects(
-      () => patchSeriesLineStyles(output.output, converted.deck, output.result.laidOut),
+      () => patchSeriesLineStyles(output.output, deck, output.result.laidOut),
       /4 dash\(es\) declared for 3 series/u
     );
     // A spec that disagrees with the part about how many series there are is not guessed at.
@@ -688,7 +697,7 @@ test('a dash the schema does not know, or more dashes than series, is an error',
     chart.options.seriesLineStyles = ['solid', 'solid'];
     chart.data = chart.data.slice(0, 2);
     await assert.rejects(
-      () => patchSeriesLineStyles(output.output, converted.deck, null),
+      () => patchSeriesLineStyles(output.output, deck, null),
       /alignment mismatch on chart part 1: the spec declares 2 series but the part holds 3/u
     );
   } finally {

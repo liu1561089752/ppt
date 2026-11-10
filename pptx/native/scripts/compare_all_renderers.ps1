@@ -8,16 +8,16 @@
 # fonts, and a global SSIM collapses on a dark page while the layout is identical - see
 # compare_renderers.py).
 #
-# Usage: pwsh -NoProfile -File scripts/compare_all_renderers.ps1 [-Decks a,b] [-Directory pipeline-converted]
+# Usage: pwsh -NoProfile -File scripts/compare_all_renderers.ps1 [-Decks a,b] [-Directory <folder of decks>]
 
 param(
-  [string[]]$Decks = @('pipeline-structural', 'pipeline-paginate', 'pipeline-decorations',
-    'pipeline-chart', 'pipeline-stress', 'pipeline-vertical', 'pipeline-columns', 'pipeline-grid',
+  [string[]]$Decks = @('spec-cover', 'spec-flagship', 'demo-basic', 'demo-components',
+    'demo-layouts', 'demo-images', 'demo-stress', 'pipeline-grid',
     # A deck of pictures: crops, background sizes, and the paint order inside a card.
     'pipeline-media',
     # Declared column widths, row rules and the cell box model.
     'pipeline-table'),
-  [string]$Directory = 'pipeline-converted',
+  [string]$Directory = '.',
   # Pages whose body text a reader flows itself: each implementation breaks the lines with its
   # own fonts, so the ink inside the box moves while the box does not. They are not skipped -
   # they are judged on the block the text fills, which is a smaller claim than the pixel judge

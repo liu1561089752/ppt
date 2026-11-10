@@ -2,7 +2,7 @@
 /**
  * A small static gate for this package: no new dependency, no network.
  *
- * The pipeline is plain CommonJS with a house style, and the rules below are the ones a
+ * The engine is plain CommonJS with a house style, and the rules below are the ones a
  * reviewer keeps repeating by hand. Each rule must be true of the code *and* cheap to check;
  * anything that needs type information belongs in the tests, not here.
  *
@@ -18,11 +18,11 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const SKIP_DIRECTORIES = new Set([
-  'node_modules', 'pipeline-converted', 'render-check', 'render-wps', 'preview',
+  'node_modules', 'render-check', 'render-wps', 'preview',
   'golden', 'baselines', 'tests', '.git'
 ]);
 /** Library code must not print to stdout: it reports through the deck's report. */
-const LIBRARY_DIRECTORIES = ['pipeline', 'engine', 'core', 'components', 'templates'];
+const LIBRARY_DIRECTORIES = ['engine', 'core', 'components', 'templates'];
 const MAX_LINE = 200;
 
 function javascriptFiles(directory) {

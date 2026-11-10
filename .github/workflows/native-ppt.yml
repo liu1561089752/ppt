@@ -1,35 +1,18 @@
 name: Native PPT engine tests
 
+# The product is the native generator: a Deck Spec in, a native .pptx out. There is no HTML path in
+# this repository, so nothing here converts a page: every deck below is built by `cli.js` or by an
+# example script, then audited, rendered and looked at.
+
 on:
   push:
     branches: [main, native-ppt-engine]
     paths:
-      - "pptx/native/**"
-      - "pptx/batch_native_pptx.js"
-      - "pptx/batch_html2pptx.js"
-      - "pptx/slide_order.js"
-      - "pptx/scripts/extract_native_design.py"
-      - "pptx/scripts/extract_html_design_tokens.py"
-      - "pptx/native/parity/**"
-      - "pptx/native/pipeline/**"
-      - "pptx/native/scripts/preview_deck.py"
-      - "pptx/tests/**"
-      - "pptx/examples/**"
-      - "pptx/SKILL.md"
+      - "pptx/**"
       - ".github/workflows/native-ppt.yml"
   pull_request:
     paths:
-      - "pptx/native/**"
-      - "pptx/batch_native_pptx.js"
-      - "pptx/batch_html2pptx.js"
-      - "pptx/slide_order.js"
-      - "pptx/scripts/extract_native_design.py"
-      - "pptx/scripts/extract_html_design_tokens.py"
-      - "pptx/native/parity/**"
-      - "pptx/native/pipeline/**"
-      - "pptx/tests/**"
-      - "pptx/examples/**"
-      - "pptx/SKILL.md"
+      - "pptx/**"
       - ".github/workflows/native-ppt.yml"
 
 jobs:
@@ -48,22 +31,23 @@ jobs:
       - name: Install native engine dependencies
         working-directory: pptx/native
         run: npm install --no-audit --no-fund
-      - name: Check legacy batch converter syntax
-        run: |
-          node --check pptx/batch_html2pptx.js
-          node --check pptx/slide_order.js
-      - name: Run native engine tests
+      - name: Lint and unit tests
         working-directory: pptx/native
         run: npm test
-      - name: Extract CSS design tokens and generate migration demo
+      - name: Syntax-check the scripts CI runs by hand
+        run: |
+          node --check pptx/batch_native_pptx.js
+          node --check pptx/native/cli.js
+          node --check pptx/native/scripts/audit_deck.js
+          node --check pptx/native/scripts/stress_spec.js
+          python -m py_compile pptx/scripts/extract_native_design.py pptx/scripts/check_slides.py
+          python -m py_compile pptx/native/scripts/verify_native_ooxml.py pptx/native/scripts/corpus.py
+          python -m py_compile pptx/native/scripts/visual_golden.py pptx/native/scripts/check_all_text_fit.py
+      - name: Generate the example decks
         working-directory: pptx/native
         run: |
-          python ../scripts/extract_html_design_tokens.py ../examples/design-reference.html native-theme-profile
-          npm run demo:theme
-          npm run demo:parity
-      - name: Generate editable demo decks
-        working-directory: pptx/native
-        run: |
+          npm run deck:example
+          npm run deck:json
           npm run demo
           npm run demo:components
           npm run demo:layouts
@@ -73,115 +57,56 @@ jobs:
       - name: Audit generated decks for editability
         working-directory: pptx/native
         run: |
+          node scripts/audit_deck.js native-deck.pptx
+          node scripts/audit_deck.js native-cover.pptx
           node scripts/audit_deck.js native-demo.pptx --min-text-shapes 1
           node scripts/audit_deck.js native-components-demo.pptx --min-text-shapes 1
           node scripts/audit_deck.js native-images-demo.pptx --min-text-shapes 1
           node scripts/audit_deck.js native-stress-deck.pptx --min-text-shapes 1 --fail-on-warning
-      - name: Convert the HTML fixtures through the native pipeline
+      - name: Stress the engine at two sizes
         working-directory: pptx/native
         run: |
-          npm run pipeline:pptx
-          npm run pipeline:parity
-          npm run pipeline:chart
-          npm run pipeline:decor
-          npm run pipeline:grid
-          npm run pipeline:structural
-          npm run pipeline:indent
-          npm run pipeline:wrap
-          npm run pipeline:stress
-          npm run pipeline:vertical
-          npm run pipeline:float
-          npm run pipeline:relative
-          npm run audit:pipeline
-          # The converted table must keep its declared column proportions.
-          python scripts/verify_native_ooxml.py pipeline-converted/pipeline-converted.pptx --require-table --require-uneven-columns
-          # Declared charts must be live chart parts, not pictures, and the
-          # rotated watermark must carry a real xfrm rotation.
-          python scripts/verify_native_ooxml.py pipeline-converted/pipeline-chart.pptx --require-chart --require-rotation
-      - name: Generate and check a multi-page stress deck
+          npm run stress
+          python scripts/verify_native_ooxml.py stress40.pptx
+          npm run gate:big
+      - name: Verify editable OOXML, not just a rendered picture
         working-directory: pptx/native
         run: |
-          # Several dozen generated pages: the layout has to stay declarative, keep every
-          # box on the slide, and convert in seconds rather than minutes.
-          npm run stress:html
-          python scripts/verify_native_ooxml.py pipeline-converted/stress40.pptx
-      - name: Audit every converted deck for invalid enumerated values
+          python scripts/verify_native_ooxml.py --self-test
+          npm run demo:theme
+          npm run demo:parity
+          python scripts/verify_native_ooxml.py native-design-migration-demo.pptx --require-gradient
+          python scripts/verify_native_ooxml.py native-images-demo.pptx --require-image-crop
+          python scripts/verify_native_ooxml.py native-stress-deck.pptx --require-image-crop
+      - name: Read the decks back with a third reader
         working-directory: pptx/native
         run: |
-          # A value outside the schema's enumerated set makes PowerPoint treat the file
-          # as damaged, and it is invisible in a rendered screenshot, so every deck is
-          # checked here - not just the ones with a feature flag.
-          for deck in pipeline-converted/*.pptx; do
-            echo "auditing $deck"
-            python scripts/verify_native_ooxml.py "$deck"
-          done
-      - name: Verify editable OOXML visual effects
-        working-directory: pptx/native
-        run: |
-          python scripts/verify_native_ooxml.py native-design-migration-demo.pptx --require-gradient --require-shadow --require-alpha
-      - name: Verify editable picture crops, outlines, and shadows
-        working-directory: pptx/native
-        run: |
-          python scripts/verify_native_ooxml.py native-images-demo.pptx --require-image-crop --require-picture-effects
-          python scripts/verify_native_ooxml.py native-stress-deck.pptx --require-image-crop --require-table --require-gradient --require-shadow
-      - name: Extract design profile from generated deck
+          python scripts/verify_with_python_pptx.py --deck native-deck.pptx --self-check
+          python scripts/verify_with_python_pptx.py --dir . --only native- --round-trip
+      - name: Extract a design profile from a generated deck
         working-directory: pptx/native
         run: python ../scripts/extract_native_design.py native-components-demo.pptx design-profile
-      - name: Compile and test design extraction scripts
+      - name: Render the decks through LibreOffice
         working-directory: pptx/native
         run: |
-          node --check pipeline/cli.js
-          node --check pipeline/analyzer.js
-          node --check pipeline/deck_builder.js
-          node --check scripts/audit_deck.js
-          python -m py_compile ../scripts/extract_native_design.py ../scripts/extract_html_design_tokens.py scripts/render_check.py scripts/render_with_libreoffice.py scripts/promote_goldens.py scripts/visual_regression.py scripts/verify_native_ooxml.py scripts/compare_renderers.py scripts/corrupt_anchor.py scripts/preview_deck.py
-          python ../scripts/extract_html_design_tokens.py --self-test
-          python scripts/visual_regression.py --self-test
-      - name: Render and verify demo decks
-        working-directory: pptx/native
-        run: |
-          npm run render:demo
-          npm run render:components
-          npm run render:layouts
-          npm run render:images
-          npm run render:stress
-          npm run render:pipeline
-          npm run render:chart
-          npm run render:decor
-          npm run render:grid
-          npm run render:structural
-          npm run render:indent
-          npm run render:wrap
-          npm run render:pipeline-stress
-          npm run render:pipeline-vertical
-          npm run render:pipeline-float
-          npm run render:pipeline-relative
-          npm run render:batch
+          npm run render:all
           npm run render:theme
           npm run render:parity
-      - name: Render offline layout previews
+          npm run render:batch
+      - name: Draw offline layout previews
+        working-directory: pptx/native
+        run: npm run preview:all
+      - name: Compare against reviewed golden images where they exist
         working-directory: pptx/native
         run: |
-          python scripts/preview_deck.py native-stress-deck.pptx --output-dir preview/stress --sheet preview/stress-sheet.png
-          python scripts/preview_deck.py native-images-demo.pptx --output-dir preview/images --sheet preview/images-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-converted.pptx --output-dir preview/pipeline --sheet preview/pipeline-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-chart.pptx --output-dir preview/chart --sheet preview/chart-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-decorations.pptx --output-dir preview/decor --sheet preview/decor-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-grid.pptx --output-dir preview/grid --sheet preview/grid-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-structural.pptx --output-dir preview/structural --sheet preview/structural-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-indent.pptx --output-dir preview/indent --sheet preview/indent-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-wrap.pptx --output-dir preview/wrap --sheet preview/wrap-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-stress.pptx --output-dir preview/pipeline-stress --sheet preview/pipeline-stress-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-vertical.pptx --output-dir preview/pipeline-vertical --sheet preview/pipeline-vertical-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-float.pptx --output-dir preview/pipeline-float --sheet preview/pipeline-float-sheet.png
-          python scripts/preview_deck.py pipeline-converted/pipeline-relative.pptx --output-dir preview/pipeline-relative --sheet preview/pipeline-relative-sheet.png
-      - name: Compare against reviewed golden slide images
-        working-directory: pptx/native
-        run: |
-          set -e
-          for deck in native-demo native-components-demo native-design-migration-demo \
+          # `baselines/visual.json` records the fingerprint of every corpus page on the development
+          # machine, whose fonts CI does not have, so that frozen baseline is not compared here.
+          # What CI does run is the comparator itself, plus any deck a human has reviewed into
+          # `golden/<deck>/`.
+          python scripts/visual_regression.py --self-test
+          for deck in native-deck native-demo native-components-demo native-design-migration-demo \
                       native-design-parity-demo native-layouts-demo native-images-demo \
-                      native-stress-deck pipeline-converted pipeline-chart pipeline-decorations pipeline-grid pipeline-structural pipeline-indent pipeline-wrap pipeline-stress pipeline-vertical pipeline-float pipeline-relative; do
+                      native-stress-deck; do
             golden="golden/$deck"
             if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
               python scripts/visual_regression.py \
@@ -193,11 +118,13 @@ jobs:
               echo "No reviewed golden images for $deck; comparator self-test remains enabled."
             fi
           done
-      - name: Upload PPTX and rendered previews
+      - name: Upload decks and rendered previews
         uses: actions/upload-artifact@v4
         with:
           name: native-ppt-rendered-demos
           path: |
+            pptx/native/native-deck.pptx
+            pptx/native/native-cover.pptx
             pptx/native/native-demo.pptx
             pptx/native/native-components-demo.pptx
             pptx/native/native-layouts-demo.pptx
@@ -208,13 +135,9 @@ jobs:
             pptx/native/native-image-assets/
             pptx/native/native-stress-assets/
             pptx/native/native-theme-profile/
-            pptx/native/parity/
             pptx/native/batch-dist/
             pptx/native/render-check/
             pptx/native/preview/
             pptx/native/visual-regression/
             pptx/native/design-profile/
-            pptx/native/pipeline-converted/
             pptx/native/themes/
-            pptx/scripts/extract_html_design_tokens.py
-            pptx/native/scripts/visual_regression.py

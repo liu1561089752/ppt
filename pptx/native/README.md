@@ -115,21 +115,26 @@ node ../cli.js deck.spec.json --strict                        # bounds / overflo
 
 `audit_deck.js` reports one line per slide (text shapes, characters, pictures with crop and
 coverage, charts, tables). A page degraded to a screenshot shows up there as `picCoverage=1.00` and
-zero text shapes; for the 21 fixture decks in `pipeline-converted/` that number is 0 everywhere.
+zero text shapes; across the seven decks in `golden/specs.json` that number is 0 on all 35 pages.
 
 ## What the writer cannot do
 
-`LIMITS.md` is generated from the call sites that report a gap: ~157 sites, 87 CSS/OOXML
-properties, each with the reason. Two kinds live there:
+`LIMITS.md` is generated from the code by `npm run limits:update`, and `npm run limits` fails when
+the document and the source disagree. It lists three kinds of thing:
 
-* **Named** — the engine reports the property and draws the closest honest thing (`borderCollapse`,
-  `mixBlendMode`, a `<sup>` that shrinks the glyph but not the line box).
-* **Only PowerPoint can adjudicate** — `a:tile` fills, `a:spcPct` line spacing, whether a file
-  triggers a repair prompt: LibreOffice and WPS are what this machine can see, and they differ.
+* **Refusals** — every `throw` in the engine, core, components and CLI, with its file and line: the
+  cases where the writer would otherwise have to guess.
+* **Schema rules** — the conditions that reject a spec before a byte is written, counted rather than
+  quoted, because each message is built per element path.
+* **Only PowerPoint can adjudicate** — `a:tile` fills, `a:spcPct` line spacing, a dashed series
+  whose line has no fill, and whether a file triggers a repair prompt. LibreOffice and WPS are what
+  this machine can see, and they disagree with each other, so none of it becomes a fixture.
 
-## The HTML converter is legacy
+## There is no HTML path
 
-`native/pipeline/` (HTML → Deck Spec) and `pptx/batch_html2pptx.js` still exist, because decks that
-were authored as HTML need a way across. They are not the product: the converter reconstructs boxes
-from CSS and keeps a raster fallback for SVG artwork and gradient canvases. For new work, write a
-spec — see `SKILL.md`'s renderer-selection rule.
+The converter that used to live at `native/pipeline/` and `pptx/batch_html2pptx.js` — the DOM/CSS
+analyser, the deck builder, the raster fallback for SVG and gradient canvases, the 21
+`examples/pipeline-*.html` fixtures and the tests that drove them — has been removed. `index.js`
+exports no `convertHtml`, and nothing in `engine/`, `core/`, `components/`, `themes/` or
+`templates/` ever imported it, so the cut left no seam. `REMOVAL.md` records what each piece was
+worth and what replaced it.

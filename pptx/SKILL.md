@@ -70,7 +70,9 @@ cd pptx/native
 node cli.js <spec.json|spec.js> out.pptx --report out.json   # the tool (see native/README.md)
 ```
 
-Do not create HTML slide files for a new deck, and do not run `batch_html2pptx.js`. The HTML
+The HTML converter has been removed from this repository: there is no `html2pptx1.js`, no
+`batch_html2pptx.js`, no `pipeline/`, and no `examples/pipeline-*.html`. A deck is authored as a Deck
+Spec and written by the native engine, so no step below may build HTML for a new deck. The old
 converter still exists for decks that were authored as HTML: it reconstructs boxes from CSS and
 keeps a raster fallback for SVG artwork and gradient canvases, so it is a migration path, not a
 renderer. Never present its output as the native tool's.
@@ -336,33 +338,6 @@ every slide, cover / TOC / body / closing, is committed by a `ppt` sub-agent tha
   5. Sub-agent slide HTML rules: must start with `<!DOCTYPE html>`, end with `</html>`, link `global.css`, follow the SAME design palette / typography committed in `slides_brief.json`, and obey every constraint in the SLIDE QUALITY BAR. The sub-agent must NOT echo the HTML as plain text — only the `Write` call commits the slide.
 
 
-═══════════════════════════════════════════════════════════════════════
-LEGACY HTML MODE ONLY — when exporting HTML slides to PPTX, use the following compatibility instructions. Native mode generates the PPTX directly from the Deck Spec and must not use this HTML export path:
-═══════════════════════════════════════════════════════════════════════
-Convert `<work_dir>/slides/` into ONE `.pptx` via `batch_html2pptx.js`.
-
-The converter walks sorted filename order. Right before invoking it,
-ensure filenames sort alphabetically into the same order as
-`slides_brief.json.slides[]`. If editing rounds left them out of order,
-rename to `slide_{NN:02d}.html` matching list index AND update each
-entry's `output_path`. This is the ONLY step that renames files.
-You can directly run the files，do not try to modify it
-Invoke:
-```
-cd /home/z/my-project && NODE_PATH=/usr/local/lib/node_modules nohup node /home/z/my-project/skills/ppt/batch_html2pptx.js /home/z/my-project/download/slides /home/z/my-project/download/xx.pptx
-```
-
-  • Arg 1: slides directory. Arg 2 (optional): output path; defaults to
-    `<work_dir>/<basename(work_dir)>.pptx`.
-  • `NODE_PATH` is required so `pptxgenjs` / `playwright` / `sharp` resolve.
-  • Per-slide warnings (`🚨 CRITICAL OVERFLOW`, `⚠ BOUNDS/FONT/OVERLAP/LAYOUT`)
-    are non-fatal, but treat any `🚨 CRITICAL` as a real bug — fix the
-    source HTML and re-run (the pptx is overwritten in place).
-
-After export: `ls -lh <path>` to confirm, then report the `.pptx` path
-(and source slide HTML paths) to the user.
-
-═══════════════════════════════════════════════════════════════════════
 MULTI-ROUND HTML EDITING — keep `slides_brief.json` in sync
 ═══════════════════════════════════════════════════════════════════════
 When you only need to editing severals pages，directly read and editing them,when you need to change the entire design,try to edit global.css first
@@ -696,11 +671,6 @@ The extractor samples every slide and writes:
 The original `extract_pptx_style.py` remains available for the legacy HTML/CSS workflow. The native extractor does not infer semantic roles perfectly; treat its frequency-based patterns as evidence for human/AI design planning, not as an automatic clone of every master or custom drawing.
 
 
-### Legacy HTML batch ordering fix
-
-The HTML compatibility batch converter now pre-creates slide slots in the sorted source-file order, then lets workers render into their assigned slide. Failed or severe-warning slides are removed after workers finish, in descending source order. This preserves the original HTML slide order even when concurrent render tasks finish out of order.
-
-
 ### Image fit, cropping, and picture surfaces
 
 Images no longer rely on PptxGenJS `sizing`: the engine computes the geometry itself and patches the slide XML, because `contain` in PptxGenJS 3.12 emits negative crop rectangles for every non-matching aspect ratio and `crop` shrinks the picture frame.
@@ -933,7 +903,7 @@ Behaviour worth knowing:
 - **The alt text was a file path.** An inventory of every enumerated attribute across the fixture decks turned up `descr="F:\\native-ppt-engine\\pptx\\examples\\stress-photo.png"` - the build machine's folder layout inside the alt text of a picture, offered to a screen reader as a description. The cause is the writer: pptxgenjs writes `descr` as `altText || the image source`, so a picture with no `alt` was stamped with its own path (or `preencoded.png`). The pipeline now clears anything that looks like a source (a path separator, a drive letter, or `preencoded.png`) and keeps what an author wrote. The integrity audit grew the matching check plus two controls, and the self-test is at 21.
 - **The default object-fit is CSS's, not a designer's.** An `<img>` with a declared width and height and no `object-fit` is *stretched* by a browser; this engine used to cover-crop it and say so. Honest, but still a different picture from the one the browser draws - fidelity beats taste, so the default is now `fill` (a stretch, no `srcRect`) and the declaration is gone. The report baseline fell from seven to six, and the one that left was noise: the reference deck's logo is a square image in a square box, which neither engine distorts. The two tests that pinned the old opinion were rewritten to pin the new one, including that an unknown value is still named.
 - **The catalogue of refusals is generated, not remembered.** `pptx/native/LIMITS.md` lists every difference the engine names - 126 call sites, 75 properties, 113 distinct explanations - extracted from `pipeline/analyzer.js` by `npm run limits:update`, with the prose around the table hand-written and preserved. `npm run limits` fails when the file and the source disagree, and so does a test, so the claim "every deviation is reported" cannot quietly rot: adding one `recordUnsupported` and forgetting it is a red gate, which I proved by injecting one and watching it fail. The same file carries the two gaps this machine cannot adjudicate - the `spcPct` line-spacing convention and PowerPoint's repair behaviour - so the honest boundary is written down where the next person will find it, not buried in a commit message.
-- **The gates build their own corpus.** Every packaged check reads `pipeline-converted/`, which is generated and therefore not in the repository - so on a fresh clone the reader gates had nothing to read and failed with the least helpful message available ("nothing to check"). `npm run pipeline:all` converts all 19 examples in one command, `--only`/`--keep`/`--list` narrow and reuse it, and `verify:pptx`, `verify:readers` and `verify:wps` call it first. The whole set was then run from an empty corpus: 19 decks written, every gate green. A test pins the conversion list to the examples on disk, because a fixture that no gate converts is a fixture nobody checks.
+- **The gates build their own corpus.** Every packaged check reads `golden/specs.json`, which namesenerated and therefore not in the repository - so on a fresh clone the reader gates had nothing to read and failed with the least helpful message available ("nothing to check"). `npm run pipeline:all` converts all 19 examples in one command, `--only`/`--keep`/`--list` narrow and reuse it, and `verify:pptx`, `verify:readers` and `verify:wps` call it first. The whole set was then run from an empty corpus: 19 decks written, every gate green. A test pins the conversion list to the examples on disk, because a fixture that no gate converts is a fixture nobody checks.
 - **A picture with no bytes is named, not missing.** Probing the image edge cases turned up three ways to have nothing to draw: a remote URL (this converter never touches the network), a file that is not there, and a relative path with no base directory. Each wrote a deck whose spec claimed a picture and whose package had none - a hole in the slide and not a word about it - and a missing local file was worse: it aborted the entire write at the last moment with `Unable to read media`, every other slide included, because the writer reads media while assembling the package rather than when the shape is placed. Now a remote source is reported in the analyzer (the box keeps its reserved place), a missing file next to the HTML is reported there too, and a path the analyzer cannot resolve travels to the writer, which checks readability before placing the shape and pushes what it could not read into `droppedPictures`, merged into the same report. A picture costs one line, not the deck.
 - **The same question, asked in one place.** Probing further found four more ways to have no picture: an empty `src`, a missing `src` attribute, a data URI whose payload is not base64 or not an image, and a background layer with an unreadable source. The first three were silent holes; the last two killed the whole conversion inside the geometry resolver (`Image fit "contain" needs the natural pixel size`). So the question now lives in one helper, `unreadableSourceReason`, called from all four places a source arrives (an `<img>`, a background that becomes a picture, a background behind text, a background on a box), each of which names it and keeps the box. As a last line, `resolveImageGeometry` degrades to a stretch and reports `fitFallback` instead of throwing: a picture whose size cannot be measured should cost its proportions, not the deck. The catalogue grew by four and the fixture-free edge cases are pinned by a test that walks all six.
 - **Two numbers the page did not mean.** `line-height: -1` is not a valid declaration, so a browser discards it and keeps `normal`; this converter took it literally, made the line box negative, and the only text on the slide vanished without a word. It is now discarded the way CSS discards it (zero and negative, in a unitless, percentage or length form), while a valid tall line box is still honoured. Separately, a chart value cell holding no number (`abc`, or nothing at all) was plotted as 0 - a data point the page never had, in a chart that looks authoritative. Every chart now names it once, quoting the value; numbers written the way pages write them (`1,200`, `-8`, `0.5`) stay silent. Probing also confirmed that `calc()` in `width`/`gap`/`padding` already lands exactly (580px for `calc(50% - 20px)` in a 1200px box), so the report there was correctly empty.
@@ -1057,34 +1027,6 @@ python scripts/render_with_libreoffice.py deck.pptx --output-dir render/deck --s
 
 This is the only check that exercises real text shaping, native charts, rotation and merged table cells. Two findings it produced that the Pillow preview cannot show: a native chart has a *transparent* plot area (so it needs a light panel behind it on a dark slide), and pie/doughnut charts are unreadable without a legend.
 
-### HTML → Native conversion pipeline
-
-`pptx/native/pipeline/` implements the staged conversion described in the migration plan:
-
-```
-HTML → DOM Analyzer → Layout Analyzer → Style Mapper → Native Deck Spec → PPTX
-```
-
-```bash
-cd pptx/native
-node pipeline/cli.js ../examples/pipeline-reference.html \
-  --out converted/deck.json --report converted/report.json --pptx converted/deck.pptx
-```
-
-The same conversion is available from the package entry point, so a Node script can go HTML → PPTX in one call:
-
-```js
-const { convertHtml, convertFile } = require('./pptx/native');
-const { deck, report, errors } = convertFile('deck.html', { pptx: 'deck.pptx' });
-```
-
-The CLI prints how many nodes became text / shapes / images / tables, and lists every CSS feature it could not translate. Text keeps semantic roles (`title` / `heading` / `body` / `caption`), cards become editable shapes plus their own text boxes, `<img>` and `background-image: url(...)` both become native pictures with an editable crop rectangle (honouring `object-fit` / `background-size` and `background-position`), `<table>` becomes a native table that keeps its column proportions (`<colgroup>/<col>` or declared cell widths) and its merged cells (`colspan`/`rowspan`), and `<ul>` becomes a bulleted native text box.
-
-Subtree layout is emitted **declaratively** wherever the CSS intent has a container equivalent: a flex row, an equal-track grid, or a block-flow stack (spacing carried by per-child `boxMargin`) becomes a native `container` with nested children instead of a pile of coordinates. Because the analyzer and the engine both implement the layout rules, every declarative group is then re-resolved by the engine and compared with the analyzed boxes; a disagreement over 0.012in demotes that subtree to explicit coordinates, and the report records how many groups are declarative, how many fell back, why, and the worst residual delta. The shipped fixtures convert with 7 containers, 0 fallbacks and a 0.0001in worst delta.
-
-Scope discipline: the pipeline covers absolute positioning (and `position: fixed` anchored to the slide), block flow, single-line and wrapping flex (row/column) and grids with fractional/fixed/percentage tracks, track spans and explicit lines (grid-column/grid-row: `span N`, `A / span N`, `A / B`, the `-start`/`-end` longhands, negative lines and the four-value `grid-area`; the four CSS 8.5 placement phases run, so an item that names its cell stays there and the rest flow around it, while named areas need `grid-template-areas` and are reported) and declared heights (`grid-template-rows`, `grid-auto-rows`). Selectors cover type/class/id, the descendant/child/adjacent-sibling/general-sibling combinators (each with its real meaning), the structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`, `:nth-child(an+b|odd|even)`, and the `-of-type` / `-last-` forms), attribute selectors (`[data-kind="kpi"]`, `~=`, `^=`, `$=`, `*=`, the `i` flag) and `:not()`/`:is()`/`:where()`, which is what zebra striping, first/last-item accents and "everything but the last row" spacing are written with. Typography covers `text-indent` as a real paragraph property (`<a:pPr indent>`), so a Chinese first-line indent stays editable and the measured height already accounts for the narrower first line, and `white-space: nowrap` as `bodyPr wrap="none"` with autofit off, so a label or badge never breaks into two lines. It is **not** a browser — see `pptx/native/pipeline/README.md` for the exact supported subset and the reported gaps (`filter`, `clip-path`, `mask`, `flex-wrap`, media queries, pseudo-elements, transforms, and more). Unsupported visuals are reported for deliberate human translation; the pipeline never rasterizes a slide.
-
-
 ### Current Native quality gates
 
 - The CI suite runs Node engine tests (172 assertions), creates editable sample decks, audits each deck for editability, converts the HTML fixtures through the pipeline, inspects DrawingML for gradients/shadows/alpha/image crops, renders through LibreOffice/Poppler, and uploads previews.
@@ -1093,7 +1035,7 @@ Scope discipline: the pipeline covers absolute positioning (and `position: fixed
 - LibreOffice rendering is a useful regression signal, not a substitute for opening the deliverable in Microsoft PowerPoint. Font availability, fallback, and renderer differences must be reported.
 - Image `cover`/`contain`/`crop`, rounded corners, picture outlines and picture shadows are asserted at the OOXML level, not only visually.
 - The editability audit (`scripts/audit_deck.js`) is the machine check for "content stays editable". It cannot judge aesthetics.
-- The layout audit (`pptx/native/pipeline/collide.js`) is the machine check for "the page fits": it reports sibling boxes that collide, content taller or wider than its own box, and flow content past the slide edge. The pipeline CLI fails on any of them (`--allow-layout-issues` opts out), so a measurement error cannot ship silently.
+- The layout audit (`validateSlide`, run by `cli.js --strict`) is the machine check for "the page fits": it reports sibling boxes that collide, content taller or wider than its own box, and flow content past the slide edge. The pipeline CLI fails on any of them (`--allow-layout-issues` opts out), so a measurement error cannot ship silently.
 - A run of consecutive `float: left/right` siblings is packed into a wrapping row (declared widths, one edge, every line as tall as its tallest item); `clear` is honoured because the next block always starts below the run. A block that would have wrapped its lines *beside* a float is reported, and a floated box without a declared width is reported because shrink-to-fit is max-content.
 - Absolute children resolve against the **padding box** of their containing block, like CSS: a `right: 72px` footer sits 72px from the slide edge, not 72px inside the padded content area.
 - `aspect-ratio` sizes a box whose height is auto from its used width; a declared height wins, and `align-items: stretch` still wins over the ratio, exactly as in CSS. Stretch never resizes an axis the CSS pinned (`fixedHeight`/`fixedWidth` travel in the spec so the engine agrees).

@@ -23,7 +23,7 @@ of the slide and the spill would be measured against the wrong element entirely.
     python scripts/check_text_fit.py deck.pptx --layout layout.json
     python scripts/check_text_fit.py deck.pptx --layout layout.json --verbose
 
-`layout.json` is written by `node pipeline/cli.js --layout-out`: the boxes the writer really
+`layout.json` is written by `node cli.js <spec> <deck> --layout-out`: the boxes the writer really
 used, with container children already resolved into absolute positions. The raw deck spec is
 accepted too, but a nested container positions its children at write time, so the spec alone
 cannot say where a caption ended up.
@@ -353,7 +353,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("deck", type=Path)
     parser.add_argument("--layout", type=Path, default=None,
-                        help="the layout JSON written by pipeline/cli.js --layout-out")
+                        help="the layout JSON written by cli.js --layout-out")
     parser.add_argument("--spec", type=Path, default=None, help="the deck JSON (nested boxes)")
     parser.add_argument("--soffice", default=None)
     parser.add_argument("--tolerance", type=float, default=0.02, help="inches of spill allowed")

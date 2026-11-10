@@ -12,8 +12,6 @@ const path = require('node:path');
 const JSZip = require(require.resolve('jszip', { paths: [require.resolve('../native/engine/native_pptx')] }));
 const { generatePptx, patchCellBullets, patchHyperlinkRelEscapes, bulletParagraphIndent,
   cellBulletIndentBase, patchShapeHyperlinks } = require('../native/engine/native_pptx');
-const { imageElementFromNode, anchorHrefOf, anchorLinkFits, anchorLinkObjects, buildDeckSpec } =
-  require('../native/pipeline/deck_builder');
 const { makePng } = require('../native/scripts/sample_image');
 
 const PNG = 'data:image/png;base64,' + makePng(120, 60).toString('base64');
@@ -140,36 +138,17 @@ test('a linked picture keeps the alt text the source declared', async () => {
   }
 });
 
-test('the deck builder carries an anchor href and drops an in-page fragment', () => {
-  const node = (href) => ({
-    kind: 'image', tag: 'img', x: 1, y: 1, w: 2, h: 1, src: 'photo.png',
-    objectFit: 'fill', href
-  });
-  const url = imageElementFromNode(node('https://example.com/x?a=1&b=2')).hyperlink;
-  assert.deepEqual(url, { url: 'https://example.com/x?a=1&b=2' }, 'the url is not rewritten');
-  assert.deepEqual(imageElementFromNode(node('mailto:team@example.com')).hyperlink,
-    { url: 'mailto:team@example.com' });
-  assert.deepEqual(imageElementFromNode(node('../docs/x.html')).hyperlink,
-    { url: '../docs/x.html' });
-  // A `#fragment` names a place in the HTML page; the deck has no slide to jump to, and a
-  // relationship to a bare fragment navigates nowhere.
-  assert.equal(imageElementFromNode(node('#section-2')).hyperlink, undefined);
-  assert.equal(imageElementFromNode(node(undefined)).hyperlink, undefined);
-});
-
-/** A header row, then one cell that lists two items, then a cell that does not list. */
-function listTable() {
-  return [{
-    type: 'table', x: 0.5, y: 0.5, w: 6, h: 2.4, options: { colW: [3, 3] },
-    rows: [
-      [{ text: '项目', options: {} }, { text: '说明', options: {} }],
-      [{ text: [
-        { text: '甲', options: { bullet: { type: 'bullet' }, breakLine: true } },
-        { text: '乙', options: { bullet: { type: 'bullet' } } }
-      ], options: {} }, { text: '没有列表', options: {} }]
-    ]
-  }];
-}
+/** A table whose second row's first cell is a two-item list: the spec a </li><li> pair became. */
+const listTable = () => [{
+  type: 'table', x: 0.5, y: 0.5, w: 6, h: 2.4, options: { colW: [3, 3] },
+  rows: [
+    [{ text: '项目', options: {} }, { text: '说明', options: {} }],
+    [{ text: [
+      { text: '甲', options: { bullet: { type: 'bullet' }, breakLine: true } },
+      { text: '乙', options: { bullet: { type: 'bullet' } } }
+    ], options: {} }, { text: '没有列表', options: {} }]
+  ]
+}];
 
 test('a bullet in a table cell reaches the cell paragraph, and only that paragraph', async () => {
   const deck = await writeDeck(listTable());
@@ -360,84 +339,6 @@ function analysisOf(node) {
   };
 }
 
-test('a link around a block lands on the card surface, and the package carries it', async () => {
-  const { deck } = buildDeckSpec(analysisOf(
-    cardAnchorNode('https://example.com/card?a=1&b=2', { backgroundColor: '#f2f4f3' })
-  ), {});
-  const container = deck.slides[0].elements[0];
-  assert.equal(container.type, 'container');
-  // A container is layout-only and has no `cNvPr`, so the surface it paints takes the click -
-  // and so do the words above it, because the copy is what a reader aims at.
-  assert.deepEqual(container.background.hyperlink, { url: 'https://example.com/card?a=1&b=2' });
-  assert.deepEqual(container.children[0].hyperlink, { url: 'https://example.com/card?a=1&b=2' });
-
-  const written = await writePptx(deck);
-  try {
-    const slide = await written.slide();
-    const shapes = slide.match(/<p:sp>[\s\S]*?<\/p:sp>/gu) || [];
-    assert.equal((slide.match(/<a:hlinkClick/gu) || []).length, 2, 'surface and words both click');
-    shapes.forEach((shape) => assert.match(shape, SHAPE_CLICK));
-    const relationships = await written.relationships();
-    assert.match(relationships, /<Relationship [^>]*Type="[^"]*\/hyperlink" Target="https:\/\/example\.com\/card\?a=1&amp;b=2" TargetMode="External"\/>/u);
-    // Two objects, one url, one relationship.
-    assert.equal((relationships.match(/TargetMode="External"/gu) || []).length, 1);
-  } finally {
-    written.cleanup();
-  }
-});
-
-test('an anchor whose box paints nothing links the objects inside it', () => {
-  // No fill, no border, no radius: the container draws no surface of its own, so the link has
-  // to reach the words. It must not land on nothing and vanish.
-  const { deck } = buildDeckSpec(analysisOf(cardAnchorNode('https://example.com/bare', {})), {});
-  const container = deck.slides[0].elements[0];
-  assert.equal(container.type, 'container');
-  assert.equal(container.background, undefined, 'a bare box paints no surface');
-  assert.deepEqual(container.children[0].hyperlink, { url: 'https://example.com/bare' });
-});
-
-test('a card whose children cannot be packed still links every object it paints', () => {
-  // An absolutely positioned child makes the container plan fail, so the card is emitted as a
-  // surface plus loose children. The link has to reach both on that path too.
-  const node = cardAnchorNode('https://example.com/absolute', { backgroundColor: '#eeeeee' });
-  node.children[0].absolute = true;
-  const { deck } = buildDeckSpec(analysisOf(node), {});
-  const elements = deck.slides[0].elements;
-  assert.equal(elements[0].type, 'shape', 'the surface is its own object here');
-  assert.deepEqual(elements[0].hyperlink, { url: 'https://example.com/absolute' });
-  assert.deepEqual(elements[1].hyperlink, { url: 'https://example.com/absolute' },
-    'the words underneath are clickable too');
-});
-
-test('a link is never written twice, and every object of a card takes it once', () => {
-  const text = { type: 'text', x: 0, y: 0, w: 2, h: 0.5, text: [{ text: '链接', options: {} }] };
-  assert.equal(anchorLinkFits(text), true, 'a plain box can take a link');
-  text.hyperlink = { url: 'https://example.com/a' };
-  assert.equal(anchorLinkFits(text), false, 'a box that links is left alone');
-  const runLinked = { type: 'text', x: 0, y: 0, w: 2, h: 0.5,
-    text: [{ text: '链接', options: { hyperlink: { url: 'https://example.com/b' } } }] };
-  assert.equal(anchorLinkFits(runLinked), false, 'a box whose run links already has its link');
-  const picture = { type: 'image', path: 'p.png', hyperlink: { url: 'https://example.com/c' } };
-  assert.equal(anchorLinkFits(picture), false, 'a picture keeps the link its anchor gave it');
-  assert.equal(anchorLinkFits({ type: 'container' }), false, 'a container has nothing to click');
-  assert.equal(anchorHrefOf({ href: '#slide-2' }), '', 'an in-page fragment is not a link');
-  assert.equal(anchorHrefOf({ href: 'mailto:a@b.example' }), 'mailto:a@b.example');
-  assert.equal(anchorHrefOf({}), '');
-
-  // A card hands its url to its surface and to each line of copy, once each.
-  const card = {
-    type: 'container',
-    background: { type: 'shape', x: 0, y: 0, w: 2, h: 1 },
-    children: [
-      { type: 'text', x: 0, y: 0, w: 2, h: 0.3, text: [{ text: '甲', options: {} }] },
-      { type: 'text', x: 0, y: 0.4, w: 2, h: 0.3, text: [{ text: '乙', options: {} }] }
-    ]
-  };
-  assert.equal(anchorLinkObjects(card, 'https://example.com/card'), 3, 'surface and both lines');
-  assert.equal(anchorLinkObjects(card, 'https://example.com/card'), 0,
-    'a second pass finds every object already linked');
-});
-
 test('a link inside a table cell rides the cell and keeps its marker', async () => {
   const deck = await writeDeck([{
     type: 'table', x: 0.5, y: 0.5, w: 6, h: 2, options: { colW: [3, 3] },
@@ -530,24 +431,23 @@ test('the shape hyperlink patch refuses a package it cannot align', async () => 
   }
 });
 
-/** Convert real HTML through the pipeline, so the analyzer, builder and engine all take part. */
-async function writeHtml(body) {
-  const pipeline = require('../native/pipeline');
-  const html = [
-    '<html><head><style>.slide { width: 1280px; height: 720px; padding: 40px; }',
-    '  .card { display: block; width: 320px; padding: 24px; border-radius: 12px;',
-    '    background: #f2f4f3; text-decoration: none; }',
-    '  td { font-size: 14px; }</style></head><body><main class="slide">',
-    body,
-    '</main></body></html>'
-  ].join('\n');
-  return writePptx(pipeline.convertHtml(html).deck);
-}
+/** A card as a spec: a surface and two paragraphs, all three naming the same url. */
+const cardDeck = (url) => ({
+  pageSize: 'wide',
+  slides: [{
+    elements: [
+      { type: 'shape', x: 0.5, y: 0.5, w: 3.4, h: 1.9, radius: 0.12, fill: 'F2F4F3',
+        lineColor: 'DCE2DE', lineWidth: 0.8, hyperlink: { url } },
+      { type: 'text', text: '标题', x: 0.72, y: 0.78, w: 3.0, h: 0.5, fontSize: 20, bold: true,
+        color: '202321', hyperlink: { url } },
+      { type: 'text', text: '副文', x: 0.72, y: 1.4, w: 3.0, h: 0.4, fontSize: 14,
+        color: '6B7470', hyperlink: { url } }
+    ]
+  }]
+});
 
-test('a clickable card in real html reaches the shape non-visual properties', async () => {
-  const written = await writeHtml(
-    '<a href="https://example.com/card" class="card"><h2>标题</h2><p>副文</p></a>'
-  );
+test('a clickable card reaches the shape non-visual properties', async () => {
+  const written = await writePptx(cardDeck('https://example.com/card'));
   try {
     const slide = await written.slide();
     // The surface and both paragraphs carry the click: the copy covers most of a card, and a
@@ -567,11 +467,19 @@ test('a clickable card in real html reaches the shape non-visual properties', as
   }
 });
 
-test('a link inside a table cell in real html reaches the cell', async () => {
-  const written = await writeHtml(
-    '<table style="width: 480px"><tr><td><a href="https://example.com/cell">格内链接</a></td>'
-      + '<td>普通</td></tr></table>'
-  );
+test('a link inside a table cell reaches the cell', async () => {
+  const written = await writePptx({
+    pageSize: 'wide',
+    slides: [{
+      elements: [{
+        type: 'table', x: 0.5, y: 0.5, w: 6.6, h: 1.0, options: { fontSize: 14 },
+        rows: [[
+          { text: '格内链接', options: { hyperlink: { url: 'https://example.com/cell' } } },
+          { text: '普通' }
+        ]]
+      }]
+    }]
+  });
   try {
     const slide = await written.slide();
     const cells = slide.match(/<a:tc\b[\s\S]*?<\/a:tc>/gu) || [];

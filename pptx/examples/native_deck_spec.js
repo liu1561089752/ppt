@@ -68,10 +68,10 @@ const deck = {
         theme,
         title: '四件事同时成立，才算原生',
         items: [
-          { label: '整页栅格', value: '0', note: '没有一页是截图' },
-          { label: '文本框', value: '678', note: '21 套示例的逐包审计' },
-          { label: '原生表格', value: '17', note: '含合并单元格' },
-          { label: '内嵌工作簿', value: '8', note: '图表数据可改' }
+          { label: '整页截图', value: '0', note: '35 页全是原生对象' },
+          { label: '文本框', value: '262', note: '语料库的逐包审计' },
+          { label: '原生表格', value: '4', note: '共 74 个单元格' },
+          { label: '内嵌工作簿', value: '4', note: '图表数据可改' }
         ]
       });
       page.elements.push(...components.infoCard({
@@ -81,19 +81,19 @@ const deck = {
           + '表格是 a:tbl、图表带着工作簿、形状带着自己的填充与描边——四类都在，才谈得上可编辑。'
       }));
       page.elements.push({
-        type: 'text', text: '数字来自 pipeline-converted/ 的逐包审计：21 套 fixture、69 页、678 个文本框、1,386 个 run。',
+        type: 'text', text: '数字来自 golden/specs.json 语料库的逐包审计：7 套示例、35 页、262 个文本框、393 个 run。',
         x: margin + 0.04, y: 6.36, w: 11.2, h: 0.28,
         fontFace: theme.fonts.body, fontSize: theme.sizes.caption, color: theme.colors.muted
       });
-      return Object.assign(page, { notes: '卡片是形状、指标是文本；数字全部来自 pipeline-converted 里的实测审计。' });
+      return Object.assign(page, { notes: '卡片是形状、指标是文本；数字全部来自 golden/specs.json 语料库的实测审计。' });
     })(),
 
     Object.assign(templates.comparison({
       theme,
-      title: '两条路径，不同的权威来源',
+      title: '同一页，两种做法',
       left: {
-        title: 'HTML 转 PPTX',
-        body: '输入是已经画好的网页：解析器从 DOM 和 CSS 里还原盒模型、装饰与文本，适合把已有网页转成演示文稿。'
+        title: '整页截图导出',
+        body: '把整页渲染成一张大图再放进幻灯片：像素完全一致，但每个字都不可选，改一个数字要回原文件重来。'
       },
       right: {
         title: '原生生成（本工具）',

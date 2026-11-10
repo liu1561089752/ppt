@@ -13,7 +13,7 @@ still describe the same number of objects is a deck whose structure survives edi
 
 Usage:
     python scripts/verify_with_python_pptx.py --deck a.pptx [--deck b.pptx ...] [--round-trip]
-    python scripts/verify_with_python_pptx.py --dir pipeline-converted
+    python scripts/verify_with_python_pptx.py --dir <folder of decks>
 """
 
 from __future__ import annotations

@@ -1,169 +1,129 @@
-# What this engine will not draw
+# What the writer cannot do
 
-The engine's contract is narrow and it is the whole point: **silence means the deck agrees with
-the browser.** A difference the drawing cannot express is named in the report, in the slide it
-happens on, with a reason a designer can act on. This file is the full list of those reasons -
-generated from the source, so it cannot drift away from the code.
+Generated from the code by `npm run limits:update`; `npm run limits` fails when this
+document and the source disagree. Every entry is a place where the engine refuses to guess, a
+rule that rejects a spec before anything is written, or a check the tool reports on the boxes
+it did write.
 
-## How to read a report entry
+## Refusals the engine can raise (66)
 
-`npm run pipeline -- deck.html` prints them, and each deck carries a `report` object:
-
-```json
-{ "slide": 3, "tag": "div", "property": "float", "value": "left",
-  "reason": "A float escapes the flow ..." }
-```
-
-## The catalogue
-
-<!-- generated:start -->
-
-Generated from `pipeline/analyzer.js`: **157 call sites**, **87 properties**,
-**140 distinct explanations**. Regenerate with `npm run limits:update`; a new report
-without a line here fails the gate.
-
-| reported as | what the deck says it could not do |
+| where | message |
 | --- | --- |
-| `::before` | Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute |
-| `::marker` | The items want different marker colours; a text box carries one bullet colour, so none was applied |
-| `'::' + pseudo` | A decoration on the slide root has no container to anchor to; put it on a card or panel<br>Generated content beyond a literal string or attr() (counters, quotes) has no value this walker can compute<br>⟨reason⟩ |
-| `accentColor` | An accent colour has no native spelling here: only a progress bar or a meter is coloured by it |
-| `animation` | The slide draws the final state; the entrance or motion itself is not drawn |
-| `backgroundImage` | Only one picture layer and one linear gradient above it can be painted: ⟨what⟩ is dropped<br>Only one picture layer behind the text can be painted: ⟨what⟩ is dropped<br>⟨unreadableLayer⟩, so the layer is dropped and the box keeps its own fill<br>⟨unsupportedGradient⟩ cannot be translated (⟨why⟩), so the box keeps its geometry and is left unpainted |
-| `backgroundPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge<br>The offset is measured against the source's own size, and this picture's size cannot be read here, so the position is not applied |
-| `backgroundRepeat` | The picture is drawn once, fitted to the box; a tiled pattern cannot be spelled<br>`space` and `round` resize the cell until a whole number of cells fills the box; a tile repeats one fixed cell, so the pattern is drawn once |
-| `border` | A native shape outline is uniform; declare every side the same, or use a separate rule/shape |
-| `borderCollapse` | Collapsed borders resolve to one line in the browser; adjacent cells disagree on ⟨conflicts⟩, and a native table cell keeps both edges |
-| `borderRadius` | A corner with a horizontal and a vertical radius is an elliptical corner, which no native geometry spells: the box is drawn square<br>A native rounded rectangle carries one radius: corners ⟨corners.map((value) => value.toFi…⟩ keep only the first value<br>A percentage radius below 50% is an elliptical corner, which no native geometry spells: the box is drawn square<br>A percentage radius below 50% is an elliptical corner, which no native geometry spells: the picture keeps square corners<br>A table cell has no corner geometry in the file format; the radius squares off<br>The corners round by different amounts; a native roundRect rounds all four alike, so the box is drawn at the top-left radius |
-| `borderStyle` | A double border needs a compound line, which the writer cannot spell: it draws as one solid line |
-| `boxShadow` | ⟨shadowNote⟩ |
-| `boxSizing` | Width is resolved as a border box; declare box-sizing: border-box to make it exact |
-| `clipPath` | A rounded inset needs a rounded geometry; a source rectangle has right angles, so the picture keeps square corners<br>Only lengths and percentages inside inset() name a source rectangle; this clip shape is not one<br>The inset leaves no picture; a source rectangle cannot be empty<br>The picture is drawn at a size of its own - a declared background-size, a natural-size layer, or a source whose size this cannot read - so the clip cannot be composed into one source rectangle<br>clip-path clips the subtree; only this box's own paint is clipped, its children keep their shape<br>⟨explicitHeight === null ? 'A clip…⟩ |
-| `column-widths` | Fixed-layout columns are scaled into the table box instead of widening it |
-| `columns` | ⟨reason⟩ |
-| `data-chart` | A bubble needs three numbers per point: an x column, a y column and a size column<br>A bubble reads the columns after x in pairs (y, size); ⟨seriesCount⟩ leaves one of them unpaired<br>A chart needs data: add data-values="1,2,3" or put the numbers in a <table><br>A chart value has to be a number, and this cell holds no number, so it is plotted as 0⟨more(textValues.length)⟩<br>A scatter needs an x column and at least one y series: two numeric columns<br>An empty value cell is plotted as 0; use an explicit 0 if that is what the page means⟨more(blankValues.length)⟩<br>The first column of a bubble is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>The first column of a scatter is the x axis, so it has to hold numbers (⟨notNumbers[0]⟩ is not one)<br>Unknown chart type; use bar or column, line, area, pie, doughnut or radar |
-| `data-chart-axis-titles` | Give at most two titles: "category\|value" |
-| `data-chart-cat-label-rotate` | Use an angle from -90 to 90 |
-| `data-chart-colors` | Chart colours must be #rrggbb values, one per series, in series order |
-| `data-chart-dir` | Use col (vertical bars) or bar (horizontal bars) |
-| `data-chart-gap-width` | Use a percentage from 0 to 500 |
-| `data-chart-grid` | Use y, x, both, true or false |
-| `data-chart-grouping` | Use clustered, stacked or percentStacked |
-| `data-chart-hole-size` | Use a percentage from 10 to 90 |
-| `data-chart-label-format` | Use an Excel number format code |
-| `data-chart-label-pos` | Use outside-end, inside-end, center, best-fit, top, bottom, left or right |
-| `data-chart-label-position` | A ⟨chartType⟩ chart accepts ⟨allowed.join('/')⟩ for data labels, not ⟨options.dataLabelPosition⟩<br>Use outside-end, inside-end, center, best-fit, top, bottom, left or right |
-| `data-chart-labels` | Use value, percent, series or none |
-| `data-chart-legend` | Use true, false, none, top, bottom, left, right or top-right |
-| `data-chart-legend-font-size` | Use a font size in points |
-| `data-chart-secondary-axis` | The writer draws one value axis only: a second scale would need hand-written chart XML - split the series into a second chart instead<br>Use true or false |
-| `data-chart-series-line` | One dash per series, in series order: a token past the last series has nothing to dash<br>Use solid, dashed, dotted, dashDot, lgDash, lgDashDot, sysDash or sysDot, one per series |
-| `data-chart-smooth` | Smoothing bends a line, and a ⟨chartType⟩ chart draws none<br>Use true or false |
-| `data-chart-text-color` | Chart text colour must be a #rrggbb value |
-| `data-chart-y-max` | Use a number |
-| `data-chart-y-min` | Use a number |
-| `details` | A closed details element shows only its summary in a browser; its other content is kept here |
-| `display` | Inline flow is approximated as a block box |
-| `element` | A bar inside a line of text needs a box of its own, which a text run cannot carry: put it in its own block (a div, a flex row or an absolutely positioned box) to have it drawn<br>A form control keeps its text; the reader`s control box (border, fill, padding) is not reproduced<br>A video cannot be played in a static deck: its poster frame is drawn and the player itself is not<br>Element type has no native translation<br>Text directly inside a block that also has element children does not share a line box with them, so it is not translated: wrap it in an element ("⟨ownText(domNode).slice(0, 32)⟩") |
-| `filter` | No native spelling for ⟨entry.name⟩ on a picture: the image draws unfiltered for that function<br>⟨reason⟩ |
-| `flexWrap` | A wrapping column needs a definite height to break against<br>Every item of a wrapping column needs a declared width: a column takes its width from its items, and an auto width would be the item\u2019s max-content size<br>Only flex-wrap: wrap and nowrap are translated |
-| `float` | A block that follows a float is placed below it; the browser would wrap its lines beside the float<br>A floated box needs a declared width here: its shrink-to-fit width is not measured<br>Only float: left/right (and their inline-start/inline-end spellings) are laid out |
-| `fontVariant` | A table cell has no small-caps switch: the letters draw at their own size<br>Only small-caps has a native run property; this value has none<br>Small caps on an inline span is not carried: declare it on the block so the whole box can be patched |
-| `fontWeight` | A weight below 400 draws as regular: the format has bold or not, no light axis - name a Light family in font-family to get the cut<br>A weight between 501 and 599 draws as regular: no native spelling exists for intermediate weights |
-| `gridColumn` | Named grid lines and areas are not modelled; the item is auto-placed with its span width |
-| `gridTemplateAreas` | A named area has to cover one rectangle of whole cells and every row needs the same number of cells; this map has neither, so no item is placed by name<br>The map names more columns than the grid declares tracks; their columns would be sized by their content, which a declared width cannot do, so those items share the last one |
-| `href` | A link around a whole table cannot be drawn: the file format gives a table no click target, so its cells stay unlinked<br>A link around part of a cell cannot be drawn: a table cell has no runs, so linking it would make the whole cell clickable and the link is dropped<br>An in-page anchor has no slide to jump to in the deck; the link draws but does not navigate |
-| `inlineBox` | An inline element that paints a background or border has no native equivalent inside a text run: its text is kept and the paint is dropped |
-| `length` | This ⟨entry.property⟩ is not a length this shape can resolve, so the box falls back to the layout default instead of the declared value |
-| `listStyle` | Every marker draws as the native round bullet; the declared shape does not change it |
-| `listStyleImage` | A marker drawn from an image has no native spelling: the round bullet is used instead |
-| `margin` | An auto margin distributes the free space, which needs a declared width: this box hugs its text |
-| `maxHeight` | Clamping a container would need clipping, which native shapes cannot do |
-| `meter` | The gauge is drawn in the deck accent; the browser also tints it by where the value falls in the range, which this shape does not reproduce |
-| `name` | Unknown chart attribute; the styling it asks for is not applied |
-| `objectFit` | Unknown object-fit value: the picture is stretched to fill the box instead |
-| `objectPosition` | A length offset would push the picture out of its box; the file format cannot draw that gap, so the picture is cropped from the near edge<br>The offset is measured against the source's own size, and this picture's size cannot be read here, so the position is not applied |
-| `opacity` | opacity fades the whole subtree; only this box's own fill and text are faded, its children keep full opacity |
-| `outline` | A shape carries one line: the outline sits beside a border here, so the border is what draws |
-| `overflowWrap` | A word is wider than its box: the browser lets it stick out, a reader breaks it, so the box is laid out with the break |
-| `poster` | ⟨posterProblem⟩, so no poster frame is drawn and the video area stays empty |
-| `progress` | A progress with no value animates a highlight across its track: the slide draws the empty track and cannot animate |
-| `property` | A ::first-letter declaration that changes layout is not carried: the letter keeps its place in the line, and only its type is applied<br>CSS feature has no native translation<br>No native spelling for ⟨note⟩: the box falls back to the flex default, and the alignment the design asked for is not applied<br>No native spelling outside a picture, where filter becomes a colour transform<br>Only the default glyph behaviour (mixed) is drawn: eaVert keeps CJK upright and rotates Latin, and no native spelling rotates Latin upright<br>Only the first text-shadow layer is drawn<br>Property is outside the supported subset<br>The marker would sit inside the text line: native bullets always hang in the margin<br>⟨reason⟩ |
-| `reversed` | The native numbered list counts up; there is no reverse switch, so the numbering would read in the wrong order |
-| `rowspan` | A rowspan reaching past the last row is clipped to the rows that exist |
-| `ruby` | A reading cannot be placed above its base text in the file format; the reading is written inline after the base text |
-| `src` | ⟨unreadable⟩, so the box keeps its place and stays unpainted - check the source, or inline the image as a data URI |
-| `srcset` | The deck always draws the src image; the variants srcset offers are not consulted |
-| `svgPicture` | An SVG picture travels as a vector behind PowerPoint's svgBlip extension: PowerPoint 2016 and later draw it, and a reader without that extension shows a placeholder - export the icon as a PNG to be portable |
-| `textDecoration` | Overline has no native run property; a line above every wrapped line cannot be drawn |
-| `textDecorationColor` | The decoration keeps the text colour; the writer emits no underline fill |
-| `textDecorationThickness` | The decoration draws at the reader`s default stroke width |
-| `textEmphasis` | DrawingML has no emphasis mark: the dots above the characters are not drawn - use a bold or coloured run instead |
-| `textIndent` | A cell has no first-line indent: the line starts at the cell edge<br>A negative first-line indent (hanging indent) needs box insets we do not model<br>The native paragraph indent touches only the first line; each-line would indent every wrapped line, so no indent is drawn |
-| `textOverflow` | An ellipsis needs a single line: a wrapping block cannot be truncated without losing text<br>The box cuts this line at its edge; the deck keeps the words and a reader draws them past the box (⟨lineWidthIn.toFixed(2)⟩in of text in a ⟨contentWidth.toFixed(2)⟩in box)<br>The browser only ellipsizes a box that clips (overflow: hidden) |
-| `textShadow` | A shadow on cell text has no native spelling: the letters draw flat |
-| `textWrap` | Balanced line breaking needs the whole paragraph measured twice, which this shape does not do |
-| `transform` | rotate(), translate() and a uniform scale() have native answers; skew(), a non-uniform scale() and a non-centre transform-origin do not |
-| `transition` | The slide draws the end state; the animated journey between states is not drawn |
-| `WebkitBoxOrient` | A line count needs `-webkit-box-orient: vertical` |
-| `WebkitLineClamp` | A clamp counts wrapped lines, so it needs wrapping text<br>A clamp is only honoured on `display: -webkit-box` |
-| `whiteSpace` | A table cell has no wrap switch: the line may re-wrap inside its column<br>Line breaks are kept, but runs of spaces collapse to one, which ⟨whiteSpace⟩ preserves |
-| `wordBreak` | CJK text breaks between characters here; keep-all forbids exactly that break |
-| `wordSpacing` | A table cell cannot space its words apart: the space keeps its own width<br>Words keep their ordinary advance; a run has per-character spacing, not per-word |
-| `writingMode` | Vertical text needs a declared height: the box height is the line length, so it cannot be derived from the text<br>Vertical text needs ⟨columns⟩ column(s) (⟨requiredWidth.toFixed(2)⟩in) but the box is ⟨usableWidth.toFixed(2)⟩in wide; widen it or give the text more height<br>⟨value === 'vertical-lr' ? 'vertic…⟩ |
+| `engine/native_pptx.js:144` | Container elements must be resolved by the layout engine before serialization |
+| `engine/native_pptx.js:255` | Unsupported chart type: |
+| `engine/native_pptx.js:386` | Unable to locate the picture blip for a filter patch |
+| `engine/native_pptx.js:407` | Unable to locate the picture blip fill for an image crop patch |
+| `engine/native_pptx.js:416` | Unable to locate the picture geometry for an image effect patch |
+| `engine/native_pptx.js:442` | Image patch alignment mismatch on slide |
+| `engine/native_pptx.js:487` | Unable to locate the picture fill for a tile patch |
+| `engine/native_pptx.js:494` | Unable to read the picture frame for a tile patch |
+| `engine/native_pptx.js:519` | Tile patch alignment mismatch on slide |
+| `engine/native_pptx.js:530` | Tile patch frame mismatch on slide |
+| `engine/native_pptx.js:549` | Invalid deck spec:\n- |
+| `engine/native_pptx.js:644` | Gradient base transparency must be between 0 and 100 |
+| `engine/native_pptx.js:647` | Gradient fill requires at least two color stops |
+| `engine/native_pptx.js:649` | Gradient angle must be finite |
+| `engine/native_pptx.js:652` | Gradient stop |
+| `engine/native_pptx.js:655` | Gradient stop |
+| `engine/native_pptx.js:659` | Gradient stop |
+| `engine/native_pptx.js:687` | Gradient patch alignment mismatch on slide |
+| `engine/native_pptx.js:698` | Unable to locate solid shape fill for gradient on slide |
+| `engine/native_pptx.js:704` | Gradient patch count mismatch on slide |
+| `engine/native_pptx.js:742` | Unable to locate spPr for an inner shadow patch |
+| `engine/native_pptx.js:934` | Clip geometry patch alignment mismatch on slide |
+| `engine/native_pptx.js:939` | Clip geometry patch count mismatch on slide |
+| `engine/native_pptx.js:1015` | Small caps patch alignment mismatch on slide |
+| `engine/native_pptx.js:1020` | Small caps patch count mismatch on slide |
+| `engine/native_pptx.js:1053` | Text column patch alignment mismatch on slide |
+| `engine/native_pptx.js:1058` | Text column patch count mismatch on slide |
+| `engine/native_pptx.js:1234` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1240` | Cell bullet patch paragraph mismatch in |
+| `engine/native_pptx.js:1248` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1263` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1271` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1428` | Shape hyperlink patch found no relationships part for slide |
+| `engine/native_pptx.js:1452` | Shape hyperlink patch alignment mismatch on slide |
+| `engine/native_pptx.js:1457` | Shape hyperlink patch could not put a click on |
+| `engine/native_pptx.js:1504` | Cell bullet patch alignment mismatch on slide |
+| `engine/native_pptx.js:1522` | Cell bullet patch alignment mismatch on slide |
+| `engine/native_pptx.js:1629` | List numbering patch alignment mismatch on slide |
+| `engine/native_pptx.js:1683` | Marker colour patch alignment mismatch on slide |
+| `engine/native_pptx.js:1759` | Text indent patch alignment mismatch on slide |
+| `engine/native_pptx.js:1765` | Text indent patch count mismatch on slide |
+| `engine/native_pptx.js:1895` | Data-label position patch alignment mismatch: the Deck Spec has |
+| `engine/native_pptx.js:1912` | Data-label position patch alignment mismatch on chart part |
+| `engine/native_pptx.js:2027` | Series line style patch: the series holds no c:spPr to carry a line |
+| `engine/native_pptx.js:2081` | Series line style patch alignment mismatch: |
+| `engine/native_pptx.js:2122` | Series line style patch alignment mismatch: the Deck Spec has |
+| `engine/native_pptx.js:2134` | Series line style patch alignment mismatch on chart part |
+| `engine/native_pptx.js:2138` | Series line style patch: |
+| `engine/native_pptx.js:2342` | Title placeholder patch alignment mismatch on slide |
+| `engine/native_pptx.js:2346` | Title placeholder patch missed on slide |
+| `engine/native_pptx.js:2358` | outputPath is required |
+| `engine/image_fit.js:83` | Image focus object requires finite x and y in the 0..1 range |
+| `engine/image_fit.js:87` | Image focus must be a preset name or an { x, y } object |
+| `engine/image_fit.js:172` | A tile needs a positive cell size and a finite picture frame |
+| `engine/image_fit.js:218` | Image crop. |
+| `engine/image_fit.js:222` | Image crop left + right must be less than 1 |
+| `engine/image_fit.js:223` | Image crop top + bottom must be less than 1 |
+| `engine/image_fit.js:230` | Image zoom must be a finite number greater than or equal to 1 |
+| `engine/image_fit.js:296` | Image element requires a finite |
+| `engine/image_fit.js:298` | Image element requires a positive w and h for fit resolution |
+| `core/units.js:13` | Unsupported unit: |
+| `core/units.js:20` | pageSize must be wide, standard, or { width, height } in inches |
+| `cli.js:65` | unknown option |
+| `cli.js:81` | spec not found: |
+| `cli.js:88` | spec is not valid JSON ( |
+| `cli.js:92` | spec must be .json, .js or .cjs (got |
 
-`⟨expr⟩` is a part of the sentence the engine fills in at run time: the expression inside the brackets is what it substitutes, so it can be found in `pipeline/analyzer.js`. The wording around it is fixed.
+## A spec is rejected before anything is written
 
-<!-- generated:end -->
+`core/schema.js` holds **110 conditions** that reject a spec, and every message names
+the path that broke (`slides[2].elements[7].w must be a finite non-negative number`). They are
+counted here rather than quoted: the text is built per element, so a table of it would be a
+table of the code. `node cli.js <spec> --check` prints the message for the spec in hand.
 
-## Gaps that are not a missing feature
+The three value sets worth knowing before writing a spec: element types `text, shape, line,
+image, table, chart, container`; image fits `stretch, fill, none, cover, contain, crop,
+scale-down`; page sizes `wide`, `standard`, or `{ width, height }` in inches.
 
-These are places where DrawingML has no object to draw, so no amount of work closes them. They
-are named in the report like everything else, and each one lists what a design can do instead.
+## Layout checks on the deck that was written
 
-| CSS | why no native object exists | what to write instead |
-| --- | --- | --- |
-| `float` with text wrapping around it | DrawingML text flows in a box, not around shapes; a
-slide has no float context | absolute positioning, or a two-column flex row |
-| `border-collapse: collapse` where neighbours disagree | a table cell has four independent
-borders; a shared edge with two different widths is not representable | give both cells the same
-border, or let the engine draw the first one and name the conflict |
-| `background-clip: text` | a fill is painted behind glyphs, never inside their outline | a
-picture fill on the words, or a solid colour |
-| `clip-path: circle(30% at 70% 30%)` | a custom geometry is a polygon in shape coordinates; an
-off-centre circle would need a curved path with an arbitrary arc | a centred radius (a native
-ellipse), or a pre-cropped image |
-| `image-rendering: pixelated` | picture resampling is a reader setting | scale the asset |
-| a form control's own box | the reader paints its own border, fill and padding around a widget |
-a styled container that looks like a control |
-| a `.ttc` or `.otf` face | the embedding part carries TrueType data only | convert to `.ttf`, or
-let the deck reference the font by name |
-| `text-decoration-style: wavy` on a *table cell* | the cell run mapper takes one underline per
-cell, and small caps and per-cell decorations are named once per table | set it on the cell text
-|
+`cli.js` runs these on the boxes the writer really used, prints them on stderr, and fails the
+run with `--strict`.
 
-## Gaps this machine cannot adjudicate
+| code | meaning |
+| --- | --- |
+| `OUT_OF_BOUNDS` | an element extends past the page; a decorative shape may bleed, a text box may not |
+| `TEXT_OVERFLOW_RISK` | the measured text needs more height than its box has |
+| `TEXT_OVERLAP` | two text boxes intersect |
 
-Three questions need a real Microsoft PowerPoint, and no reader available here can answer them:
+## Only PowerPoint can adjudicate
 
-1. **Line spacing convention.** `a:lnSpc/a:spcPct` is a percentage of the line's *natural*
-   height, and CSS `line-height: 1.25` is 1.25 *em*. LibreOffice and WPS both read it the CSS
-   way and agree with each other to the pixel on 60 fingerprint pages, but PowerPoint may
-   interpret the same number differently. The engine writes what it measured and reports nothing;
-   if a real PowerPoint disagrees, this line is where to start.
-2. **Repair behaviour.** Three readers open every deck without a complaint - LibreOffice, WPS,
-   and python-pptx (which round-trips the package) - and the OOXML audit checks child order,
-   table grids, enumerations and fonts against the schema. Only PowerPoint itself decides whether
-   it offers to repair a file it can parse.
-3. **Tile rendering.** `a:tile` is standard DrawingML and the numbers are verified by
-   construction - `sx`/`sy` are the cell as a fraction of the frame, `tx`/`ty` the pattern's
-   origin in cells - but LibreOffice's and WPS's importers ignore the tile attributes and
-   draw the first cell stretched across the frame. The deck is right (`pipeline-crop.html`
-   names this on its own page); whether PowerPoint agrees is not measurable here.
+These are written correctly as far as this machine can tell, and the readers here disagree with
+PowerPoint (or with each other) about them. They stay here rather than in a fixture, because a
+fixture would record one reader's opinion as if it were a fact.
 
-## What is *not* on this list
+- **`a:tile` picture and shape fills.** A tiled fill is written as a blip fill with
+  `<a:tile tx="…" ty="…"/>`. LibreOffice and WPS both ignore the tile rectangle and draw one
+  stretched cell of the image: a dotted-pattern probe came back as a single dot per panel. PowerPoint
+  is expected to tile it. The element is correct; the picture on this machine is not evidence.
+- **`a:spcPct` line spacing.** Line-spacing multiples are written as a percentage of a line
+  (`val="118000"` for 1.18). A reader computes that percentage against its own font metrics, so the
+  same deck can be one line taller in one reader and one line shorter in another. PowerPoint's
+  convention is the one we target.
+- **Repair prompts.** A part that a reader tolerates can still make PowerPoint offer to "repair" the
+  presentation. `verify_native_ooxml.py` checks the schema of everything written and
+  `corrupt_anchor.py` proves those checks fire on a deliberately damaged part, but neither can say
+  what PowerPoint's repair logic will decide.
+- **A dashed bar has no visible outline.** A per-series `<a:prstDash>` lands on the series'
+  `<a:ln>`, and a DrawingML line with no fill draws nothing. Hand-adding a colour to that line made
+  the dash appear in a render, which proves the element is right and that inventing an outline colour
+  would be a design change rather than a fix.
 
-Everything else the HTML can say, the deck draws: flex and grid tracks, columns, insets and
-margins with CSS's quirks, single-side borders (including along a rounded corner), gradients,
-shadows, transforms, tables with merged cells, native charts with declared data, and every
-typographic property listed in `SKILL.md` with its own gate.
+## Named by the tool rather than drawn
+
+- A picture the writer cannot read is reported in `droppedPictures` and omitted; the tool
+  prints how many, so the run is not silent about it.
+- A per-series marker rhythm, per-run `text-transform`, right-to-left runs and a list marker
+  inside a table cell are not implemented; they are listed here instead of half-drawn.

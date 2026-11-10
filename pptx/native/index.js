@@ -13,13 +13,6 @@ const { resolveTheme, themeColor } = require('./themes/design_system');
 const components = require('./components');
 const templates = require('./templates');
 
-// The HTML -> Native pipeline loads lazily: a hand-authored deck never pays for
-// the parser, and requiring it eagerly here could form a cycle.
-let pipelineModule = null;
-const pipelineApi = () => {
-  if (!pipelineModule) pipelineModule = require('./pipeline');
-  return pipelineModule;
-};
 
 module.exports = {
   buildPresentation, generatePptx, validateDeck, normalizePageSize, toInches,
@@ -29,7 +22,5 @@ module.exports = {
   resolveImageGeometry: imageFit.resolveImageGeometry,
   readImageSize: imageFit.readImageSize,
   computeCoverCrop: imageFit.computeCoverCrop,
-  computeContainBox: imageFit.computeContainBox,
-  convertHtml: (html, options) => pipelineApi().convertHtml(html, options),
-  convertFile: (file, options) => pipelineApi().convertFile(file, options)
+  computeContainBox: imageFit.computeContainBox
 };

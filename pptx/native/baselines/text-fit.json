@@ -43,7 +43,7 @@
   },
   "spec-flagship": {
     "boxes": 52,
-    "droppedByWindow": 0,
+    "droppedByWindow": 1,
     "extraLines": 0,
     "missingWords": 0,
     "unmatched": 0

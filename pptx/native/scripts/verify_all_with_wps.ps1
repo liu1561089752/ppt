@@ -2,12 +2,12 @@
 #
 # Microsoft PowerPoint is not installed here, so this is WPS Presentation through its
 # PowerPoint-compatible COM surface - a different reader from LibreOffice, not a
-# substitute for the real thing. See docs in pipeline/README.md.
+# substitute for the real thing. See native/README.md.
 #
-# Usage: pwsh -NoProfile -File scripts/verify_all_with_wps.ps1 [-Directory pipeline-converted]
+# Usage: pwsh -NoProfile -File scripts/verify_all_with_wps.ps1 [-Directory <folder of decks>]
 
 param(
-  [string]$Directory = 'pipeline-converted',
+  [string]$Directory = '.',
   [string[]]$Also = @()
 )
 
