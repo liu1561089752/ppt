@@ -5654,6 +5654,27 @@ test('a border side is a border: the content starts inside it', () => {
   assert.ok(Math.abs(card.w * 96 - 300) < 0.5, 'the border box keeps its declared width');
 });
 
+test('the catalogue of what the engine cannot draw matches the code', () => {
+  // The contract is that every difference the drawing cannot express is named. That claim is easy
+  // to erode - a new report appears and the document drifts - so LIMITS.md is generated from the
+  // analyzer and this test is the drift gate. `npm run limits:update` is the way to bless it.
+  const { collect, prose } = require('../native/scripts/limits_report');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const entries = collect();
+  assert.ok(entries.length > 100, 'the analyzer reports on more than a hundred sites, got ' + entries.length);
+  const properties = new Set(entries.map((entry) => entry.property));
+  assert.ok(properties.size > 50, 'spread over more than fifty properties, got ' + properties.size);
+  ['float', 'borderCollapse', 'clipPath', 'objectFit', 'data-chart', 'element'].forEach((property) => {
+    assert.ok(properties.has(property), 'the catalogue knows about ' + property);
+  });
+  assert.ok(entries.every((entry) => entry.property && entry.property.length), 'every site names its property');
+
+  const file = path.join(__dirname, '..', 'native', 'LIMITS.md');
+  const written = fs.readFileSync(file, 'utf8').replace(/\r\n/gu, '\n').trimEnd();
+  assert.equal(written, prose().trimEnd(), 'LIMITS.md is stale: run `npm run limits:update`');
+});
+
 test('a picture with no alt text carries no alt text', async () => {
   // The writer fills `descr` with the image source when no alt is given, which put a build
   // machine's path into the alt text a screen reader reads out. A picture with no description
