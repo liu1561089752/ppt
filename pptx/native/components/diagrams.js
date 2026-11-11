@@ -41,9 +41,11 @@ function processFlow(steps, options = {}) {
       fontSize: titleSize, bold: true,
       color: item.color || theme.colors.primary, align: 'center'
     });
-    if (item.description) {
+    // `body` is the name every other component uses; `description` is what this one grew up with.
+    // Reading only one of them dropped the text without a warning.
+    if (item.description || item.body) {
       elements.push({
-        type: 'text', text: item.description,
+        type: 'text', text: item.description || item.body,
         x: nodeX + 0.12, y: bodyY, w: nodeWidth - 0.24, h: bodyHeight,
         fontFace: theme.fonts.body,
         fontSize: options.bodySize || theme.sizes.caption, color: theme.colors.muted,
@@ -123,9 +125,9 @@ function timeline(items, options = {}) {
       fontFace: theme.fonts.heading,
       fontSize: headingSize, bold: true, color: theme.colors.primary, align: 'center'
     });
-    if (point.description) {
+    if (point.description || point.body) {
       elements.push({
-        type: 'text', text: point.description,
+        type: 'text', text: point.description || point.body,
         x: boxLeft(pointX, 1.8), y: bodyY, w: 1.8, h: bodyHeight,
         fontFace: theme.fonts.body,
         fontSize: theme.sizes.caption, color: theme.colors.muted, align: 'center', valign: 'top'

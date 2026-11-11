@@ -42,6 +42,10 @@
     {
       "name": "color-showcase",
       "spec": "native_color_showcase.spec.js"
+    },
+    {
+      "name": "tea-photo",
+      "spec": "native_tea_deck.js"
     }
   ]
 }

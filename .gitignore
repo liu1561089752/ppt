@@ -24,3 +24,6 @@ pptx/native/render-showcase/
 pptx/native/acceptance/*.pptx
 pptx/native/acceptance/*.pdf
 pptx/native/acceptance/*.png
+pptx/native/tea/*.pptx
+pptx/native/tea/*.pdf
+pptx/native/tea/*.png
