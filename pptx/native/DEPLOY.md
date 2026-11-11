@@ -14,7 +14,7 @@ writing this file; everything else is a claim about the code.
 | Validate without writing | `--check` — cheap enough for a "will this spec build?" endpoint |
 | Page-level editing | one module per page + `render_check.py --slides 3,7-9`, so a fix re-renders 3 pages instead of 25 |
 | Deterministic layout | same spec + same fonts ⇒ same boxes; the `.pptx` bytes differ per build (docProps timestamps), so compare `report.json`, not hashes |
-| Cheap build, expensive render | **measured**: 25 pages build in 1.15 s at 32 MB peak RSS; LibreOffice render 9–14 s and 11.8 MB of artifacts (2.9 MB pptx, 2.5 MB pdf, 25 PNGs) |
+| Cheap build, expensive render | **measured on this machine, 2026**: a 25-page deck builds in 3.0 s (5 615 real font measurements), a 21-page picture deck in 3.4 s (six photographs to read and embed); LibreOffice render is the expensive half at 16 s for 25 pages. Budget the render queue, not the build. |
 
 ## Blocking issues found while reviewing it for deployment — all fixed here
 

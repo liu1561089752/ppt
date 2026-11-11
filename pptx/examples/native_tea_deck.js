@@ -59,7 +59,9 @@ function photo(options) {
     type: 'image',
     path: assets + options.file,
     fit: 'cover',
-    altText: options.alt
+    altText: options.alt,
+    // The credit travels with the picture, so the credits page is generated rather than retyped.
+    credit: options.credit
   }, options.geometry || {});
 }
 
@@ -75,7 +77,7 @@ function cover() {
   return {
     background: theme.colors.primary,
     elements: [
-      photo({ file: 'garden-hangzhou.jpg', alt: '杭州茶园', geometry: { x: 0, y: 0, w: pageWidth, h: pageHeight } }),
+      photo({ file: 'garden-hangzhou.jpg', credit: { subject: '茶园小径（杭州）', author: 'Takashishin', licence: 'CC BY 4.0' }, alt: '杭州茶园', geometry: { x: 0, y: 0, w: pageWidth, h: pageHeight } }),
       scrim({ w: 9.4, angle: 0 }),
       {
         type: 'shape', x: marginX, y: 1.62, w: 0.12, h: 0.5, fill: theme.colors.accent, line: false
@@ -210,7 +212,7 @@ function pickingPage() {
   return {
     background: theme.colors.primary,
     elements: [
-      photo({ file: 'zhejiang-picking.jpg', alt: '浙江茶园采茶', geometry: { x: 0, y: 0, w: pageWidth, h: 4.5 } }),
+      photo({ file: 'zhejiang-picking.jpg', credit: { subject: '浙江茶区采茶（1987）', author: 'Matti & Keti Lorenz', licence: 'CC BY-SA 4.0' }, alt: '浙江茶园采茶', geometry: { x: 0, y: 0, w: pageWidth, h: 4.5 } }),
       scrim({ x: 0, y: 3.3, w: pageWidth, h: 4.2, angle: 90, to: 0.5 }),
       {
         type: 'text', text: '采茶的人拿的是鲜叶价，不是茶的价', x: marginX, y: 4.62, w: 11.6,
@@ -284,35 +286,21 @@ function sixSteps() {
 
 // ── 09 cost of one jin ────────────────────────────────────────────────────
 function processingCost() {
-  return {
-    background: theme.colors.background,
-    elements: [
-      components.title('一斤商品茶的钱，花在哪儿', {
-        theme, x: marginX, y: 0.52, w: 11.9, fontSize: theme.sizes.title
-      }),
-      components.divider({ theme, x: marginX + 0.02, y: 1.26, w: 11.85 }),
-      {
-        type: 'table', x: marginX, y: 1.62, w: contentWidth, h: 2.75,
-        rows: [
-          [
-            { text: '环节', options: { bold: true, color: theme.colors.background, fill: { color: theme.colors.primary } } },
-            { text: '占成本', options: { bold: true, color: theme.colors.background, fill: { color: theme.colors.primary } } },
-            { text: '对价格的影响', options: { bold: true, color: theme.colors.background, fill: { color: theme.colors.primary } } }
-          ],
-          [{ text: '鲜叶采摘' }, { text: '约 30%–40%' }, { text: '人工与时令决定，无法标准化' }],
-          [{ text: '初制加工' }, { text: '约 15%–20%' }, { text: '能耗与师傅经验，名优茶更高' }],
-          [{ text: '拣剔与拼配' }, { text: '约 8%–12%' }, { text: '决定稳定性，是品牌的基础' }],
-          [{ text: '包装与检测' }, { text: '约 10%–15%' }, { text: '礼盒能翻倍，简装不能' }],
-          [{ text: '损耗与账期' }, { text: '约 8%–12%' }, { text: '季节性强，压货成本高' }]
-        ],
-        options: { colW: [2.7, 2.3, 6.4], fontSize: 12, valign: 'middle' }
-      },
-      components.paragraph('前两行决定了这斤茶的底价，后三行决定了它能卖多贵——所以「好喝」只是入场券。', {
-        theme, x: marginX + 0.04, y: 4.6, w: contentWidth - 0.1, fontSize: theme.sizes.body + 1
-      }),
-      footline('口径：区间来自产区公开报道与行业访谈的交叉估计，用于比较结构，不代表单一厂商账面数据。')
-    ]
-  };
+  return templates.table({
+    theme,
+    title: '一斤商品茶的钱，花在哪儿',
+    rows: [
+      ['环节', '占成本', '对价格的影响'],
+      ['鲜叶采摘', '约 30%–40%', '人工与时令决定，无法标准化'],
+      ['初制加工', '约 15%–20%', '能耗与师傅经验，名优茶更高'],
+      ['拣剔与拼配', '约 8%–12%', '决定稳定性，是品牌的基础'],
+      ['包装与检测', '约 10%–15%', '礼盒能翻倍，简装不能'],
+      ['损耗与账期', '约 8%–12%', '季节性强，压货成本高']
+    ],
+    colWidths: [2.7, 2.3, 6.4],
+    takeaway: '前两行决定了这斤茶的底价，后三行决定了它能卖多贵——所以「好喝」只是入场券。',
+    source: '口径：区间来自产区公开报道与行业访谈的交叉估计，用于比较结构，不代表单一厂商账面数据。'
+  });
 }
 
 // ── 10 photograph: dry leaves ─────────────────────────────────────────────
@@ -320,7 +308,7 @@ function dryLeafPage() {
   return {
     background: theme.colors.background,
     elements: [
-      photo({ file: 'longjing-dry.jpg', alt: '龙井干茶', geometry: { x: 7.05, y: 0, w: 6.28, h: pageHeight } }),
+      photo({ file: 'longjing-dry.jpg', credit: { subject: '龙井干茶', author: 'Romain Guy', licence: 'CC BY-SA 2.0' }, alt: '龙井干茶', geometry: { x: 7.05, y: 0, w: 6.28, h: pageHeight } }),
       {
         type: 'shape', x: marginX, y: 1.12, w: 0.12, h: 0.46, fill: theme.colors.accent, line: false
       },
@@ -425,7 +413,7 @@ function marketPage() {
   return {
     background: theme.colors.background,
     elements: [
-      photo({ file: 'kunming-market.jpg', alt: '昆明茶叶市场', geometry: { x: 0, y: 0, w: 6.35, h: pageHeight } }),
+      photo({ file: 'kunming-market.jpg', credit: { subject: '昆明茶叶市场', author: 'Steve Evans', licence: 'CC BY 3.0' }, alt: '昆明茶叶市场', geometry: { x: 0, y: 0, w: 6.35, h: pageHeight } }),
       {
         type: 'shape', x: 6.35, y: 0, w: 0.06, h: pageHeight, fill: theme.colors.accent, line: false
       },
@@ -536,7 +524,7 @@ function cupPage() {
   return {
     background: theme.colors.primary,
     elements: [
-      photo({ file: 'bubble-tea.jpg', alt: '一杯奶茶', geometry: { x: 8.15, y: 0, w: 5.18, h: pageHeight } }),
+      photo({ file: 'bubble-tea.jpg', credit: { subject: '珍珠奶茶', author: 'sam651030', licence: 'CC0' }, alt: '一杯奶茶', geometry: { x: 8.15, y: 0, w: 5.18, h: pageHeight } }),
       scrim({ x: 7.0, y: 0, w: 2.2, h: pageHeight, angle: 0, to: 0.5 }),
       {
         type: 'shape', x: marginX, y: 1.42, w: 0.12, h: 0.46, fill: theme.colors.accent, line: false
@@ -605,7 +593,7 @@ function closing() {
   return {
     background: theme.colors.primary,
     elements: [
-      photo({ file: 'wuyishan.jpg', alt: '武夷山茶园', geometry: { x: 7.25, y: 0, w: 6.08, h: pageHeight } }),
+      photo({ file: 'wuyishan.jpg', credit: { subject: '武夷山茶园', author: 'Lennartbj', licence: 'CC BY-SA 4.0' }, alt: '武夷山茶园', geometry: { x: 7.25, y: 0, w: 6.08, h: pageHeight } }),
       {
         type: 'text', text: 'NEXT / 下一步', x: marginX, y: 2.02, w: 5.4, h: 0.3,
         fontSize: theme.sizes.caption, bold: true, charSpacing: 2, color: theme.colors.accent
@@ -627,54 +615,28 @@ function closing() {
   };
 }
 
-// ── 21 image credits ──────────────────────────────────────────────────────
-function credits() {
-  const rows = [
-    ['garden-hangzhou.jpg', '茶园小径（杭州）', 'Takashishin', 'CC BY 4.0'],
-    ['zhejiang-picking.jpg', '浙江茶区采茶（1987）', 'Matti & Keti Lorenz', 'CC BY-SA 4.0'],
-    ['longjing-dry.jpg', '龙井干茶', 'Romain Guy', 'CC BY-SA 2.0'],
-    ['kunming-market.jpg', '昆明茶叶市场', 'Steve Evans', 'CC BY 3.0'],
-    ['bubble-tea.jpg', '珍珠奶茶', 'sam651030', 'CC0'],
-    ['wuyishan.jpg', '武夷山茶园', 'Lennartbj', 'CC BY-SA 4.0']
-  ];
-  return {
-    background: theme.colors.surface,
-    elements: [
-      components.title('图片来源与许可', {
-        theme, x: marginX, y: 0.62, w: 11.9, fontSize: theme.sizes.heading + 6
-      }),
-      components.paragraph('全部图片来自 Wikimedia Commons，按各自许可使用；本页保留作者署名与许可类型，'
-        + '转发或商用前请按原许可核对。', {
-        theme, x: marginX, y: 1.42, w: contentWidth - 0.2, fontSize: theme.sizes.body
-      }),
-      {
-        type: 'table', x: marginX, y: 2.1, w: contentWidth, h: 2.4,
-        rows: [
-          [
-            { text: '文件', options: { bold: true, color: theme.colors.background, fill: { color: theme.colors.primary } } },
-            { text: '内容', options: { bold: true, color: theme.colors.background, fill: { color: theme.colors.primary } } },
-            { text: '作者', options: { bold: true, color: theme.colors.background, fill: { color: theme.colors.primary } } },
-            { text: '许可', options: { bold: true, color: theme.colors.background, fill: { color: theme.colors.primary } } }
-          ]
-        ].concat(rows.map((row) => row.map((cell) => ({ text: cell })))),
-        options: { colW: [3.4, 3.9, 3.0, 1.6], fontSize: 10, valign: 'middle' }
-      },
-      footline('数据来源：中国茶叶流通协会（2025-03-26、2026-04-29）、中商产业研究院（2026-01-29）、公开报道（2025—2026）。')
-    ]
-  };
+// ── 21 image credits: derived, not retyped ────────────────────────────────
+function creditsPage(slides) {
+  return templates.credits({
+    theme,
+    images: components.collectImageCredits(slides),
+    source: '数据来源：中国茶叶流通协会（2025-03-26、2026-04-29）、中商产业研究院（2026-01-29）、公开报道（2025—2026）。'
+  });
 }
+
+const body = [
+  cover(), summary(), sectionLeaf(), leafNumbers(), priceLadder(), pickingPage(),
+  sectionProcess(), sixSteps(), processingCost(), dryLeafPage(),
+  sectionTrade(), twoRoads(), volumePrice(), marketPage(), definitionsPage(),
+  sectionCup(), cupBreakdown(), cupPage(), fiveCalls(), closing()
+];
 
 const deck = {
   title: '一片叶子的三次加价',
   language: 'zh-CN',
   pageSize: 'wide',
   theme,
-  slides: [
-    cover(), summary(), sectionLeaf(), leafNumbers(), priceLadder(), pickingPage(),
-    sectionProcess(), sixSteps(), processingCost(), dryLeafPage(),
-    sectionTrade(), twoRoads(), volumePrice(), marketPage(), definitionsPage(),
-    sectionCup(), cupBreakdown(), cupPage(), fiveCalls(), closing(), credits()
-  ]
+  slides: body.concat([creditsPage(body)])
 };
 
 module.exports = { deck };

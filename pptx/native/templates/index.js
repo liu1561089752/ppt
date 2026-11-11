@@ -20,16 +20,23 @@ function titleBox(title, width, fontSize, minimum, theme) {
 
 function cover(options = {}) {
   const theme = resolveTheme(options.theme);
+  const title = options.title || '演示文稿标题';
+  const titleSize = options.titleSize || theme.sizes.title;
+  const subtitleSize = options.subtitleSize || theme.sizes.body;
   return {
     background: options.background || theme.colors.background,
     elements: [
-      components.title(options.title || '演示文稿标题', {
-        theme, x: theme.layouts.pageMarginX, y: 1.6, w: 11.6, h: 1.0,
-        fontSize: options.titleSize || theme.sizes.title, color: options.titleColor || theme.colors.primary
+      // Panel heights stay at their designed minimum but grow if the copy needs it, so a long cover
+      // title wraps into a taller box instead of overflowing the one it was given.
+      components.title(title, {
+        theme, x: theme.layouts.pageMarginX, y: 1.6, w: 11.6,
+        h: Math.max(1.0, components.measuredHeight(title, 11.6, titleSize, theme)),
+        fontSize: titleSize, color: options.titleColor || theme.colors.primary
       }),
       components.paragraph(options.subtitle || '副标题 / 日期 / 汇报对象', {
-        theme, x: theme.layouts.pageMarginX + 0.05, y: 2.85, w: 10.8, h: 0.7,
-        fontSize: options.subtitleSize || theme.sizes.body, color: options.subtitleColor || theme.colors.muted
+        theme, x: theme.layouts.pageMarginX + 0.05, y: 2.85, w: 10.8,
+        h: Math.max(0.7, components.measuredHeight(options.subtitle || '副标题 / 日期 / 汇报对象', 10.8, subtitleSize, theme)),
+        fontSize: subtitleSize, color: options.subtitleColor || theme.colors.muted
       }),
       components.divider({ theme, x: theme.layouts.pageMarginX + 0.05, y: 4.0, w: 2.0, color: options.accent || theme.colors.accent, width: 2.4 })
     ]
@@ -326,4 +333,106 @@ function editorial(options = {}) {
   return { background: options.background || theme.colors.background, elements };
 }
 
-module.exports = { cover, content, kpi, comparison, process, hero, section, editorial, quote, bento };
+/**
+ * A table page: heading, rule, the table itself, an optional takeaway under it, an optional source line.
+ *
+ * The two table pages in the first acceptance deck were hand-built, and both guessed the table's height
+ * from the number of rows - which left a hole under the table when the rows were short and, worse, could
+ * squeeze a long cell. Row heights here come from measuring every cell against its own column width.
+ */
+function table(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const marginX = theme.layouts.pageMarginX;
+  const width = options.w || 13.333 - marginX * 2;
+  const rows = Array.isArray(options.rows) ? options.rows : [];
+  const columns = rows.reduce((most, row) => Math.max(most, Array.isArray(row) ? row.length : 0), 0);
+  if (!columns) throw new Error('templates.table() needs at least one row');
+  const lineHeight = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
+  const fontSize = options.fontSize || theme.sizes.body - 2;
+  const asked = Array.isArray(options.colWidths) && options.colWidths.length === columns
+    ? options.colWidths
+    : new Array(columns).fill(1);
+  const total = asked.reduce((sum, value) => sum + value, 0);
+  const colWidths = asked.map((value) => value * width / total);
+  const cellText = (cell) => {
+    if (cell === undefined || cell === null) return '';
+    if (typeof cell === 'object') return String(cell.text === undefined ? '' : cell.text);
+    return String(cell);
+  };
+  const rowHeights = rows.map((row) => {
+    const tallest = colWidths.reduce((height, columnWidth, index) => Math.max(
+      height, estimateTextHeight(cellText(row[index]), columnWidth - 0.18, fontSize, { lineHeight, safetyFactor: 0.9 })
+    ), 0);
+    return Math.max(0.36, tallest + 0.18);
+  });
+  const styledRows = rows.map((row, rowIndex) => Array.from({ length: columns }, (unused, columnIndex) => {
+    const cell = row[columnIndex];
+    const base = (cell && typeof cell === 'object')
+      ? Object.assign({}, cell, { options: Object.assign({}, cell.options) })
+      : { text: cellText(cell), options: {} };
+    if (rowIndex === 0 && options.header !== false) {
+      base.options.bold = base.options.bold === undefined ? true : base.options.bold;
+      base.options.color = base.options.color || theme.colors.background;
+      base.options.fill = base.options.fill || { color: theme.colors.primary };
+    }
+    return base;
+  }));
+
+  const title = options.title || '表格页';
+  const titleSize = options.titleSize || theme.sizes.title;
+  const headingHeight = titleBox(title, 11.9, titleSize, 0.6, theme);
+  const elements = [
+    components.title(title, { theme, x: marginX, y: 0.52, w: 11.9, h: headingHeight, fontSize: titleSize }),
+    components.divider({ theme, x: marginX + 0.02, y: 0.52 + headingHeight + 0.08, w: 11.85 })
+  ];
+  let cursor = 0.52 + headingHeight + 0.32;
+  if (options.intro) {
+    const introHeight = components.measuredHeight(options.intro, width - 0.2, theme.sizes.body, theme);
+    elements.push(components.paragraph(options.intro, {
+      theme, x: marginX + 0.04, y: cursor, w: width - 0.1, h: introHeight,
+      fontSize: theme.sizes.body, color: theme.colors.muted
+    }));
+    cursor += introHeight + 0.22;
+  }
+  const tableHeight = rowHeights.reduce((sum, height) => sum + height, 0);
+  elements.push({
+    type: 'table', x: marginX, y: cursor, w: width, h: tableHeight,
+    rows: styledRows,
+    options: { colW: colWidths, fontSize, valign: 'middle', rowH: rowHeights }
+  });
+  cursor += tableHeight + (options.takeaway ? 0.3 : 0);
+  if (options.takeaway) {
+    elements.push(components.paragraph(options.takeaway, {
+      theme, x: marginX + 0.04, y: cursor, w: width - 0.1, fontSize: theme.sizes.body + 1,
+      color: theme.colors.foreground
+    }));
+  }
+  if (options.source) {
+    elements.push(components.paragraph(options.source, {
+      theme, x: marginX + 0.04, y: options.sourceY || 6.66, w: width - 0.1, h: 0.28,
+      fontSize: theme.sizes.micro, color: theme.colors.muted
+    }));
+  }
+  return { background: options.background || theme.colors.background, elements };
+}
+
+/** The credits page: derived from the images' own `credit` fields, never retyped. */
+function credits(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const images = Array.isArray(options.images) ? options.images : [];
+  return table({
+    theme,
+    title: options.title || '图片来源与许可',
+    intro: options.intro === undefined
+      ? '全部图片按各自许可使用；本页由图片自身的 credit 字段生成，作者与许可随图更新。'
+      : options.intro,
+    rows: components.creditRows(images),
+    colWidths: [3.3, 3.9, 3.1, 1.7],
+    fontSize: options.fontSize || theme.sizes.caption,
+    takeaway: options.takeaway,
+    source: options.source,
+    background: options.background || theme.colors.surface
+  });
+}
+
+module.exports = { cover, content, kpi, comparison, process, hero, section, editorial, quote, bento, table, credits };

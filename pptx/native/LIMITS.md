@@ -78,7 +78,7 @@ it did write.
 
 ## A spec is rejected before anything is written
 
-`core/schema.js` holds **110 conditions** that reject a spec, and every message names
+`core/schema.js` holds **113 conditions** that reject a spec, and every message names
 the path that broke (`slides[2].elements[7].w must be a finite non-negative number`). They are
 counted here rather than quoted: the text is built per element, so a table of it would be a
 table of the code. `node cli.js <spec> --check` prints the message for the spec in hand.

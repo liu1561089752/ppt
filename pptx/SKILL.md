@@ -487,11 +487,22 @@ NATIVE QUALITY BAR (applies to every page)
     – **Four colours, used for one job each**: `primary` for titles and fields, `accent` for numbers and
       rules only, `foreground` for body, `muted` for captions and sources. Do not invent a fifth.
     – **A photo page needs a scrim** when text sits on it: a `shape` in the background colour at
-      55–75% `transparency` between the picture and the text, or the text goes on a solid panel.
+      55–75% `transparency` between the picture and the text, or the text goes on a solid panel. A
+      gradient scrim is better than a flat one when the picture has to survive; check the render for a
+      visible edge where the scrim's rectangle ends, especially over a bright sky.
+    – **Every picture is credited on the page it appears on, and in a credits page.** Put the credit on
+      the `image` element itself (`credit: { subject, author, licence }`) and generate the last page with
+      `templates.credits({ images: components.collectImageCredits(deck.slides) })`. Retyping credits is how
+      two pages end up naming two different authors for the same photograph.
   • **Exactly the chosen palette on every page.** Every colour comes from `theme.colors.*`; background/primary/accent must match `slides_brief.json.design.palette`.
   • **Every text colour on every background passes WCAG AA (4.5:1).** Test the accent on the background before you use it for body copy; accents are for rules, labels and figures, not for paragraphs.
   • **Native objects only.** Text is a `text` element (one run per style, `a:t` in the file). A table is `a:tbl`. A chart is a chart part with an embedded workbook. A picture is a `p` picture with real bytes. **A page rendered as an image is a failed page** — no screenshot of a layout, no base64, no "just this once".
   • **Typography comes from the theme's scale.** display / title / heading / body / caption / micro only; no invented sizes, no font below `caption`.
+  • **One magnitude per chart.** A bar chart can hold 26.6 and 135; it cannot hold 26.6 and 3600 - the
+    small bars disappear and the page lies by omission. If the range is wider than ~50x, keep the
+    comparable values in the chart and give the outlier its own numeral block, labelled as derived. And
+    never truncate an axis silently: an axis starting at 0.40 for values of 0.42-0.46 turns eight per
+    cent into a cliff.
   • **Fill the page, not the top half of it.** A render of six template pages showed every block
     finishing around y = 4.5 in on a 7.5 in canvas: the bottom third was empty on pages that had
     nothing wrong with them. Every content page needs something that reaches the lower band — a
@@ -504,7 +515,7 @@ NATIVE QUALITY BAR (applies to every page)
   cover's metadata line (「数据截至 2026 年 10 月」) and keep any forward-looking number labelled as a
   forecast on the page where it appears — never mixed into a row of measured facts.
 • **Never fabricate.** No invented statistics, no invented URLs, no invented image paths. A number you did not find is a number you do not show.
-  • **Photos are Unsplash, downloaded, attributed.** Credit line on the page (`Photo: <name> / Unsplash`), full credit in `slides_brief.json.credits`.
+  • **Photos are Unsplash (or Wikimedia Commons), downloaded, attributed.** Credit line on the page (`Photo: <name> / Unsplash`), full credit on a generated `templates.credits()` page,ief.json.credits`.
   • **No icon font, no SVG flowchart, no connector spaghetti, no code-drawn map, no decorative timeline
     drawn from a hundred hairlines.** The icon font is the one place this engine deliberately departs
     from the HTML-era look, and the reason is not taste: a Material Icons glyph is a character in a font
@@ -733,13 +744,31 @@ Exit codes: `0` written · `1` spec rejected (nothing written) · `2` writer fai
 ### Design system
 
 `templates.*` describes a whole page from content fields: `cover`, `section`, `hero`, `content`, `editorial`,
-`kpi`, `comparison`, `process`, `quote`, `bento`.
+`kpi`, `comparison`, `process`, `quote`, `bento`, `table`, `credits`.
 `components.*` gives the pieces: `title`, `paragraph`, `divider`, `kpiCard`, `infoCard`, `bento`,
-`processFlow`, `timeline`.
+`processFlow`, `timeline`, `collectImageCredits`, `creditRows`, `measuredHeight`.
 
 The catalogue maps onto them directly: cover → `cover()`, section header → `section()`, key message →
 `editorial()`, KPI row → `kpi()`, split text+image → `hero()`, comparison → `comparison()`, quote →
-`quote()`, bento grid → `bento()`, closing → `section()` with a different field.
+`quote()`, bento grid → `bento()`, stats table → `table()`, closing → `section()` with a different field.
+
+Rules these templates already follow, so you do not have to re-derive them:
+
+- **Boxes are measured, not guessed.** `components.title()` returns the height its own text needs (the layout's
+  measurement, 90% wrap width), and `comparison`, `bento`, `table` size their parts from their copy. Omitting `h`
+  on a text element is the normal case: the layout then measures it. Pass `h` only when you want a fixed panel.
+- **`bento({ rowHeight })` is a minimum, not a height.** Rows grow to their tallest cell, so a grid of two-line cards
+  is not a grid of half-empty boxes.
+- **`comparison({ cardHeight, takeaway })`** - cards follow the copy; adding `takeaway` puts one conclusion line under
+  them, which is what stops a sized-card page from leaving its lower half blank.
+- **`processFlow` and `timeline` read `description` or `body`.** Both work; write `body` and stop thinking about it.
+- **A picture carries its own credit.** Give the `image` element `credit: { subject, author, licence }` and build the
+  last page with `templates.credits({ images: components.collectImageCredits(deck.slides) })`. A picture without a
+  licence and an author does not go in the deck; the schema refuses an empty credit rather than printing a blank line.
+- **One order of magnitude per chart.** A chart can show 26.6 against 135; it cannot show 26.6 against 3600 - the small
+  bars vanish and the page lies by omission. When the range is more than ~50x, put the comparable values in the chart
+  and the outlier in a numeral block, and say it is a derived figure. Never truncate an axis silently either: a bar
+  chart whose axis starts at 0.40 for values of 0.42-0.46 exaggerates eight per cent into a cliff.
 
 ```js
 const { templates, components, resolveTheme } = require('<engine>');
@@ -747,14 +776,16 @@ const page = templates.kpi({ theme, title: '…', items: [{ label, value, note }
 page.elements.push(...components.infoCard({ theme, x, y, w, h, title, body }));
 ```
 
-The worked example is `<engine>/../examples/native_deck_spec.js` (six pages, four templates, a native chart, a table, notes) and, for a pure-JSON deck, `<engine>/../examples/native-cover.spec.json`.
+The worked examples are `<engine>/../examples/native_deck_spec.js` (six pages, four templates, a native chart, a table) and
+`<engine>/../examples/native_tea_deck.js` (21 pages with six photographs, credits derived from the images), plus the two
+acceptance decks in `<engine>/acceptance/` and `<engine>/tea/`. A picture deck, note, is built the same way; notes) and, for a pure-JSON deck, `<engine>/../examples/native-cover.spec.json`.
 
 ### Gates you can run yourself
 
 | gate | command |
 | --- | --- |
 | unit + lint | `npm test` (inside `<engine>`) |
-| visual golden (7 decks / 35 pages) | `python <engine>/scripts/visual_golden.py` |
+| visual golden (10 decks / 65 pages) | `python <engine>/scripts/visual_golden.py` |
 | text fit (measured vs drawn) | `python <engine>/scripts/check_all_text_fit.py` |
 | stress (N generated pages) | `node <engine>/scripts/stress_spec.js --slides 40 --seed 7` |
 | OOXML integrity | `python <engine>/scripts/verify_native_ooxml.py <deck.pptx>` (`uneven_tables` counts tables whose column widths differ — a design feature, not a defect; `invalid_enums` and `integrity_problems` must both be 0) |

@@ -109,10 +109,11 @@ touching the disk).
 Two authoring styles, same output:
 
 * **JSON** — the portable contract. A spec that needs no code is one a human can review in a diff.
-* **JS** — `templates.*` describes a whole page from content fields (`hero`, `content`, `kpi`,
-  `comparison`, `process`, `editorial`), `components.*` gives the pieces (`title`, `paragraph`,
-  `divider`, `kpiCard`, `infoCard`, `processFlow`, `timeline`). Use it when a deck is generated from
-  data, or when you want the design system to own the geometry.
+* **JS** — `templates.*` describes a whole page from content fields (`cover`, `section`, `hero`,
+  `content`, `editorial`, `kpi`, `comparison`, `process`, `quote`, `bento`, `table`, `credits`),
+  `components.*` gives the pieces (`title`, `paragraph`, `divider`, `kpiCard`, `infoCard`, `bento`,
+  `processFlow`, `timeline`) and `collectImageCredits` reads a deck's pictures for the credits page.
+  Use it when a deck is generated from data, or when you want the design system to own the geometry.
 
 `../examples/native_deck_spec.js` is the worked example: six pages, four templates, a native chart,
 a table, speaker notes.
@@ -140,7 +141,7 @@ node ../cli.js deck.spec.json --strict                        # bounds / overflo
 
 `audit_deck.js` reports one line per slide (text shapes, characters, pictures with crop and
 coverage, charts, tables). A page degraded to a screenshot shows up there as `picCoverage=1.00` and
-zero text shapes; across the seven decks in `golden/specs.json` that number is 0 on all 35 pages.
+zero text shapes; across the ten decks in `golden/specs.json` that number is 0 on all 65 pages.
 
 ## What the writer cannot do
 

@@ -387,6 +387,22 @@ function validateElement(p, element, errors) {
         errors.push(p + '.transparency must be between 0 and 100');
       }
       if (element.type === 'image') {
+        // A credit is worth nothing unless it names its author and its licence, so an empty one is an
+        // error rather than a silently blank line on the credits page.
+        if (element.credit !== undefined) {
+          if (!element.credit || typeof element.credit !== 'object' || Array.isArray(element.credit)) {
+            errors.push(p + '.credit must be an object');
+          } else {
+            ['author', 'licence'].forEach((key) => {
+              if (typeof element.credit[key] !== 'string' || !element.credit[key].trim()) {
+                errors.push(p + '.credit.' + key + ' must be a non-empty string');
+              }
+            });
+            if (element.credit.subject !== undefined && typeof element.credit.subject !== 'string') {
+              errors.push(p + '.credit.subject must be a string');
+            }
+          }
+        }
         validateImageFit(p, element, errors);
         validateShadowOptions(p, element, errors);
         validateShadowOptions(p, element, errors, 'innerShadow');

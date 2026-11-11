@@ -33,7 +33,7 @@ imported the pipeline, so the cut left no seam — that was verified by grep bef
 
 | gate | before | after |
 | --- | --- | --- |
-| visual golden | 21 HTML fixtures converted by `pipeline/cli.js`, 69 pages | `golden/specs.json`: 7 native decks, 35 pages, built by `cli.js` or by the demo script itself |
+| visual golden | 21 HTML fixtures converted by `pipeline/cli.js`, 69 pages | `golden/specs.json`: 10 native decks, 65 pages, built by `cli.js` or by the demo script itself |
 | text fit | same fixtures, 677 boxes | same corpus, 262 boxes, 0 needing an extra line, 0 lost words |
 | stress | HTML archetypes converted (40 / 120 / 300 pages) | `scripts/stress_spec.js`: N pages straight from the engine API, 0.7 s / 1.7 s / 4.0 s of a 180 s budget, zero warnings at 40 / 120 / 300 pages and seeds 1/3/7/13/21/99 |
 | OOXML integrity | the converted stress deck | the same check on `stress40/120/300.pptx`: 0 integrity problems |
