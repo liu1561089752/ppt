@@ -84,6 +84,52 @@ test('the size scale has the two ends the original declared', () => {
   assert.ok(Number.isFinite(sizes.micro) && sizes.micro < sizes.caption, 'micro sits below caption');
 });
 
+test('a bento grid keeps one gutter and never overlaps two cards', () => {
+  const theme = preset('sand');
+  const elements = components.bento({
+    theme, x: 0.9, w: 11.5, y: 1.8, columns: 3, rowHeight: 1.7, gap: 0.25,
+    items: [
+      { kicker: '01', title: 'A', body: 'a', columns: 2 },
+      { kicker: '02', title: 'B', body: 'b' },
+      { kicker: '03', title: 'C', body: 'c' },
+      { kicker: '04', title: 'D', body: 'd', columns: 2 }
+    ]
+  });
+  const cards = elements.filter((element) => element.type === 'shape');
+  assert.equal(cards.length, 4, 'one card per item');
+  const cellWidth = (11.5 - 0.25 * 2) / 3;
+  assert.ok(Math.abs(cards[0].w - (cellWidth * 2 + 0.25)) < 1e-9, 'a 2-column card spans one gutter too');
+  assert.ok(Math.abs(cards[1].x - (0.9 + 2 * (cellWidth + 0.25))) < 1e-9, 'the second card starts after two columns');
+  assert.ok(cards[2].y > cards[0].y + cards[0].h, 'the second row starts below the first');
+  for (let a = 0; a < cards.length; a += 1) {
+    for (let b = a + 1; b < cards.length; b += 1) {
+      const first = cards[a];
+      const second = cards[b];
+      const apart = first.x + first.w <= second.x + 1e-9 || second.x + second.w <= first.x + 1e-9
+        || first.y + first.h <= second.y + 1e-9 || second.y + second.h <= first.y + 1e-9;
+      assert.ok(apart, 'cards ' + a + ' and ' + b + ' overlap');
+    }
+  }
+});
+
+test('a quote on a colour field is written in the ink that field can hold', () => {
+  const theme = preset('sand');
+  const page = templates.quote({
+    theme, quote: '把车卖出去不难。', attribution: '某人', role: '访谈', background: theme.colors.primary
+  });
+  const sentence = page.elements.find((element) => element.type === 'text' && element.fontSize > 20);
+  assert.equal(sentence.color, theme.colors.background);
+  assert.ok(contrastRatio(sentence.color, page.background) >= 4.5);
+});
+
+test('the quote mark is decoration and can be switched off', () => {
+  const theme = preset('ink');
+  const texts = (options) => templates.quote(Object.assign({ theme, quote: 'x' }, options))
+    .elements.filter((element) => element.type === 'text').length;
+  assert.equal(texts({}), 2, 'mark + sentence');
+  assert.equal(texts({ mark: false }), 1, 'sentence only');
+});
+
 test('an unknown preset is refused, not silently defaulted', () => {
   assert.throws(() => preset('neon'), /unknown preset "neon"/u);
 });

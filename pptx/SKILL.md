@@ -732,8 +732,14 @@ Exit codes: `0` written · `1` spec rejected (nothing written) · `2` writer fai
 
 ### Design system
 
-`templates.*` describes a whole page from content fields: `cover`, `hero`, `content`, `kpi`, `comparison`, `process`, `editorial`.
-`components.*` gives the pieces: `title`, `paragraph`, `divider`, `kpiCard`, `infoCard`, `processFlow`, `timeline`.
+`templates.*` describes a whole page from content fields: `cover`, `section`, `hero`, `content`, `editorial`,
+`kpi`, `comparison`, `process`, `quote`, `bento`.
+`components.*` gives the pieces: `title`, `paragraph`, `divider`, `kpiCard`, `infoCard`, `bento`,
+`processFlow`, `timeline`.
+
+The catalogue maps onto them directly: cover → `cover()`, section header → `section()`, key message →
+`editorial()`, KPI row → `kpi()`, split text+image → `hero()`, comparison → `comparison()`, quote →
+`quote()`, bento grid → `bento()`, closing → `section()` with a different field.
 
 ```js
 const { templates, components, resolveTheme } = require('<engine>');

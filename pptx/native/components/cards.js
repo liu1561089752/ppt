@@ -62,4 +62,102 @@ function infoCard(options = {}) {
   ];
 }
 
-module.exports = { kpiCard, infoCard };
+/**
+ * A bento grid: cards of differing span, laid out on an integer grid.
+ *
+ * The original HTML skill's layout catalogue named "bento grid" and got it from CSS grid for free.
+ * Natively there is no grid, so every deck that wanted one placed its own cards and redid the
+ * arithmetic - which is how two decks end up with different gutters and a ragged right edge. This is
+ * that arithmetic, once, with the rows tracked so a 2-row card pushes the next one down instead of
+ * overlapping it.
+ *
+ * `items`: `[{ title, body, kicker, columns: 1..4, rows: 1..3, fill, titleColor, bodyColor }]`
+ * Placement is row-major: each item takes the first free slot where its span fits.
+ */
+function bento(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const items = Array.isArray(options.items) ? options.items : [];
+  const columns = Math.max(1, Math.min(4, options.columns || 3));
+  const gap = Number.isFinite(options.gap) ? options.gap : theme.layouts.columnGap;
+  const rowHeight = Number.isFinite(options.rowHeight) ? options.rowHeight : 1.9;
+  const x0 = Number.isFinite(options.x) ? options.x : theme.layouts.pageMarginX;
+  const totalWidth = Number.isFinite(options.w) ? options.w : 13.333 - x0 * 2;
+  const y0 = Number.isFinite(options.y) ? options.y : 1.75;
+  const cellWidth = (totalWidth - gap * (columns - 1)) / columns;
+  const inset = theme.spacing.md;
+  const lineHeight = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
+  const measure = (value, width, size) =>
+    estimateTextHeight(String(value), width, size, { lineHeight, safetyFactor: 0.9 });
+  const occupied = [];
+  const isFree = (row, column, spanColumns, spanRows) => {
+    for (let r = row; r < row + spanRows; r += 1) {
+      const cells = occupied[r];
+      if (!cells) continue;
+      for (let c = column; c < column + spanColumns; c += 1) if (cells.has(c)) return false;
+    }
+    return true;
+  };
+  const take = (row, column, spanColumns, spanRows) => {
+    for (let r = row; r < row + spanRows; r += 1) {
+      if (!occupied[r]) occupied[r] = new Set();
+      for (let c = column; c < column + spanColumns; c += 1) occupied[r].add(c);
+    }
+  };
+  const elements = [];
+  items.forEach((item) => {
+    const spanColumns = Math.max(1, Math.min(columns, item.columns || 1));
+    const spanRows = Math.max(1, Math.min(3, item.rows || 1));
+    let row = 0;
+    let column = 0;
+    let placed = false;
+    while (!placed) {
+      for (column = 0; column + spanColumns <= columns; column += 1) {
+        if (isFree(row, column, spanColumns, spanRows)) { placed = true; break; }
+      }
+      if (!placed) row += 1;
+    }
+    take(row, column, spanColumns, spanRows);
+    const x = x0 + column * (cellWidth + gap);
+    const y = y0 + row * (rowHeight + gap);
+    const w = cellWidth * spanColumns + gap * (spanColumns - 1);
+    const h = rowHeight * spanRows + gap * (spanRows - 1);
+    elements.push({
+      type: 'shape', x, y, w, h, radius: theme.radii.medium,
+      fill: item.fill || theme.colors.surface,
+      lineColor: item.border || theme.colors.border,
+      lineWidth: theme.effects.cardBorder ? 0.8 : 0
+    });
+    const innerWidth = w - inset * 2;
+    let cursor = y + 0.17;
+    if (item.kicker) {
+      const kickerHeight = measure(item.kicker, innerWidth, theme.sizes.caption);
+      elements.push({
+        type: 'text', text: String(item.kicker), x: x + inset, y: cursor, w: innerWidth, h: kickerHeight,
+        fontSize: theme.sizes.caption, bold: true, charSpacing: 1.4,
+        color: item.kickerColor || theme.colors.accent
+      });
+      cursor += kickerHeight + 0.05;
+    }
+    if (item.title !== undefined && item.title !== null) {
+      const titleSize = item.titleSize || theme.sizes.heading;
+      const titleHeight = Math.max(0.3, measure(item.title, innerWidth, titleSize));
+      elements.push({
+        type: 'text', text: String(item.title), x: x + inset, y: cursor, w: innerWidth, h: titleHeight,
+        fontSize: titleSize, bold: true, color: item.titleColor || theme.colors.primary
+      });
+      cursor += titleHeight + 0.06;
+    }
+    if (item.body !== undefined && item.body !== null) {
+      const bodySize = item.bodySize || theme.sizes.body;
+      // The remaining height, so text that does not fit warns instead of running out of the card.
+      const bodyHeight = Math.max(0.3, y + h - inset * 0.75 - cursor);
+      elements.push({
+        type: 'text', text: String(item.body), x: x + inset, y: cursor, w: innerWidth, h: bodyHeight,
+        fontSize: bodySize, color: item.bodyColor || theme.colors.foreground, valign: 'top'
+      });
+    }
+  });
+  return elements;
+}
+
+module.exports = { kpiCard, infoCard, bento };

@@ -152,6 +152,35 @@ function chartPage() {
   };
 }
 
+function quotePage() {
+  return templates.quote({
+    theme,
+    quote: '把车卖出去不难，难的是卖完之后还站在那儿。',
+    attribution: '林郁',
+    role: '某车企海外事业部负责人 · 访谈',
+    background: theme.colors.primary
+  });
+}
+
+function bentoPage() {
+  return templates.bento({
+    theme,
+    title: '五件事同时发生',
+    grid: {
+      columns: 3,
+      rowHeight: 1.72,
+      gap: 0.26,
+      items: [
+        { kicker: '01', title: '关税', body: '欧盟反补贴税落地，终端价格上调 8%–12%。', columns: 2 },
+        { kicker: '02', title: '本地化', body: '泰国与巴西工厂投产，交付周期缩到三周。' },
+        { kicker: '03', title: '渠道', body: '经销商转直营，单店月销翻倍。' },
+        { kicker: '04', title: '补能', body: '中东与东南亚的充电网络开始并网。', columns: 2 }
+      ]
+    },
+    footnote: '网格由 components.bento 计算：列宽 =（版心 − 间隙 ×（列数 − 1））/ 列数。'
+  });
+}
+
 function closing() {
   return templates.section({
     theme,
@@ -166,5 +195,5 @@ module.exports = {
   language: 'zh-CN',
   pageSize: 'wide',
   theme,
-  slides: [cover(), tintedPanel(), divider(), kpiRow(), chartPage(), closing()]
+  slides: [cover(), tintedPanel(), divider(), kpiRow(), chartPage(), quotePage(), bentoPage(), closing()]
 };

@@ -53,8 +53,8 @@
 | CSS `filter`（灰度/亮度） | `imageFilter {grayscale, brightness, contrast, opacity}` + `patchImageEffects` | ✅ |
 | 图片压暗层（文字压在图上） | `shape` + `transparency` 叠层；SKILL 已写成规则 | ✅ |
 | 版式：封面 / 章节扉页 / 关键结论 / KPI 行 / 图文分栏 / 时间线 / 对比 / 收尾 | `templates.{cover, section, editorial, kpi, hero, comparison, process}` + `components.{kpiCard, infoCard, processFlow, timeline}` | ✅ 9/10 |
-| 版式：**bento 网格** | 只能拿 `infoCard` 手拼，没有网格 helper | ⚠️ |
-| 版式：**引用页** | 无模板 | ❌ |
+| 版式：**bento 网格** | `components.bento()`（按 span 排布、跟踪占位、不重叠）+ `templates.bento()` 整页 | ✅ |
+| 版式：**引用页** | `templates.quote()`：整版色块可选、墨色按对比度选、引号可关 | ✅ |
 | Material Icons 图标字体 | 无；SKILL 写死 "No icons font" | ✋（理由未写明，见 §4） |
 | 数字用数字字体 | `fonts.numeric` → `kpiCard` 的值、以及任何声明 `fontFace: theme.fonts.numeric` 的数字 | ✅（本轮补的，见 §4） |
 | 讲稿 `<aside data-notes>` | `slide.notes` → `a:notesSlide`，`python-pptx` 实测读回原文 | ✅ |
@@ -77,13 +77,14 @@
   封面一句话/关键数字）与 `micro`（9pt，轴标、角标、来源行），SKILL 的"只用主题字号"规则同步更新。
   既有 deck 一页没动（新槽没有消费者，`visual_golden` 9/42 页 look unchanged）。
 
-**还开着的：**
+- ✅ **quote 与 bento 两个版式**（本轮补的）：原 catalog 明列、原生缺失的两项。`templates.quote()` 把
+  墨色按对比度选（引用页常放在色块上），引号是可选装饰；`components.bento()` 按 `columns`/`rows` span
+  排布、记录占用、算出列宽与间隙，`templates.bento()` 再套一层标题与脚注。四条新测试盯着它们：
+  网格不重叠、二列卡片的宽度含一条间隙、引用页在色块上用 background 色写字、引号可以关掉。
+- ✅ **图标的放弃写上了理由**（原本只有一句 "No icons font"）：图标字体把观感绑在查看端机器装的字体上，
+  我们不嵌字体，缺字体就是豆腐块，而且要等 deck 投到别人屏幕上才暴露。
 
-1. **引用页模板（quote）** 与 **bento 网格 helper**。前者是原 catalog 明列的版式；后者原形态靠 CSS grid，
-   我们只能拿 `infoCard` 手拼，代价是每份 deck 重算一遍坐标。
-2. **图标的放弃没有写理由。** SKILL 只写 "No icons font"。真实理由是：图标字体把观感绑在客户端装的字体上，
-   与"可编辑 + 可验证"冲突（我们不嵌字体，缺字体就是豆腐块）。要把这条理由写进 SKILL，让后来的人知道
-   这是取舍而不是遗漏。
+**还开着的：** 无。原 catalog 的版式已全部有对应实现；剩下的是内容质量，不是能力缺口。
 
 ## 5. 复验（改完怎么确认）
 

@@ -197,6 +197,96 @@ function section(options = {}) {
   return { background: field, elements };
 }
 
+/**
+ * A quote page: one sentence big enough to be read from the back of the room, its attribution under it.
+ *
+ * The original catalogue listed "quote" and got a large block quotation by writing a big <blockquote> in
+ * CSS. Natively the only interesting decision is the ink: a quote is often set on a colour field, so the
+ * text colour is chosen by contrast against whatever field it lands on, not assumed to be foreground.
+ * The opening mark is a glyph the theme already owns - no icon font, see the quality bar.
+ */
+function quote(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const field = options.background || theme.colors.background;
+  const ink = options.color
+    || (contrastRatio(theme.colors.foreground, field) >= 4.5 ? theme.colors.foreground : theme.colors.background);
+  const markInk = contrastRatio(theme.colors.accent, field) >= 3 ? theme.colors.accent : ink;
+  const marginX = theme.layouts.pageMarginX + 0.04;
+  const width = options.w || 10.4;
+  const quoteSize = options.quoteSize || Math.max(theme.sizes.heading, Math.round(theme.sizes.title * 0.88));
+  const lineSpacing = options.lineSpacingMultiple || 1.32;
+  const text = options.quote || '这一页只放一句话。';
+  const measure = { lineHeight: lineSpacing, safetyFactor: 0.9, fontFace: theme.fonts.heading };
+  const quoteHeight = estimateTextHeight(text, width, quoteSize, measure);
+  // A quote page is a poster: the block sits in the middle of the field, not at the top of it. The
+  // height is measured, so a two-line quote still ends up centred instead of drifting up the page.
+  const blockHeight = quoteHeight + 0.66 + (options.attribution ? 0.38 : 0) + (options.role ? 0.3 : 0);
+  const pageHeight = options.pageHeight || 7.5;
+  const y = options.y || Math.max(1.7, (pageHeight - blockHeight) / 2);
+  const elements = [];
+  // The mark is decoration, and optional: pass `mark: false` when the copy already carries 「」.
+  if (options.mark !== false) {
+    const markSize = Math.round(quoteSize * 2.2);
+    // Measured like every other text box (theme leading included), so the glyph cannot outgrow its box.
+    const markHeight = estimateTextHeight('“', 1.5, markSize, {
+      lineHeight: theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22, safetyFactor: 0.9
+    });
+    elements.push({
+      type: 'text', text: '“', x: marginX - 0.12, y: Math.max(0.42, y - markHeight - 0.06), w: 1.5, h: markHeight,
+      fontSize: markSize, bold: true, color: markInk, transparency: 68
+    });
+  }
+  elements.push({
+    type: 'text', text, x: marginX, y, w: width, h: quoteHeight, valign: 'top',
+    fontSize: quoteSize, lineSpacingMultiple: lineSpacing, color: ink, fontFace: theme.fonts.heading
+  });
+  elements.push({ type: 'shape', x: marginX, y: y + quoteHeight + 0.44, w: 1.15, h: 0.05, fill: markInk, line: false });
+  let cursor = y + quoteHeight + 0.66;
+  if (options.attribution) {
+    elements.push({
+      type: 'text', text: String(options.attribution), x: marginX, y: cursor, w: width, h: 0.34,
+      fontSize: theme.sizes.body + 1, bold: true, color: ink
+    });
+    cursor += 0.38;
+  }
+  if (options.role) {
+    elements.push({
+      type: 'text', text: String(options.role), x: marginX, y: cursor, w: width, h: 0.3,
+      fontSize: theme.sizes.caption + 2, color: ink, transparency: 24
+    });
+  }
+  return { background: field, elements };
+}
+
+/**
+ * A bento grid page: title, rule, then the grid from `components.bento`.
+ *
+ * `options.grid` is passed straight through (`{ items, columns, rowHeight, gap }`), which is what keeps
+ * the two halves of this page - the heading and the grid - from needing two different sets of numbers.
+ */
+function bento(options = {}) {
+  const theme = resolveTheme(options.theme);
+  const marginX = theme.layouts.pageMarginX;
+  const titleSize = options.titleSize || theme.sizes.title;
+  const title = options.title || '网格版式';
+  const headingHeight = titleBox(title, 11.9, titleSize, 0.6, theme);
+  const elements = [
+    components.title(title, { theme, x: marginX, y: 0.52, w: 11.9, h: headingHeight, fontSize: titleSize }),
+    components.divider({ theme, x: marginX + 0.02, y: 0.52 + headingHeight + 0.08, w: 11.85 })
+  ];
+  const grid = Object.assign({
+    theme, x: marginX, w: 13.333 - marginX * 2, y: 0.52 + headingHeight + 0.3
+  }, options.grid || {});
+  elements.push(...components.bento(grid));
+  if (options.footnote) {
+    elements.push(components.paragraph(options.footnote, {
+      theme, x: marginX + 0.04, y: options.footnoteY || 6.55, w: 11.6, h: 0.32,
+      fontSize: theme.sizes.caption, color: theme.colors.muted
+    }));
+  }
+  return { background: options.background || theme.colors.background, elements };
+}
+
 function editorial(options = {}) {
   const theme = resolveTheme(options.theme);
   const margin = theme.layouts.pageMarginX;
@@ -230,4 +320,4 @@ function editorial(options = {}) {
   return { background: options.background || theme.colors.background, elements };
 }
 
-module.exports = { cover, content, kpi, comparison, process, hero, section, editorial };
+module.exports = { cover, content, kpi, comparison, process, hero, section, editorial, quote, bento };
