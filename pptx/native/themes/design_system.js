@@ -46,4 +46,28 @@ function themeColor(theme, name, fallback) {
   return String(resolved.colors[name] || fallback || resolved.colors.foreground).replace(/^#/, '').toUpperCase();
 }
 
-module.exports = { resolveTheme, themeColor, mergeObject };
+function relativeLuminance(hex) {
+  const clean = String(hex || '').replace(/^#/u, '');
+  const channels = [0, 2, 4].map((offset) => parseInt(clean.slice(offset, offset + 2), 16) / 255);
+  const linear = channels.map((value) => (value <= 0.03928
+    ? value / 12.92
+    : Math.pow((value + 0.055) / 1.055, 2.4)));
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+/**
+ * WCAG 2.1 contrast ratio between two colours given as hex (with or without `#`).
+ *
+ * A template that paints a colour field has to choose its ink at runtime, and `options.titleColor ||
+ * white` is how a dark title ends up on a dark field. This is the measurement the skill tells a writer
+ * to make by hand, in one line.
+ */
+function contrastRatio(a, b) {
+  const first = relativeLuminance(a);
+  const second = relativeLuminance(b);
+  const lighter = Math.max(first, second);
+  const darker = Math.min(first, second);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+module.exports = { resolveTheme, themeColor, mergeObject, contrastRatio };

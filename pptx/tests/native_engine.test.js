@@ -1084,7 +1084,7 @@ test('every spec the gates photograph is a spec that builds', () => {
   assert.ok(manifest.decks.length >= 5, 'the corpus has decks: ' + manifest.decks.length);
   const listed = new Set(manifest.decks.map((entry) => entry.spec).filter(Boolean));
   const specsOnDisk = fs.readdirSync(path.join(__dirname, '..', 'examples'))
-    .filter((name) => /^native.*\.spec\.json$/u.test(name) || name === 'native_deck_spec.js')
+    .filter((name) => /^native.*\.spec\.(json|js)$/u.test(name) || name === 'native_deck_spec.js')
     .map((name) => name);
   specsOnDisk.forEach((name) => {
     assert.ok(listed.has(name), 'the corpus builds ' + name + ' (add it to golden/specs.json)');

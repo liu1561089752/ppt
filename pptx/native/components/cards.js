@@ -19,9 +19,13 @@ function kpiCard(options = {}) {
   // Three boxes stacked, each as tall as its own text. A fixed 0.25in label held two lines of
   // caption at 10pt and clipped the third; a note box pinned to the card's bottom had the same
   // problem. Both were invisible until a stress deck wrote longer labels than the fixtures did.
-  const labelHeight = Math.max(0.25, estimateTextHeight(label, innerWidth, theme.sizes.caption));
-  const valueHeight = Math.max(0.58, estimateTextHeight(value, innerWidth, valueSize));
-  const noteHeight = note === null ? 0 : Math.max(0.24, estimateTextHeight(note, innerWidth, 9));
+  // Measured with the line spacing the layout will draw with: a theme that loosens leading
+  // (`lineSpacingMultiple: 1.3` in every colour preset) needs more room than the 1.18 default the
+  // estimate falls back to, and a 34 pt value in a "0.58 in" box overflowed by 0.04 in.
+  const measure = { lineHeight: theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple };
+  const labelHeight = Math.max(0.25, estimateTextHeight(label, innerWidth, theme.sizes.caption, measure));
+  const valueHeight = Math.max(0.58, estimateTextHeight(value, innerWidth, valueSize, measure));
+  const noteHeight = note === null ? 0 : Math.max(0.24, estimateTextHeight(note, innerWidth, 9, measure));
   const labelY = y + 0.16;
   const valueY = labelY + labelHeight + 0.06;
   // The note keeps its place at the bottom of the card when the content fits above it, which is

@@ -38,6 +38,10 @@
     {
       "name": "deploy-smoke",
       "spec": "native-deploy-smoke.spec.json"
+    },
+    {
+      "name": "color-showcase",
+      "spec": "native_color_showcase.spec.js"
     }
   ]
 }

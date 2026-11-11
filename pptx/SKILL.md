@@ -131,6 +131,15 @@ Important constraints when constructing the actual `AskUserQuestion` calls:
   • **Think carefully before asking.** Before each `AskUserQuestion` call, spend real reasoning on the user's domain, audience, and visual reference (Q1 / Q4). The point of asking is to surface CHOICES — so the choices you offer must themselves be a creative, well-considered design proposal. Generic "Light / Dark / Other" is a failure mode.
   • **Each option must be a concrete creative direction**, not a category label. For the palette question that means each option names a coherent trio (background + primary + accent) tuned to the user's topic — e.g. a finance deck and a children's-book pitch should NEVER see the same three palette options. Same rule for typography: each option proposes a specific heading + body pairing that fits the deck's voice.
   • **Mark your recommendation.** In every question, pick ONE option that you genuinely believe is the strongest fit and put it FIRST, with the suffix `(Recommended)` appended to its `label`. Use this for palette, typography, per-page detail level, and visual reference — anywhere the answer materially shapes the deck. Do NOT mark more than one option as recommended per question.
+  • **A palette option is a colour decision, not a "clean white" decision.** Every option's `background`
+    must be a *tinted* ground — a paper tone, a mist tone, a deep field — never `FFFFFF` or the value you
+    would call "white". A deck on a white ground with white cards is the single most common way a
+    generated deck looks unfinished, and it is the default a writer falls into when nothing forces a
+    choice. Offer three *different* grounds (e.g. warm sand / cool mist / deep ink), and mark one
+    recommended.
+  • **Check each option can hold a colour field.** The `primary` (or `accent`) will fill whole pages —
+    a cover, every section divider — with the `background` colour as its ink. So `background` and
+    `primary` must be far apart: contrast ≥ 4.5:1. A trio where both are light cannot produce a cover.
   • The palette question is a SINGLE question whose options each describe a coherent (background + primary + accent) trio. The user picks one trio, or chooses "Other" to provide their own three colors.
 
 How to dispatch the questions:
@@ -200,6 +209,25 @@ After research, commit the deck design and page briefs to disk so the build stag
 
 1. `<work_dir>/deck/theme.js` — the deck-wide design, the analogue of v1.0's `global.css`. Every page imports it; **no page redefines a colour, a font size or the palette**. It is a plain module so the engine can read it and the sub-agents can `require` it:
 
+   Three rules, and they are not stylistic preferences:
+   • `background` is **not** white and not near-white — the page has to be a colour.
+   • `surface` (cards, tables, panels) must differ visibly from `background`, or a card reads as a hole.
+   • every text colour clears 4.5:1 on both, and `background` clears 4.5:1 on `primary` (that is the
+     cover's title on the colour field).
+
+   Start from a preset and override what the deck needs:
+
+   ```js
+   'use strict';
+   const { preset } = require('<engine>/themes/presets');   // 'ink' | 'sand' | 'sage' | 'clay'
+
+   module.exports = preset('sand', {
+     fonts: { heading: 'Source Han Sans SC', body: 'Source Han Sans SC', cjk: 'Source Han Sans SC' }
+   });
+   ```
+
+   Or write the tokens yourself, keeping the same rules:
+
    ```js
    'use strict';
    const { resolveTheme } = require('<engine>/themes/design_system');
@@ -207,13 +235,13 @@ After research, commit the deck design and page briefs to disk so the build stag
    module.exports = resolveTheme({
      name: 'the-deck',
      colors: {
-       background: 'F7F5F1',   // hex without '#'
-       surface: 'FFFFFF',
-       foreground: '1F2421',
-       primary: '183B3A',
-       accent: 'D36B45',
-       muted: '6B7470',
-       border: 'DCE2DE'
+       background: 'F2E8D9',   // hex without '#' - a paper tone, NOT FFFFFF
+       surface: 'FFFCF6',      // cards: close to the ground, visibly not the ground
+       foreground: '2B2118',
+       primary: '4E3A26',      // fills covers and section pages
+       accent: 'B4552B',       // numbers and rules only
+       muted: '75634E',
+       border: 'E1D2BC'
      },
      fonts: { heading: 'Source Han Sans SC', body: 'Source Han Sans SC' },
      sizes: { title: 34, heading: 20, body: 14, caption: 10 },   // points
@@ -441,6 +469,20 @@ NATIVE QUALITY BAR (applies to every page)
 
   • **Exact canvas: 13.333 × 7.5 in** (`pageSize: 'wide'`). Nothing outside it; `--strict` must pass.
   • **Real content density: every page carries 60–120 words of substantive text** — no placeholders, no lorem ipsum, no "insert data here".
+  • **A deck has to look like it was designed, which means colour.** Concrete rules, checkable on the
+    rendered pages:
+    – **At least two full colour-field pages**: the cover and every section divider are a filled field
+      (`templates.section()`, or `background: theme.colors.primary` with the title in
+      `theme.colors.background`). A 25-page deck with no field page reads as a document, not a deck.
+    – **No page is white.** The page ground is `theme.colors.background`; a card, panel or table is
+      `theme.colors.surface`, and those two must be visibly different. White pages carrying white cards
+      is the failure this rule exists to prevent.
+    – **Never two consecutive pages of the same ground.** Alternate field pages with content pages; the
+      rhythm is colour → content → colour.
+    – **Four colours, used for one job each**: `primary` for titles and fields, `accent` for numbers and
+      rules only, `foreground` for body, `muted` for captions and sources. Do not invent a fifth.
+    – **A photo page needs a scrim** when text sits on it: a `shape` in the background colour at
+      55–75% `transparency` between the picture and the text, or the text goes on a solid panel.
   • **Exactly the chosen palette on every page.** Every colour comes from `theme.colors.*`; background/primary/accent must match `slides_brief.json.design.palette`.
   • **Every text colour on every background passes WCAG AA (4.5:1).** Test the accent on the background before you use it for body copy; accents are for rules, labels and figures, not for paragraphs.
   • **Native objects only.** Text is a `text` element (one run per style, `a:t` in the file). A table is `a:tbl`. A chart is a chart part with an embedded workbook. A picture is a `p` picture with real bytes. **A page rendered as an image is a failed page** — no screenshot of a layout, no base64, no "just this once".
