@@ -192,3 +192,13 @@ test('the same deck passes the gate when the face is installed', (t) => {
   assert.ok((written.fonts.loadedFiles || []).length > 0, 'and the file is named: '
     + JSON.stringify(written.fonts.loadedFiles));
 });
+test('the deployment smoke spec stays valid', () => {
+  // DEPLOY.md tells a server image to prove itself with this spec, so the spec itself has to keep
+  // validating: one page, a table, a chart, CJK copy, a family a Linux image can install.
+  const smoke = path.join(__dirname, '..', 'examples', 'native-deploy-smoke.spec.json');
+  const result = run([smoke, '--check']);
+  assert.equal(result.code, 0, 'the smoke spec validates: ' + result.stdout + result.stderr);
+  assert.match(result.stdout, /slides\s+1/u);
+  assert.match(result.stdout, /table 1/u);
+  assert.match(result.stdout, /chart 1/u);
+});

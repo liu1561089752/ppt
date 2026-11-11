@@ -49,6 +49,11 @@ a container image with one face, or a reproducible build - declare `theme.fontFi
 { 'Microsoft YaHei': '/path/to/msyh.ttc' }`, or pass `discoverFaces: false` /
 `NATIVE_FONT_DISCOVERY=0` so the build never reads the host's fonts.
 
+Running this as a service - queue, storage, quotas, sandboxing, and the container recipe - is in
+[DEPLOY.md](DEPLOY.md). Three things there were blocking and are fixed here: a shared LibreOffice
+profile broke concurrent renders, relative media paths resolved against `cwd` (a build could
+exit 0 and drop every picture), and a dropped picture was a footnote rather than a failure.
+
 Layout warnings (a box outside the canvas, a text box whose measured text does not fit, two text
 boxes overlapping) print on stderr and do not stop the write; `--strict` makes them fatal. Exit
 codes: `0` written, `1` the spec was rejected (nothing is written — a partial deck is worse than

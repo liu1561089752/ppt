@@ -9,57 +9,57 @@ it did write.
 
 | where | message |
 | --- | --- |
-| `engine/native_pptx.js:144` | Container elements must be resolved by the layout engine before serialization |
-| `engine/native_pptx.js:255` | Unsupported chart type: |
-| `engine/native_pptx.js:386` | Unable to locate the picture blip for a filter patch |
-| `engine/native_pptx.js:407` | Unable to locate the picture blip fill for an image crop patch |
-| `engine/native_pptx.js:416` | Unable to locate the picture geometry for an image effect patch |
-| `engine/native_pptx.js:442` | Image patch alignment mismatch on slide |
-| `engine/native_pptx.js:487` | Unable to locate the picture fill for a tile patch |
-| `engine/native_pptx.js:494` | Unable to read the picture frame for a tile patch |
-| `engine/native_pptx.js:519` | Tile patch alignment mismatch on slide |
-| `engine/native_pptx.js:530` | Tile patch frame mismatch on slide |
-| `engine/native_pptx.js:549` | Invalid deck spec:\n- |
-| `engine/native_pptx.js:644` | Gradient base transparency must be between 0 and 100 |
-| `engine/native_pptx.js:647` | Gradient fill requires at least two color stops |
-| `engine/native_pptx.js:649` | Gradient angle must be finite |
-| `engine/native_pptx.js:652` | Gradient stop |
-| `engine/native_pptx.js:655` | Gradient stop |
-| `engine/native_pptx.js:659` | Gradient stop |
-| `engine/native_pptx.js:687` | Gradient patch alignment mismatch on slide |
-| `engine/native_pptx.js:698` | Unable to locate solid shape fill for gradient on slide |
-| `engine/native_pptx.js:704` | Gradient patch count mismatch on slide |
-| `engine/native_pptx.js:742` | Unable to locate spPr for an inner shadow patch |
-| `engine/native_pptx.js:934` | Clip geometry patch alignment mismatch on slide |
-| `engine/native_pptx.js:939` | Clip geometry patch count mismatch on slide |
-| `engine/native_pptx.js:1015` | Small caps patch alignment mismatch on slide |
-| `engine/native_pptx.js:1020` | Small caps patch count mismatch on slide |
-| `engine/native_pptx.js:1053` | Text column patch alignment mismatch on slide |
-| `engine/native_pptx.js:1058` | Text column patch count mismatch on slide |
-| `engine/native_pptx.js:1234` | Cell bullet patch alignment mismatch in |
-| `engine/native_pptx.js:1240` | Cell bullet patch paragraph mismatch in |
-| `engine/native_pptx.js:1248` | Cell bullet patch alignment mismatch in |
-| `engine/native_pptx.js:1263` | Cell bullet patch alignment mismatch in |
-| `engine/native_pptx.js:1271` | Cell bullet patch alignment mismatch in |
-| `engine/native_pptx.js:1428` | Shape hyperlink patch found no relationships part for slide |
-| `engine/native_pptx.js:1452` | Shape hyperlink patch alignment mismatch on slide |
-| `engine/native_pptx.js:1457` | Shape hyperlink patch could not put a click on |
-| `engine/native_pptx.js:1504` | Cell bullet patch alignment mismatch on slide |
-| `engine/native_pptx.js:1522` | Cell bullet patch alignment mismatch on slide |
-| `engine/native_pptx.js:1629` | List numbering patch alignment mismatch on slide |
-| `engine/native_pptx.js:1683` | Marker colour patch alignment mismatch on slide |
-| `engine/native_pptx.js:1759` | Text indent patch alignment mismatch on slide |
-| `engine/native_pptx.js:1765` | Text indent patch count mismatch on slide |
-| `engine/native_pptx.js:1895` | Data-label position patch alignment mismatch: the Deck Spec has |
-| `engine/native_pptx.js:1912` | Data-label position patch alignment mismatch on chart part |
-| `engine/native_pptx.js:2027` | Series line style patch: the series holds no c:spPr to carry a line |
-| `engine/native_pptx.js:2081` | Series line style patch alignment mismatch: |
-| `engine/native_pptx.js:2122` | Series line style patch alignment mismatch: the Deck Spec has |
-| `engine/native_pptx.js:2134` | Series line style patch alignment mismatch on chart part |
-| `engine/native_pptx.js:2138` | Series line style patch: |
-| `engine/native_pptx.js:2342` | Title placeholder patch alignment mismatch on slide |
-| `engine/native_pptx.js:2346` | Title placeholder patch missed on slide |
-| `engine/native_pptx.js:2358` | outputPath is required |
+| `engine/native_pptx.js:145` | Container elements must be resolved by the layout engine before serialization |
+| `engine/native_pptx.js:256` | Unsupported chart type: |
+| `engine/native_pptx.js:387` | Unable to locate the picture blip for a filter patch |
+| `engine/native_pptx.js:408` | Unable to locate the picture blip fill for an image crop patch |
+| `engine/native_pptx.js:417` | Unable to locate the picture geometry for an image effect patch |
+| `engine/native_pptx.js:443` | Image patch alignment mismatch on slide |
+| `engine/native_pptx.js:488` | Unable to locate the picture fill for a tile patch |
+| `engine/native_pptx.js:495` | Unable to read the picture frame for a tile patch |
+| `engine/native_pptx.js:520` | Tile patch alignment mismatch on slide |
+| `engine/native_pptx.js:531` | Tile patch frame mismatch on slide |
+| `engine/native_pptx.js:550` | Invalid deck spec:\n- |
+| `engine/native_pptx.js:645` | Gradient base transparency must be between 0 and 100 |
+| `engine/native_pptx.js:648` | Gradient fill requires at least two color stops |
+| `engine/native_pptx.js:650` | Gradient angle must be finite |
+| `engine/native_pptx.js:653` | Gradient stop |
+| `engine/native_pptx.js:656` | Gradient stop |
+| `engine/native_pptx.js:660` | Gradient stop |
+| `engine/native_pptx.js:688` | Gradient patch alignment mismatch on slide |
+| `engine/native_pptx.js:699` | Unable to locate solid shape fill for gradient on slide |
+| `engine/native_pptx.js:705` | Gradient patch count mismatch on slide |
+| `engine/native_pptx.js:743` | Unable to locate spPr for an inner shadow patch |
+| `engine/native_pptx.js:935` | Clip geometry patch alignment mismatch on slide |
+| `engine/native_pptx.js:940` | Clip geometry patch count mismatch on slide |
+| `engine/native_pptx.js:1016` | Small caps patch alignment mismatch on slide |
+| `engine/native_pptx.js:1021` | Small caps patch count mismatch on slide |
+| `engine/native_pptx.js:1054` | Text column patch alignment mismatch on slide |
+| `engine/native_pptx.js:1059` | Text column patch count mismatch on slide |
+| `engine/native_pptx.js:1235` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1241` | Cell bullet patch paragraph mismatch in |
+| `engine/native_pptx.js:1249` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1264` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1272` | Cell bullet patch alignment mismatch in |
+| `engine/native_pptx.js:1429` | Shape hyperlink patch found no relationships part for slide |
+| `engine/native_pptx.js:1453` | Shape hyperlink patch alignment mismatch on slide |
+| `engine/native_pptx.js:1458` | Shape hyperlink patch could not put a click on |
+| `engine/native_pptx.js:1505` | Cell bullet patch alignment mismatch on slide |
+| `engine/native_pptx.js:1523` | Cell bullet patch alignment mismatch on slide |
+| `engine/native_pptx.js:1630` | List numbering patch alignment mismatch on slide |
+| `engine/native_pptx.js:1684` | Marker colour patch alignment mismatch on slide |
+| `engine/native_pptx.js:1760` | Text indent patch alignment mismatch on slide |
+| `engine/native_pptx.js:1766` | Text indent patch count mismatch on slide |
+| `engine/native_pptx.js:1896` | Data-label position patch alignment mismatch: the Deck Spec has |
+| `engine/native_pptx.js:1913` | Data-label position patch alignment mismatch on chart part |
+| `engine/native_pptx.js:2028` | Series line style patch: the series holds no c:spPr to carry a line |
+| `engine/native_pptx.js:2082` | Series line style patch alignment mismatch: |
+| `engine/native_pptx.js:2123` | Series line style patch alignment mismatch: the Deck Spec has |
+| `engine/native_pptx.js:2135` | Series line style patch alignment mismatch on chart part |
+| `engine/native_pptx.js:2139` | Series line style patch: |
+| `engine/native_pptx.js:2343` | Title placeholder patch alignment mismatch on slide |
+| `engine/native_pptx.js:2347` | Title placeholder patch missed on slide |
+| `engine/native_pptx.js:2386` | outputPath is required |
 | `engine/image_fit.js:83` | Image focus object requires finite x and y in the 0..1 range |
 | `engine/image_fit.js:87` | Image focus must be a preset name or an { x, y } object |
 | `engine/image_fit.js:172` | A tile needs a positive cell size and a finite picture frame |

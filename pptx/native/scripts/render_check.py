@@ -155,9 +155,14 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="native-ppt-render-") as temp:
         temp_dir = Path(temp)
+        # LibreOffice takes a lock on its user profile, so two conversions that share the default
+        # profile do not run side by side: the second one fails outright (measured: 1 of 2
+        # concurrent renders died with CalledProcessError and wrote no image). A private profile per
+        # conversion is what makes the converter safe to run from a worker pool.
+        profile = (temp_dir / "lo-profile").as_uri()
         run([
-            soffice, "--headless", "--norestore", "--convert-to", "pdf",
-            "--outdir", str(temp_dir), str(source)
+            soffice, "-env:UserInstallation=" + profile, "--headless", "--norestore",
+            "--convert-to", "pdf", "--outdir", str(temp_dir), str(source)
         ])
         pdf = temp_dir / (source.stem + ".pdf")
         if not pdf.is_file() or pdf.stat().st_size == 0:

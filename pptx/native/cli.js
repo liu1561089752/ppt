@@ -199,7 +199,7 @@ async function main() {
   const outputPath = path.resolve(options.out || defaultOutput(source));
   let result;
   try {
-    result = await generatePptx(deck, outputPath);
+    result = await generatePptx(deck, outputPath, { baseDir: path.dirname(path.resolve(source)) });
   } catch (error) {
     process.stderr.write('the writer failed: ' + (error && error.stack ? error.stack : String(error)) + '\n');
     process.exitCode = 2;
@@ -212,6 +212,18 @@ async function main() {
   (result.laidOut || []).forEach((elements, index) => {
     validateSlide(elements, result.pageSize).forEach((warning) => {
       warnings.push(Object.assign({ slide: index + 1 }, warning));
+    });
+  });
+  (result.droppedPictures || []).forEach((dropped) => {
+    warnings.push({
+      slide: dropped.slide || null,
+      code: 'PICTURE_DROPPED',
+      // The record says `source`: a relative path that was resolved against the wrong directory and
+      // an absolute path that does not exist both land here, and either way the page is now wrong.
+      message: 'could not read ' + (dropped.source || 'an image') + ' - that page is written without it'
+        + (dropped.source && !path.isAbsolute(dropped.source) && !/^data:/iu.test(dropped.source)
+          ? ' (a relative path is resolved against the spec file)'
+          : '')
     });
   });
   const bytes = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : 0;

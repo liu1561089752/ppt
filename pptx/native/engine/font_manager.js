@@ -178,7 +178,52 @@ function fontFamilyFiles() {
   return registryMap;
 }
 
-/** Font file for a family: the registry table first, then the abbreviation guess. */
+let fontconfigAvailable = null;
+
+/** Whether fontconfig answers here. Probed once: on Windows it is normally absent, and every
+ *  unresolved family would otherwise spawn a process that fails. */
+function hasFontconfig() {
+  if (fontconfigAvailable !== null) return fontconfigAvailable;
+  try {
+    const { execFileSync } = require('node:child_process');
+    execFileSync('fc-match', ['-f', '%{file}', 'sans-serif'], { encoding: 'utf8', timeout: 5000 });
+    fontconfigAvailable = true;
+  } catch (_) {
+    fontconfigAvailable = false;
+  }
+  return fontconfigAvailable;
+}
+
+/**
+ * The file fontconfig maps a family to.
+ *
+ * `fc-match` never fails - it answers with the closest family it has - so the answer is only trusted
+ * when `%{family}` names the family that was asked for. Without this a Linux host resolves nothing for
+ * CJK: the file is `NotoSansCJK-Regular.ttc` and the family is `Noto Sans CJK SC`, so the
+ * filename-prefix guess below never matches, and every width silently falls back to the estimate.
+ */
+function fcMatchFile(family, runCommand) {
+  const wanted = String(family || '').trim();
+  if (!wanted) return null;
+  let run = runCommand || null;
+  if (!run) {
+    if (!hasFontconfig()) return null;
+    run = (args) => require('node:child_process')
+      .execFileSync('fc-match', args, { encoding: 'utf8', timeout: 5000 });
+  }
+  try {
+    const file = String(run(['-f', '%{file}', wanted]) || '').trim();
+    if (!file) return null;
+    const listed = String(run(['-f', '%{family}', wanted]) || '').toLowerCase();
+    const names = listed.split(',').map((name) => name.trim()).filter(Boolean);
+    if (!names.includes(wanted.toLowerCase())) return null;
+    return fs.existsSync(file) ? file : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Font file for a family: the registry table first, then fontconfig, then the abbreviation guess. */
 function fontFileFor(family) {
   const wanted = String(family || '').trim();
   if (!wanted) return null;
@@ -192,6 +237,8 @@ function fontFileFor(family) {
       try { if (fs.existsSync(candidate)) return candidate; } catch (_) { continue; }
     }
   }
+  const matched = fcMatchFile(wanted);
+  if (matched) return matched;
   const lower = wanted.toLowerCase();
   for (const directory of directories) {
     let entries = [];
@@ -233,4 +280,4 @@ function normalLineHeight(family, fontkit) {
   return value;
 }
 
-module.exports = { FontManager, normalLineHeight, fontFileForFamily: fontFileFor, pickFace };
+module.exports = { FontManager, normalLineHeight, fontFileForFamily: fontFileFor, pickFace, fcMatchFile };

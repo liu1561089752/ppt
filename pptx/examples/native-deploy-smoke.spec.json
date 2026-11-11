@@ -1,0 +1,102 @@
+{
+  "title": "deploy smoke",
+  "language": "zh-CN",
+  "pageSize": "wide",
+  "theme": {
+    "name": "deploy-smoke",
+    "colors": {
+      "background": "F6F7F5",
+      "surface": "FFFFFF",
+      "foreground": "1B232B",
+      "primary": "12283F",
+      "accent": "D08C3A",
+      "muted": "6C7783",
+      "border": "DDE3E8"
+    },
+    "fonts": { "heading": "Noto Sans CJK SC", "body": "Noto Sans CJK SC" },
+    "sizes": { "title": 30, "heading": 20, "body": 14, "caption": 10 },
+    "margins": { "x": 0.72, "y": 0.52 }
+  },
+  "slides": [
+    {
+      "background": "F6F7F5",
+      "notes": "冒烟测试：容器上的字体、版式与写入链路是否成立。",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "服务端冒烟测试",
+          "x": 0.72,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.8,
+          "fontSize": 30,
+          "bold": true,
+          "color": "12283F"
+        },
+        {
+          "type": "shape",
+          "x": 0.72,
+          "y": 1.42,
+          "w": 11.9,
+          "h": 0.02,
+          "fill": "DDE3E8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "这一页只有一件事要证明：容器里装了字体、量得出字宽、写得出原生对象。它不追求好看，只追求可判断——如果这一页的指标行写着「wrap is estimated」，网关就该拒绝这次构建。",
+          "x": 0.72,
+          "y": 1.62,
+          "w": 11.9,
+          "h": 1.1,
+          "fontSize": 14,
+          "color": "1B232B",
+          "lineSpacingMultiple": 1.35
+        },
+        {
+          "type": "table",
+          "x": 0.72,
+          "y": 3.0,
+          "w": 7.2,
+          "h": 1.9,
+          "rows": [
+            [
+              { "text": "检查项", "options": { "bold": true } },
+              { "text": "期望", "options": { "bold": true } }
+            ],
+            [{ "text": "字体度量" }, { "text": "measurements used real faces" }],
+            [{ "text": "布局警告" }, { "text": "warnings none" }],
+            [{ "text": "退出码" }, { "text": "0" }]
+          ],
+          "fontSize": 12,
+          "border": { "color": "DDE3E8", "width": 1 }
+        },
+        {
+          "type": "chart",
+          "chartType": "bar",
+          "x": 8.3,
+          "y": 3.0,
+          "w": 4.3,
+          "h": 1.9,
+          "data": [
+            { "name": "页数", "labels": ["构建", "渲染", "校验"], "values": [1, 14, 2] }
+          ],
+          "showLegend": false,
+          "showValue": true
+        },
+        {
+          "type": "text",
+          "role": "caption",
+          "text": "来源：pptx/native/DEPLOY.md 的冒烟测试",
+          "x": 0.72,
+          "y": 6.9,
+          "w": 11.9,
+          "h": 0.3,
+          "fontSize": 10,
+          "color": "6C7783"
+        }
+      ]
+    }
+  ]
+}

@@ -1220,3 +1220,46 @@ test('discovery can be switched off for a reproducible build', () => {
   assert.equal(manager.inspect().estimatedCalls, 1);
   assert.equal(manager.inspect().discoveredFaces, false);
 });
+test('fontconfig is trusted only when it names the family', () => {
+  // A server is a Linux box: the family is \`Noto Sans CJK SC\` and the file is
+  // \`NotoSansCJK-Regular.ttc\`, so a filename-prefix guess resolves nothing and every width falls back
+  // to the estimate. fontconfig knows the mapping - and never fails, it answers with the closest family
+  // it has, so a fallback answer must be refused.
+  const { fcMatchFile } = require('../native/engine/font_manager');
+  const realFile = process.execPath;
+  const answers = (familyName) => (args) => (args[1] === '%{file}' ? realFile + '\n' : familyName + '\n');
+
+  assert.equal(fcMatchFile('Noto Sans CJK SC', answers('Noto Sans CJK JP, Noto Sans CJK SC')),
+    realFile, 'the family is in the list fontconfig reports');
+  assert.equal(fcMatchFile('Noto Sans CJK SC', answers('DejaVu Sans')),
+    null, 'a fallback to another family is not the face that was asked for');
+  assert.equal(fcMatchFile('Noto Sans CJK SC', () => { throw new Error('fc-match: not found'); }),
+    null, 'no fontconfig means no answer, not a wrong one');
+  assert.equal(fcMatchFile('Noto Sans CJK SC', (args) => (args[1] === '%{file}' ? '/nope/missing.ttc' : 'Noto Sans CJK SC')),
+    null, 'and a path that is not on disk is not a face');
+});
+test('relative media paths resolve against the spec, not the process', () => {
+  // A server worker runs the build from wherever it likes. When a relative picture path was resolved
+  // against \`cwd\` instead of the spec, the build exited 0 and dropped every picture - 6 of them on a
+  // 25-page deck, with one line in the footer to say so.
+  const { withResolvedAssets } = require('../native/engine/native_pptx');
+  const deck = {
+    slides: [{
+      elements: [
+        { type: 'image', path: 'assets/hero.jpg', x: 0, y: 0, w: 1, h: 1 },
+        { type: 'image', path: 'data:image/png;base64,AAAA', x: 0, y: 0, w: 1, h: 1 },
+        { type: 'image', path: 'C:/fixtures/pinned.png', x: 0, y: 0, w: 1, h: 1 },
+        { type: 'container', children: [{ type: 'image', path: 'assets/inner.jpg' }] }
+      ]
+    }]
+  };
+  const resolved = require('node:path').win32 ? withResolvedAssets(deck, 'F:\\jobs\\42\\deck') : withResolvedAssets(deck, '/jobs/42/deck');
+  const base = require('node:path').win32 ? 'F:\\jobs\\42\\deck' : '/jobs/42/deck';
+  const expected = require('node:path').resolve(base, 'assets/hero.jpg');
+  assert.equal(resolved.slides[0].elements[0].path, expected, 'the relative path is anchored at the deck');
+  assert.equal(resolved.slides[0].elements[1].path, 'data:image/png;base64,AAAA', 'a data URI is left alone');
+  assert.equal(resolved.slides[0].elements[2].path, 'C:/fixtures/pinned.png', 'an absolute path is left alone');
+  assert.equal(resolved.slides[0].elements[3].children[0].path,
+    require('node:path').resolve(base, 'assets/inner.jpg'), 'container children too');
+  assert.equal(deck.slides[0].elements[0].path, 'assets/hero.jpg', 'and the caller\'s spec is not mutated');
+});

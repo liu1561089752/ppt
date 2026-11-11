@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const JSZip = require('jszip');
 const pptxgen = require('pptxgenjs');
 const { normalizePageSize } = require('../core/units');
@@ -2354,8 +2355,38 @@ async function patchTitlePlaceholders(outputPath, deck, laidOut) {
   return true;
 }
 
+/**
+ * Relative media paths, resolved against the deck instead of the process.
+ *
+ * A spec says \`assets/hero.jpg\` and means "beside me". Resolving that against \`cwd\` built a deck that
+ * exited 0 and silently dropped every picture - which is what happens on any server whose worker runs
+ * the build from an arbitrary directory. \`options.baseDir\` is the spec's own directory; an absolute
+ * path and a \`data:\` URI are left alone.
+ */
+function withResolvedAssets(deck, baseDir) {
+  if (!baseDir || !deck || !Array.isArray(deck.slides)) return deck;
+  const resolveElement = (element) => {
+    if (!element || typeof element !== 'object') return element;
+    const copy = Object.assign({}, element);
+    if (copy.type === 'image' && typeof copy.path === 'string'
+      && !path.isAbsolute(copy.path) && !/^data:/iu.test(copy.path)) {
+      copy.path = path.resolve(baseDir, copy.path);
+    }
+    if (Array.isArray(copy.children)) copy.children = copy.children.map(resolveElement);
+    return copy;
+  };
+  return Object.assign({}, deck, {
+    slides: deck.slides.map((slide) => Object.assign({}, slide, {
+      elements: Array.isArray(slide.elements) ? slide.elements.map(resolveElement) : slide.elements
+    }))
+  });
+}
+
 async function generatePptx(deck, outputPath, options = {}) {
   if (!outputPath) throw new Error('outputPath is required');
+  // Everything downstream - layout, image geometry, the patches - reads this deck, so the paths are
+  // resolved once, here.
+  deck = withResolvedAssets(deck, options.baseDir);
   const result = await buildPresentation(deck, options);
   await result.pptx.writeFile({ fileName: outputPath });
   const laidOutShapes = result.laidOut.map((elements) => flattenElements(elements));
@@ -2433,6 +2464,7 @@ async function generatePptx(deck, outputPath, options = {}) {
 }
 
 module.exports = {
+  withResolvedAssets,
   buildPresentation, generatePptx, applyEastAsianFontPatch, patchGradientFills, gradientFillXml,
   shapeStyle, isBoldWeight, buildImagePlan, applyImagePlan, patchImageEffects,
   applyTileFill, patchTiledFills, pictureFrameInches, applyTextColumns, patchTextColumns,
