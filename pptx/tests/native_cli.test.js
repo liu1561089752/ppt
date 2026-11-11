@@ -22,10 +22,11 @@ function workspace() {
 
 // spawnSync, not execFileSync: the tool reports layout warnings on stderr while still exiting 0,
 // and a helper that only returns stderr on failure cannot see them.
-function run(args) {
+function run(args, env) {
   const result = spawnSync(process.execPath, [CLI].concat(args), {
     encoding: 'utf8',
-    cwd: path.join(__dirname, '..', 'native')
+    cwd: path.join(__dirname, '..', 'native'),
+    env: env ? Object.assign({}, process.env, env) : process.env
   });
   return { code: result.status === null ? 1 : result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
 }
@@ -152,12 +153,15 @@ test('--require-face-metrics refuses a deck whose wrap is only an estimate', () 
   // the page down 0.65 in, silently. The flag is the opt-in gate, and the report carries the fact.
   const folder = workspace();
   const report = path.join(folder, 'gated.json');
+  // The condition the flag exists for: no metric file for the family anywhere on this machine.
+  // Discovery finds one when it is installed, so the estimate has to be asked for explicitly.
+  const noFaces = { NATIVE_FONT_DISCOVERY: '0' };
 
-  const loose = run([JSON_SPEC, path.join(folder, 'loose.pptx')]);
+  const loose = run([JSON_SPEC, path.join(folder, 'loose.pptx')], noFaces);
   assert.equal(loose.code, 0, 'without the flag an estimate is still written: ' + loose.stderr);
   assert.doesNotMatch(loose.stderr, /FONT_UNMEASURED/u, 'and it is not dressed up as a warning');
 
-  const gated = run([JSON_SPEC, path.join(folder, 'gated.pptx'), '--require-face-metrics', '--report', report]);
+  const gated = run([JSON_SPEC, path.join(folder, 'gated.pptx'), '--require-face-metrics', '--report', report], noFaces);
   assert.equal(gated.code, 1, 'the gate fails the build: ' + gated.stdout + gated.stderr);
   assert.match(gated.stdout, /FONT_UNMEASURED/u, 'the summary names the gate');
   assert.match(gated.stderr, /\[FONT_UNMEASURED\] deck:/u, 'and the warning has no page number to blame');
@@ -166,4 +170,25 @@ test('--require-face-metrics refuses a deck whose wrap is only an estimate', () 
   assert.equal(written.fontsEstimated, true, 'the report says the wrap was estimated');
   assert.equal(written.fonts.measuredCalls, 0, 'no measurement came from a face');
   assert.equal(written.warnings.filter((warning) => warning.code === 'FONT_UNMEASURED').length, 1);
+});
+
+test('the same deck passes the gate when the face is installed', (t) => {
+  // Discovery is the fix for the run's whole font complaint: the deck names a family, the machine
+  // knows the file, and nobody has to repeat a path that cannot be guessed from the name.
+  const { fontFileForFamily } = require('../native/engine/font_manager');
+  const family = JSON.parse(fs.readFileSync(JSON_SPEC, 'utf8')).theme.fonts.body;
+  if (!fontFileForFamily(family)) { t.skip(family + ' is not installed on this machine'); return; }
+  const folder = workspace();
+  const report = path.join(folder, 'discovered.json');
+
+  const measured = run([JSON_SPEC, path.join(folder, 'measured.pptx'), '--require-face-metrics', '--report', report]);
+  assert.equal(measured.code, 0, 'the gate passes on a machine that has the face: ' + measured.stdout + measured.stderr);
+  assert.match(measured.stdout, /measurements used real faces/u, 'and says so: ' + measured.stdout);
+  assert.match(measured.stdout, /found on this machine/u, 'naming discovery as the source');
+
+  const written = JSON.parse(fs.readFileSync(report, 'utf8'));
+  assert.equal(written.fontsEstimated, false, 'the report agrees the wrap was measured');
+  assert.ok(written.fonts.measuredCalls > 0, 'measurements came from a face');
+  assert.ok((written.fonts.loadedFiles || []).length > 0, 'and the file is named: '
+    + JSON.stringify(written.fonts.loadedFiles));
 });

@@ -1196,3 +1196,27 @@ test('a font collection is measured through one of its faces', () => {
   assert.equal(pickFace({ fonts: [] }), null, 'an empty collection yields nothing, not a crash');
   assert.equal(pickFace(null), null);
 });
+test('a family is enough when the face is installed', (t) => {
+  // The 25-page run measured 11,678 text widths from an estimate on a machine that had
+  // \`Microsoft YaHei\` installed, because the deck named the family and not the file - and the file
+  // (\`msyh.ttc\`) cannot be guessed from the name. The family-to-file table is a system fact, so the
+  // manager reads it: no spec change is needed for exact metrics.
+  const installed = require('../native/engine/font_manager').fontFileForFamily('Microsoft YaHei');
+  if (!installed) { t.skip('Microsoft YaHei is not installed on this machine'); return; }
+  const manager = new FontManager();
+  const width = manager.measure('中国新能源汽车出海', 14, 'Microsoft YaHei');
+  assert.ok(Number.isFinite(width) && width > 0, 'the face was measured: ' + width);
+  assert.equal(manager.inspect().measuredCalls, 1, 'and it counted as a measurement, not an estimate');
+  assert.ok(manager.inspect().loadedFiles.length > 0, 'the file it opened is reported: '
+    + JSON.stringify(manager.inspect().loadedFiles));
+});
+
+test('discovery can be switched off for a reproducible build', () => {
+  // A build that must not read the host's fonts says so, and falls back to the estimate - which is
+  // reported, counted, and refused by --require-face-metrics.
+  const manager = new FontManager({ discoverFaces: false });
+  assert.equal(manager.measure('中国新能源汽车出海', 14, 'Microsoft YaHei'), null);
+  assert.equal(manager.inspect().measuredCalls, 0);
+  assert.equal(manager.inspect().estimatedCalls, 1);
+  assert.equal(manager.inspect().discoveredFaces, false);
+});

@@ -31,6 +31,12 @@ class FontManager {
   constructor(options = {}) {
     this.fontFiles = options.fontFiles || {};
     this.fallbackFont = options.fallbackFont || null;
+    // A deck names a family ("Microsoft YaHei"); the file is a system fact ("msyh.ttc"), and nobody
+    // can guess it from the name. 25 pages were measured from an estimate on a machine that had the
+    // face installed all along, purely because the spec did not repeat the file path. So resolve the
+    // family here unless the caller asked for the estimate (`discoverFaces: false`, or
+    // `NATIVE_FONT_DISCOVERY=0` for a reproducible build that must not read the host's fonts).
+    this.discoverFaces = options.discoverFaces !== false && process.env.NATIVE_FONT_DISCOVERY !== '0';
     this.cache = new Map();
     // How many measurements came from a real face and how many fell back to the glyph-width
     // estimate. `inspect()` used to report only that fontkit was installed, which reads like
@@ -62,8 +68,20 @@ class FontManager {
     }
   }
 
+  /**
+   * The file a family means: what the spec declared, else what the system says. A declared path
+   * always wins, so a deck can pin an exact file and stop depending on the machine.
+   */
+  fileForFace(family) {
+    if (!family) return null;
+    const declared = this.fontFiles[family];
+    if (declared) return declared;
+    if (!this.discoverFaces) return null;
+    return fontFileFor(family);
+  }
+
   fontForCodePoint(codePoint, requestedFace) {
-    const requested = this.loadFont(this.fontFiles[requestedFace]);
+    const requested = this.loadFont(this.fileForFace(requestedFace));
     if (requested && requested.glyphForCodePoint(codePoint).id !== 0) return requested;
     const fallback = this.loadFont(this.fallbackFont);
     if (fallback && fallback.glyphForCodePoint(codePoint).id !== 0) return fallback;
@@ -95,6 +113,7 @@ class FontManager {
     return {
       fontkitAvailable: !!this.fontkit,
       configuredFaces: Object.keys(this.fontFiles),
+      discoveredFaces: this.discoverFaces,
       loadedFiles: Array.from(this.cache.keys()),
       measuredCalls: this.measuredCalls,
       estimatedCalls: this.estimatedCalls
@@ -205,7 +224,7 @@ function normalLineHeight(family, fontkit) {
     if (file) {
       try {
         const opened = fontkit.openSync(file);
-        const font = opened && opened.fonts ? opened.fonts[0] : opened;
+        const font = pickFace(opened);
         if (font && font.unitsPerEm) value = (font.ascent - font.descent + font.lineGap) / font.unitsPerEm;
       } catch (_) { /* stays null */ }
     }

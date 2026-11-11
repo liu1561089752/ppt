@@ -112,12 +112,14 @@ fixture would record one reader's opinion as if it were a fact.
   (`val="118000"` for 1.18). A reader computes that percentage against its own font metrics, so the
   same deck can be one line taller in one reader and one line shorter in another. PowerPoint's
   convention is the one we target.
-- **Text metrics without the face.** Every build prints `fonts … no face files: wrap is
-  estimated` when the deck's family is not installed here: the wrap then comes from fallback metrics,
-  so a line count - and every block placed under that text - is an estimate. `--strict` does not fail
-  on it, deliberately: a machine without the font would then fail every deck. A real 25-page run
-  found the cover title breaking one line later than estimated and pushing the whole page down
-  0.65 in, with no gate complaining. Give tight boxes slack, or break the line explicitly.
+- **Text metrics without the face.** The engine finds an installed face by itself (the Windows font
+  table, `fc-match`, then the font directories), so a build on a machine that has the family measures
+  from it. When the family really is absent it prints `no face files: wrap is estimated` and the wrap
+  comes from fallback metrics: a line count - and every block placed under that text - is then an
+  estimate. `--strict` does not fail on that, deliberately, because a machine without the font would
+  fail every deck; `--require-face-metrics` is the opt-in that does. A real 25-page run measured that
+  gap: the same deck re-rendered with the face reflowed 11 of 25 pages. Give tight boxes slack, or
+  break the line explicitly.
 - **Repair prompts.** A part that a reader tolerates can still make PowerPoint offer to "repair" the
   presentation. `verify_native_ooxml.py` checks the schema of everything written and
   `corrupt_anchor.py` proves those checks fire on a deliberately damaged part, but neither can say

@@ -25,19 +25,29 @@ spec      ..\examples\native_deck_spec.js
 slides    6
 page      13.333 x 7.5 in
 objects   chart 1 · line 10 · shape 19 · table 1 · text 52
-metrics   fontkit: present, but no glyph was measured from a face
-fonts     Microsoft YaHei · no face files: wrap is estimated
+metrics   fontkit: 1441 of 1441 measurements used real faces
+fonts     Microsoft YaHei · metrics from 1 face file(s) (found on this machine)
 warnings  none
 wrote     deck.pptx (184 KB)
 ```
 
 The two font lines always agree, which is the point: `fontkit` says how many measurements came
-from a real face, and `fonts` says which faces this machine could open. A machine with no file for
-the declared family prints `fontkit: present, but no glyph was measured from a face` next to
-`no face files: wrap is estimated` — every line break on that build is a heuristic, and `--strict`
-still passes, because a missing typeface is not a broken deck. `--require-face-metrics` is the
-opt-in that refuses it (`FONT_UNMEASURED`), and `theme.fontFiles` — a `.ttc` collection is fine —
-is how a face gets found.
+from a real face, and `fonts` says which files it opened.
+
+**The engine finds installed faces by itself.** A deck names a family; the file is a system fact
+(`Microsoft YaHei` lives in `msyh.ttc`, and no one can guess that from the name). So the manager
+asks the system - the Windows font table in the registry, `fc-match` elsewhere, the usual font
+directories as a last resort - and measures from the face when it finds it. That is what
+`(found on this machine)` means. A `.ttc` collection is fine; the family is matched against the
+faces inside it.
+
+Where the family really is absent, the same lines read `fontkit: present, but no glyph was measured
+from a face` next to `no face files: wrap is estimated`: every line break on that build is a
+heuristic, and `--strict` still passes, because a missing typeface is not a broken deck.
+`--require-face-metrics` is the opt-in that refuses it (`FONT_UNMEASURED`). To pin an exact file -
+a container image with one face, or a reproducible build - declare `theme.fontFiles =
+{ 'Microsoft YaHei': '/path/to/msyh.ttc' }`, or pass `discoverFaces: false` /
+`NATIVE_FONT_DISCOVERY=0` so the build never reads the host's fonts.
 
 Layout warnings (a box outside the canvas, a text box whose measured text does not fit, two text
 boxes overlapping) print on stderr and do not stop the write; `--strict` makes them fatal. Exit

@@ -367,8 +367,14 @@ node <engine>/cli.js deck.js out.pptx --report out.json --layout-out layout.json
     means the wrap was computed from fallback metrics, not from the real face: the line count — and
     therefore every block placed under that text — is an estimate, and `--strict` does **not** fail
     on it. A page whose text sits tight against its box is a suspect page: give such a box slack, or
-    break the line yourself with an explicit `\n`, and re-render. Installing the face makes the
-    measurement exact; nothing on this machine can tell you how PowerPoint will break the same line.
+    break the line yourself with an explicit `\n`, and re-render. Nothing on this machine can tell you
+    how PowerPoint will break the same line.
+  • **It normally will not say that.** The engine finds an installed face by itself — the family name
+    in the theme is enough, because the family-to-file table is a system fact (`Microsoft YaHei` is
+    `msyh.ttc`). On such a build the line reads `metrics from 1 face file(s) (found on this machine)`
+    and every measurement is real; a 25-page deck reported `11678 of 11678 measurements used real
+    faces`. If it says the wrap was estimated, the family is genuinely missing here: say so, and
+    either declare `theme.fontFiles` or accept the estimate with slack.
   • **To make that uncertainty fatal, add `--require-face-metrics`.** The build then fails with
     `FONT_UNMEASURED` unless at least one measurement came from a real face. Point the theme at the
     file to make it pass: `theme.fontFiles = { 'Microsoft YaHei': 'C:/Windows/Fonts/msyh.ttc' }` —

@@ -223,6 +223,7 @@ async function main() {
   // refusal is a separate, opt-in flag.
   const metricsEstimated = (fontReport.measuredCalls || 0) === 0;
   const faceMetricFailure = options.faceMetrics && metricsEstimated;
+  const loadedFaces = fontReport.loadedFiles || [];
   const themeFonts = (deck.theme && deck.theme.fonts) || {};
   const deckFonts = [themeFonts.heading, themeFonts.body].filter(Boolean).filter((face, index, all) => all.indexOf(face) === index)
     .join(' / ') || 'theme default';
@@ -232,8 +233,9 @@ async function main() {
       slide: null,
       code: 'FONT_UNMEASURED',
       message: (configured
-        ? configured + ' face file(s) are configured for ' + deckFonts + ' but none could be opened'
-        : 'no metric file for ' + deckFonts)
+        ? configured + ' face file(s) are declared for ' + deckFonts + ' but none could be opened'
+        : 'no metric file for ' + deckFonts + ' could be opened - neither declared in theme.fontFiles'
+          + (fontReport.discoveredFaces === false ? ' (discovery is off)' : ' nor found on this machine'))
         + ': every text box is wrapped from an estimate, not from the face'
         + ' (declare theme.fontFiles, install the face, or drop --require-face-metrics)'
     });
@@ -299,8 +301,9 @@ async function main() {
           + (fontReport.measuredCalls + fontReport.estimatedCalls) + ' measurements used real faces'],
       // The faces the deck asks for, which is what a reader has to have; the metric files are
       // how this machine measured them, and their absence is worth knowing too.
-      ['fonts', deckFonts + (fontReport.configuredFaces && fontReport.configuredFaces.length
-        ? ' · metrics from ' + fontReport.configuredFaces.length + ' face file(s)'
+      ['fonts', deckFonts + (loadedFaces.length
+        ? ' · metrics from ' + loadedFaces.length + ' face file(s)'
+          + ((fontReport.configuredFaces || []).length < loadedFaces.length ? ' (found on this machine)' : '')
         : ' · no face files: wrap is estimated'
           + (faceMetricFailure ? ' (FONT_UNMEASURED: --require-face-metrics)' : ''))],
       ['warnings', warnings.length ? Object.keys(groups).sort().map((code) => code + ' ' + groups[code].length).join(' · ') : 'none'],
