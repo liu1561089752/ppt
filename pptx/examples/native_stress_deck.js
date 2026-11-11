@@ -726,8 +726,20 @@ module.exports = { buildStressDeck, buildAssets, theme, PAGE, M, CW };
 
 if (require.main === module) {
   const { generatePptx } = require('../native');
-  const outputPath = process.argv[2] || 'native-stress-deck.pptx';
-  const assetDir = process.argv[3] || path.join(process.cwd(), 'native-stress-assets');
+  // Both arguments are positional. An unknown flag used to be taken as the output path and the next
+  // one as the asset directory, so `--slides 40` silently wrote a file called `--slides` and a folder
+  // called `40` instead of failing. This demo's page count is fixed; `scripts/stress_spec.js` is the
+  // one that takes `--slides`.
+  const argv = process.argv.slice(2);
+  const unknown = argv.find((arg) => String(arg).startsWith('-'));
+  if (unknown) {
+    console.error('stress deck: unknown option ' + unknown +
+      ' - usage: node native_stress_deck.js <output.pptx> [asset-dir]' +
+      ' (a sized build is scripts/stress_spec.js --slides N)');
+    process.exit(2);
+  }
+  const outputPath = argv[0] || 'native-stress-deck.pptx';
+  const assetDir = argv[1] || path.join(process.cwd(), 'native-stress-assets');
   const assets = buildAssets(assetDir);
   generatePptx(buildStressDeck(assets), outputPath)
     .then((result) => {

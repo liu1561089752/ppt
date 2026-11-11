@@ -20,3 +20,4 @@ pptx/native/native-*.json
 # Python
 __pycache__/
 *.pyc
+pptx/native/render-showcase/

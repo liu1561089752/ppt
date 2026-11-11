@@ -19,8 +19,15 @@ const theme = preset('sand', {
   fonts: { heading: 'Microsoft YaHei', body: 'Microsoft YaHei', cjk: 'Microsoft YaHei' }
 });
 
+function footline(text, y) {
+  return components.paragraph(text, {
+    theme, x: theme.layouts.pageMarginX + 0.04, y, w: 11.6, h: 0.3,
+    fontSize: theme.sizes.caption, color: theme.colors.muted
+  });
+}
+
 function cover() {
-  return templates.cover({
+  const page = templates.cover({
     theme,
     title: '色彩不需要图片也能成立',
     subtitle: '一份 deck 的底色、色块与强调色 · 原生生成 · 全部可编辑',
@@ -32,6 +39,11 @@ function cover() {
     accent: theme.colors.accent,
     titleSize: 38
   });
+  page.elements.push(components.paragraph('数据截至 2026 年 11 月 · 全部图形为原生对象，可直接在 PowerPoint 中编辑', {
+    theme, x: theme.layouts.pageMarginX + 0.05, y: 5.95, w: 10.8, h: 0.34,
+    fontSize: theme.sizes.caption + 1, color: theme.colors.background, transparency: 30
+  }));
+  return page;
 }
 
 function tintedPanel() {
@@ -50,6 +62,10 @@ function tintedPanel() {
       }),
       components.paragraph('这一页的卡片、标题、正文、标尺全部来自同一个主题，没有一处手写色值。', {
         theme, x: marginX + 0.04, y: 2.86, w: 5.85, h: 1.1, fontSize: theme.sizes.body, color: theme.colors.muted
+      }),
+      components.divider({ theme, x: marginX + 0.04, y: 4.3, w: 5.85, color: theme.colors.border }),
+      components.paragraph('下半页需要一个能落脚的东西——这里是口径说明，也可以是一条结论、一张表或一张图。', {
+        theme, x: marginX + 0.04, y: 4.5, w: 5.85, h: 0.9, fontSize: theme.sizes.body, color: theme.colors.muted
       }),
       ...components.infoCard({
         theme,
@@ -80,7 +96,7 @@ function divider() {
 }
 
 function kpiRow() {
-  return templates.kpi({
+  const page = templates.kpi({
     theme,
     title: '数字用强调色，标题用深墨',
     items: [
@@ -89,6 +105,13 @@ function kpiRow() {
       { label: '手写色值', value: '0', note: '全部来自主题令牌', color: theme.colors.accent }
     ]
   });
+  // Cards end at y = 3.72; the note sits right under them, and the quota line owns the bottom edge.
+  page.elements.push(components.paragraph('三块卡片讲一件事：色彩不是装饰，是一套可以检查的规则——底色不能是白、卡片必须和底色分得开、强调色只留给数字。', {
+    theme, x: theme.layouts.pageMarginX + 0.04, y: 3.95, w: 11.4, h: 0.75,
+    fontSize: theme.sizes.body + 1, color: theme.colors.foreground
+  }));
+  page.elements.push(footline('口径：只统计本仓库 golden 语料里的 9 份 deck（42 页）。', 6.5));
+  return page;
 }
 
 function chartPage() {
@@ -122,7 +145,9 @@ function chartPage() {
       }),
       components.paragraph('强调色只给数字和标尺，正文保持中性，读者才知道先看哪里。', {
         theme, x: 8.3, y: 3.7, w: 4.4, h: 1.4, fontSize: theme.sizes.body, color: theme.colors.muted
-      })
+      }),
+      components.divider({ theme, x: marginX, y: 6.05, w: 11.85, color: theme.colors.border }),
+      footline('来源：golden/specs.json 的 9 份 deck（42 页），图上三个数值是页面类型计数。', 6.22)
     ]
   };
 }

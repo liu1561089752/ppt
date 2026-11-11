@@ -13,10 +13,15 @@ const { estimateTextHeight } = require('../engine/text_measure');
  * the old value as the minimum means no existing deck moves.
  */
 function titleBox(title, width, fontSize, minimum, theme) {
-  // Measured with the theme's own leading: a preset that loosens leading needs a taller box for the
-  // same font size, and measuring at the 1.18 default is how a 34 pt title failed its own box.
-  const lineHeight = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple;
-  return Math.max(minimum, estimateTextHeight(String(title), width, fontSize, { lineHeight }) * 1.02);
+  // These options mirror `prepareElement` in engine/layout.js, which is the measurement the warning is
+  // raised against: the layout wraps at 90% of the box width (safetyFactor), so measuring at the full
+  // width finds one line where the layout finds two and the box comes out short. Measured this way the
+  // template and the validator cannot disagree.
+  const lineHeight = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
+  const height = estimateTextHeight(String(title), width, fontSize, {
+    fontFace: theme.fonts.heading, lineHeight, safetyFactor: 0.9
+  });
+  return Math.max(minimum, height);
 }
 
 function cover(options = {}) {

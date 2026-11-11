@@ -259,7 +259,9 @@ function addElement(slide, el, theme, pptx, context = {}) {
       showTitle: false,
       showLegend: false,
       showValue: false,
-      chartColors: [theme.colors.primary, theme.colors.accent, '6B8F87', 'D8A17C'],
+      // Four series colours, all from the theme. The third and fourth used to be hard-coded hexes,
+        // which put a teal in a sand deck and a peach in an ink deck - a fifth colour nobody chose.
+        chartColors: [theme.colors.primary, theme.colors.accent, theme.colors.muted, theme.colors.border],
       catAxisLabelFontFace: theme.fonts.body,
       valAxisLabelFontFace: theme.fonts.body,
       catAxisLabelColor: theme.colors.muted,

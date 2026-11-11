@@ -487,6 +487,12 @@ NATIVE QUALITY BAR (applies to every page)
   • **Every text colour on every background passes WCAG AA (4.5:1).** Test the accent on the background before you use it for body copy; accents are for rules, labels and figures, not for paragraphs.
   • **Native objects only.** Text is a `text` element (one run per style, `a:t` in the file). A table is `a:tbl`. A chart is a chart part with an embedded workbook. A picture is a `p` picture with real bytes. **A page rendered as an image is a failed page** — no screenshot of a layout, no base64, no "just this once".
   • **Typography comes from the theme's scale.** Title / heading / body / caption only; no invented sizes, no font below `caption`.
+  • **Fill the page, not the top half of it.** A render of six template pages showed every block
+    finishing around y = 4.5 in on a 7.5 in canvas: the bottom third was empty on pages that had
+    nothing wrong with them. Every content page needs something that reaches the lower band — a
+    takeaway band, a note or source line, a table, a chart, a picture — and a KPI row wants one line
+    under it saying what the numbers mean. If the honest answer is "there is nothing more to say",
+    the page is carrying too little and should be merged with its neighbour.
   • **Diversify layouts across pages** — cover, section header, split text+image, bento grid, KPI row, timeline, comparison, chart, table, quote, closing. Never repeat the same layout back-to-back.
   • **Say what the data is as of.** Research has an end date; a deck that says "2026" while its newest
   source is from October 2026 is making a claim the material does not support. Put the cutoff in the
