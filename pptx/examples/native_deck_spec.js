@@ -98,7 +98,10 @@ const deck = {
       right: {
         title: '原生生成（本工具）',
         body: '输入是 Deck Spec：内容、结构与设计意图直接写成元素，没有需要反推的样式，也没有需要对齐的浏览器渲染。'
-      }
+      },
+      // Cards are measured from their copy now, so a page with two short bodies gets two short cards:
+      // the takeaway under them is what stops the lower half from being empty.
+      takeaway: '同一句话，前者在截图里，后者在文件里——差别不在于像不像，而在于还能不能改。'
     }), { notes: '对比页用两个原生卡片承载两段说明文字。' }),
 
     {

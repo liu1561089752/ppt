@@ -13,15 +13,9 @@ const { estimateTextHeight } = require('../engine/text_measure');
  * the old value as the minimum means no existing deck moves.
  */
 function titleBox(title, width, fontSize, minimum, theme) {
-  // These options mirror `prepareElement` in engine/layout.js, which is the measurement the warning is
-  // raised against: the layout wraps at 90% of the box width (safetyFactor), so measuring at the full
-  // width finds one line where the layout finds two and the box comes out short. Measured this way the
-  // template and the validator cannot disagree.
-  const lineHeight = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
-  const height = estimateTextHeight(String(title), width, fontSize, {
-    fontFace: theme.fonts.heading, lineHeight, safetyFactor: 0.9
-  });
-  return Math.max(minimum, height);
+  // One implementation of "how tall is this title", shared with `components.title()`, which mirrors
+  // engine/layout.js. Keeping the historical minimum means no existing deck's page moves.
+  return Math.max(minimum, components.measuredHeight(title, width, fontSize, theme));
 }
 
 function cover(options = {}) {
@@ -89,13 +83,25 @@ function comparison(options = {}) {
   const margin = theme.layouts.pageMarginX;
   const gap = theme.layouts.columnGap * 1.5;
   const cardW = (13.333 - margin * 2 - gap) / 2;
+  // Cards sized from their own copy. A fixed 4.6 in card held two lines of text and left the rest of
+  // the panel empty - the same guessed-height mistake `components.title()` used to make.
+  const inset = theme.spacing.md * 2;
+  const cardHeight = options.cardHeight || Math.max(2.2, 1.3 + Math.max(
+    components.measuredHeight(left.body || '', cardW - inset, theme.sizes.body, theme),
+    components.measuredHeight(right.body || '', cardW - inset, theme.sizes.body, theme)
+  ));
   return {
     background: options.background || theme.colors.background,
     elements: [
       components.title(options.title || '方案对比', { theme, x: margin, y: 0.55, w: 11.9, h: titleBox(options.title || '方案对比', 11.9, theme.sizes.title, 0.6, theme), fontSize: theme.sizes.title }),
       components.divider({ theme, x: margin + 0.02, y: 1.28, w: 11.85 }),
-      ...components.infoCard({ theme, x: margin, y: 1.8, w: cardW, h: 4.6, title: left.title || '方案 A', body: left.body || '', fill: left.fill || theme.colors.surface }),
-      ...components.infoCard({ theme, x: margin + cardW + gap, y: 1.8, w: cardW, h: 4.6, title: right.title || '方案 B', body: right.body || '', fill: right.fill || theme.colors.surface })
+      ...components.infoCard({ theme, x: margin, y: 1.8, w: cardW, h: cardHeight, title: left.title || '方案 A', body: left.body || '', fill: left.fill || theme.colors.surface }),
+      ...components.infoCard({ theme, x: margin + cardW + gap, y: 1.8, w: cardW, h: cardHeight, title: right.title || '方案 B', body: right.body || '', fill: right.fill || theme.colors.surface }),
+      // Sized cards leave room underneath; a takeaway line is what a comparison page is actually for.
+      ...(options.takeaway ? [components.paragraph(options.takeaway, {
+        theme, x: margin + 0.04, y: 1.8 + cardHeight + 0.35, w: 13.333 - margin * 2 - 0.1,
+        fontSize: theme.sizes.body + 1, color: theme.colors.foreground
+      })] : [])
     ]
   };
 }

@@ -1,0 +1,4025 @@
+{
+  "title": "储能出海：2026 年的账怎么算",
+  "language": "zh-CN",
+  "pageSize": "wide",
+  "theme": {
+    "name": "sage",
+    "colors": {
+      "background": "E6EFE8",
+      "foreground": "1E2B24",
+      "primary": "1F4438",
+      "accent": "C0653A",
+      "muted": "4F6659",
+      "surface": "FBFDFB",
+      "border": "CFDED4"
+    },
+    "fonts": {
+      "heading": "Microsoft YaHei",
+      "body": "Microsoft YaHei",
+      "cjk": "Microsoft YaHei",
+      "numeric": "Microsoft YaHei"
+    },
+    "sizes": {
+      "display": 44,
+      "title": 34,
+      "heading": 20,
+      "body": 14,
+      "caption": 10,
+      "micro": 9
+    },
+    "margins": {
+      "x": 0.58,
+      "y": 0.5
+    },
+    "lineSpacingMultiple": 1.32,
+    "spacing": {
+      "xs": 0.08,
+      "sm": 0.16,
+      "md": 0.24,
+      "lg": 0.36,
+      "xl": 0.56,
+      "pageX": 0.72,
+      "pageY": 0.52
+    },
+    "radii": {
+      "small": 0.06,
+      "medium": 0.12,
+      "large": 0.2
+    },
+    "typography": {
+      "titleWeight": "bold",
+      "headingWeight": "bold",
+      "bodyWeight": "normal",
+      "lineSpacingMultiple": 1.32,
+      "titleTracking": 0,
+      "bodyTracking": 0
+    },
+    "effects": {
+      "cardBorder": true,
+      "softShadow": false,
+      "accentRule": true
+    },
+    "layouts": {
+      "pageMarginX": 0.58,
+      "pageMarginY": 0.5,
+      "columnGap": 0.28,
+      "sectionGap": 0.34
+    }
+  },
+  "slides": [
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "储能出海：2026 年的账怎么算",
+          "x": 0.58,
+          "y": 1.6,
+          "w": 11.6,
+          "h": 1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 40,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "E6EFE8",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "出口 115.3 GWh、系统报价 0.42 元/Wh 之后，钱在哪里",
+          "x": 0.63,
+          "y": 2.85,
+          "w": 10.8,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 14,
+          "color": "E6EFE8",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "line",
+          "x": 0.63,
+          "y": 4,
+          "w": 2,
+          "h": 0,
+          "color": "C0653A",
+          "width": 2.4
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "数据截至 2026 年 3 月 · 公开资料与行业访谈 · 内部讨论稿",
+          "x": 0.63,
+          "y": 5.95,
+          "w": 10.8,
+          "h": 0.34,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 11,
+          "color": "E6EFE8",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0,
+          "transparency": 28
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "先看三个数，再看三件事",
+          "x": 0.58,
+          "y": 0.55,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.28,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 2,
+          "w": 3.871,
+          "h": 1.72,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "2025 储能电池出口",
+          "x": 0.82,
+          "y": 2.16,
+          "w": 3.391,
+          "h": 0.25,
+          "fontSize": 10,
+          "color": "4F6659",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "115.3",
+          "x": 0.82,
+          "y": 2.47,
+          "w": 3.391,
+          "h": 0.58,
+          "fontSize": 28,
+          "bold": true,
+          "color": "C0653A",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "GWh，同比 +67.9%",
+          "x": 0.82,
+          "y": 3.3199999999999994,
+          "w": 3.391,
+          "h": 0.24,
+          "fontSize": 9,
+          "color": "4F6659"
+        },
+        {
+          "type": "shape",
+          "x": 4.731,
+          "y": 2,
+          "w": 3.871,
+          "h": 1.72,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "2025 全球出货",
+          "x": 4.971,
+          "y": 2.16,
+          "w": 3.391,
+          "h": 0.25,
+          "fontSize": 10,
+          "color": "4F6659",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "651.5",
+          "x": 4.971,
+          "y": 2.47,
+          "w": 3.391,
+          "h": 0.58,
+          "fontSize": 28,
+          "bold": true,
+          "color": "C0653A",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "GWh，中国占比 >90%",
+          "x": 4.971,
+          "y": 3.3199999999999994,
+          "w": 3.391,
+          "h": 0.24,
+          "fontSize": 9,
+          "color": "4F6659"
+        },
+        {
+          "type": "shape",
+          "x": 8.882,
+          "y": 2,
+          "w": 3.871,
+          "h": 1.72,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "系统报价带",
+          "x": 9.122,
+          "y": 2.16,
+          "w": 3.391,
+          "h": 0.25,
+          "fontSize": 10,
+          "color": "4F6659",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "0.42",
+          "x": 9.122,
+          "y": 2.47,
+          "w": 3.391,
+          "h": 0.58,
+          "fontSize": 28,
+          "bold": true,
+          "color": "C0653A",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "元/Wh 起，同比接近腰斩",
+          "x": 9.122,
+          "y": 3.3199999999999994,
+          "w": 3.391,
+          "h": 0.24,
+          "fontSize": 9,
+          "color": "4F6659"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "三件事决定了这一年的账：价格触底把「卖电池」变成「卖方案」；关税把「出口」变成「本地化」；交付把「设备商」变成「运营商」。三件事同时发生时，规模不再自动等于利润。",
+          "x": 0.62,
+          "y": 3.95,
+          "w": 12.073,
+          "h": 0.95,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 15,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "来源：中国汽车动力电池产业创新联盟（2026-01-16）、观研天下（2026-02-28）、电池中国（2026-01-15）。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "role": "body",
+          "text": "01 / 04 市场",
+          "x": 0.58,
+          "y": 2.32,
+          "w": 8,
+          "h": 0.34,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 12,
+          "color": "E6EFE8",
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 1.6
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "增长还在，价格不在了",
+          "x": 0.58,
+          "y": 2.78,
+          "w": 10.6,
+          "h": 1.5,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 46,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "E6EFE8",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 4.46,
+          "w": 1.7,
+          "h": 0.05,
+          "fill": "E6EFE8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "出口量涨了 67.9%，系统单价跌到 0.42 元/Wh 起。",
+          "x": 0.58,
+          "y": 4.72,
+          "w": 9.4,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 16,
+          "color": "E6EFE8",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0,
+          "transparency": 18
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "出口 305 GWh 里，储能占了 37.8%",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.62,
+          "w": 7.3,
+          "h": 4.05,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "chart",
+          "chartType": "bar",
+          "x": 0.8799999999999999,
+          "y": 1.86,
+          "w": 6.7,
+          "h": 3.55,
+          "data": [
+            {
+              "name": "2025 年出口（GWh）",
+              "labels": [
+                "动力电池",
+                "储能电池"
+              ],
+              "values": [
+                189.7,
+                115.3
+              ]
+            }
+          ],
+          "showLegend": false,
+          "showValue": true,
+          "fontSize": 12
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "储能是增速最快的那一段",
+          "x": 8.3,
+          "y": 1.72,
+          "w": 4.4,
+          "h": 0.3666666666666667,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "动力电池出口 189.7 GWh，同比 +41.9%；储能电池 115.3 GWh，同比 +67.9%。储能只占出口量的 37.8%，却贡献了几乎全部增量。",
+          "x": 8.3,
+          "y": 2.36,
+          "w": 4.4,
+          "h": 1.5,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 14,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "出口占全年销量的 17.9%——海外已经是第二个基本盘，不是补充。",
+          "x": 8.3,
+          "y": 4,
+          "w": 4.4,
+          "h": 1.1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 14,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "来源：中国汽车动力电池产业创新联盟，财联社 2026-01-16。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "四个数字，一句结论",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.2233333333333336,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.4433333333333336,
+          "w": 8.028666666666668,
+          "h": 1.62,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "305.0",
+          "x": 0.82,
+          "y": 1.6133333333333335,
+          "w": 7.5486666666666675,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "出口总量（GWh）",
+          "x": 0.82,
+          "y": 1.846666666666667,
+          "w": 7.5486666666666675,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "动力与储能合计，同比 +50.7%，占全年销量 17.9%。",
+          "x": 0.82,
+          "y": 2.2733333333333334,
+          "w": 7.5486666666666675,
+          "h": 0.6099999999999999,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 8.868666666666668,
+          "y": 1.4433333333333336,
+          "w": 3.8843333333333336,
+          "h": 1.62,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "90%",
+          "x": 9.108666666666668,
+          "y": 1.6133333333333335,
+          "w": 3.4043333333333337,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "中国份额",
+          "x": 9.108666666666668,
+          "y": 1.846666666666667,
+          "w": 3.4043333333333337,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "2025 年全球储能电池出货 651.5 GWh，中国占比超过九成。",
+          "x": 9.108666666666668,
+          "y": 2.2733333333333334,
+          "w": 3.4043333333333337,
+          "h": 0.6099999999999999,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 3.3233333333333337,
+          "w": 3.8843333333333336,
+          "h": 1.62,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "79.2%",
+          "x": 0.82,
+          "y": 3.4933333333333336,
+          "w": 3.4043333333333337,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "源网侧占比",
+          "x": 0.82,
+          "y": 3.726666666666667,
+          "w": 3.4043333333333337,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "应用结构里源网侧最大，工商业仅 9.x%——大项目仍是主战场。",
+          "x": 0.82,
+          "y": 4.153333333333333,
+          "w": 3.4043333333333337,
+          "h": 0.6100000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 4.724333333333334,
+          "y": 3.3233333333333337,
+          "w": 8.028666666666668,
+          "h": 1.62,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "+76.18%",
+          "x": 4.964333333333334,
+          "y": 3.4933333333333336,
+          "w": 7.5486666666666675,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "全球增速",
+          "x": 4.964333333333334,
+          "y": 3.726666666666667,
+          "w": 7.5486666666666675,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "出货 651.5 GWh，增速比国内装机更快，说明增量在海外。",
+          "x": 4.964333333333334,
+          "y": 4.153333333333333,
+          "w": 7.5486666666666675,
+          "h": 0.6100000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "来源：CABIA（2026-01-16）、观研天下《2026 年中国储能电池行业分析》（2026-02-28）。",
+          "x": 0.62,
+          "y": 6.55,
+          "w": 11.6,
+          "h": 0.32,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "同一标段，三家报价差 8.5%",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.62,
+          "w": 7.3,
+          "h": 4.05,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "chart",
+          "chartType": "bar",
+          "x": 0.8799999999999999,
+          "y": 1.86,
+          "w": 6.7,
+          "h": 3.55,
+          "data": [
+            {
+              "name": "系统单价（元/Wh）",
+              "labels": [
+                "第一候选人",
+                "第二候选人",
+                "第三候选人"
+              ],
+              "values": [
+                0.42,
+                0.457,
+                0.459
+              ]
+            }
+          ],
+          "showLegend": false,
+          "showValue": true,
+          "fontSize": 12
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "内蒙古阿拉善 200MW/800MWh",
+          "x": 8.3,
+          "y": 1.72,
+          "w": 4.4,
+          "h": 0.7333333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "同一个标段，前三名报价 0.420 / 0.457 / 0.459 元/Wh，价格差 8.5%。电芯成本已触到 0.26 元/Wh 附近——留给系统集成的不到 0.16 元/Wh。",
+          "x": 8.3,
+          "y": 2.56,
+          "w": 4.4,
+          "h": 1.6,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 14,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "结论：报价战打到最后，赢的往往不是最会做电池的，是最会算非电芯成本的。",
+          "x": 8.3,
+          "y": 4.35,
+          "w": 4.4,
+          "h": 1.1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 14,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "来源：电池中国（2026-01-15）转载该项目中标候选人公示；电芯价格同源。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "role": "body",
+          "text": "02 / 04 生意",
+          "x": 0.58,
+          "y": 2.32,
+          "w": 8,
+          "h": 0.34,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 12,
+          "color": "E6EFE8",
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 1.6
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "从卖电池到卖方案",
+          "x": 0.58,
+          "y": 2.78,
+          "w": 10.6,
+          "h": 1.5,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 46,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "E6EFE8",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 4.46,
+          "w": 1.7,
+          "h": 0.05,
+          "fill": "E6EFE8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "同一条产业链，两套完全不同的赚钱方式。",
+          "x": 0.58,
+          "y": 4.72,
+          "w": 9.4,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 16,
+          "color": "E6EFE8",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0,
+          "transparency": 18
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "电芯厂与集成商，谁在赚钱",
+          "x": 0.58,
+          "y": 0.55,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.28,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.8,
+          "w": 5.8765,
+          "h": 3.9,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "电芯厂",
+          "x": 0.82,
+          "y": 1.98,
+          "w": 5.3965,
+          "h": 0.52,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "拼良率、产能利用率和碳酸锂的采购时点。毛利随价格波动，账期短、客户集中、可复制。\n真正的门槛不是价格，是把良率从 92% 提到 96%——那是几亿资本开支，不是管理动作。",
+          "x": 0.82,
+          "y": 2.62,
+          "w": 5.3965,
+          "h": 2.9,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 6.8765,
+          "y": 1.8,
+          "w": 5.8765,
+          "h": 3.9,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "系统集成商",
+          "x": 7.1165,
+          "y": 1.98,
+          "w": 5.3965,
+          "h": 0.52,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "拼 PCS、EMS、热管理与并网经验。毛利更高，但要垫资、扛质保、背 20 年运维承诺。\n真正的门槛是并网一次通过——它取决于当地电网公司的结论，不取决于参数表。",
+          "x": 7.1165,
+          "y": 2.62,
+          "w": 5.3965,
+          "h": 2.9,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "电芯的溢价被压缩到极限，「并得上网、稳得住、赔得起」开始定价——所以做电芯的在扩产，做集成的在招并网工程师。",
+          "x": 0.62,
+          "y": 6.5,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "一个 GWh 项目的成本去哪儿了",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "table",
+          "x": 0.58,
+          "y": 1.62,
+          "w": 12.173,
+          "h": 3.1,
+          "rows": [
+            [
+              {
+                "text": "环节",
+                "options": {
+                  "bold": true,
+                  "color": "E6EFE8",
+                  "fill": {
+                    "color": "1F4438"
+                  }
+                }
+              },
+              {
+                "text": "占系统成本",
+                "options": {
+                  "bold": true,
+                  "color": "E6EFE8",
+                  "fill": {
+                    "color": "1F4438"
+                  }
+                }
+              },
+              {
+                "text": "议价能力来源",
+                "options": {
+                  "bold": true,
+                  "color": "E6EFE8",
+                  "fill": {
+                    "color": "1F4438"
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "text": "电芯"
+              },
+              {
+                "text": "约 55%–60%"
+              },
+              {
+                "text": "产能与良率；价格最透明，溢价最先消失"
+              }
+            ],
+            [
+              {
+                "text": "PCS / EMS"
+              },
+              {
+                "text": "约 12%–18%"
+              },
+              {
+                "text": "并网与构网能力；软件可复用，毛利最稳"
+              }
+            ],
+            [
+              {
+                "text": "温控与消防"
+              },
+              {
+                "text": "约 8%–10%"
+              },
+              {
+                "text": "安全认证与事故记录；出过事的供应商直接被排除"
+              }
+            ],
+            [
+              {
+                "text": "结构件与集成"
+              },
+              {
+                "text": "约 8%–12%"
+              },
+              {
+                "text": "交付经验与本地施工能力；难复制但难放大"
+              }
+            ],
+            [
+              {
+                "text": "质保与运维准备金"
+              },
+              {
+                "text": "约 5%–8%"
+              },
+              {
+                "text": "20 年承诺的贴现；最容易被低估的一项成本"
+              }
+            ]
+          ],
+          "options": {
+            "colW": [
+              2.8,
+              2.2,
+              6.4
+            ],
+            "fontSize": 12,
+            "valign": "middle"
+          }
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "价格战打的是前两行，胜负其实由后三行决定——量最大的一笔钱，藏在质保准备金里。",
+          "x": 0.62,
+          "y": 4.95,
+          "w": 12.073,
+          "h": 0.6,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 15,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：区间来自公开招标与行业访谈的交叉估计，不是单一厂商账面数据；用于比较结构，不用于报价。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "价格差 8.5%，差在哪三笔钱",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.2233333333333336,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.4433333333333336,
+          "w": 3.8843333333333336,
+          "h": 1.75,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "01",
+          "x": 0.82,
+          "y": 1.6133333333333335,
+          "w": 3.4043333333333337,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "电芯采购",
+          "x": 0.82,
+          "y": 1.846666666666667,
+          "w": 3.4043333333333337,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "同样的电芯，采购时点差一个季度，成本差 6%–10%。",
+          "x": 0.82,
+          "y": 2.2733333333333334,
+          "w": 3.4043333333333337,
+          "h": 0.7399999999999998,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 4.724333333333334,
+          "y": 1.4433333333333336,
+          "w": 3.8843333333333336,
+          "h": 1.75,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "02",
+          "x": 4.964333333333334,
+          "y": 1.6133333333333335,
+          "w": 3.4043333333333337,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "并网设计",
+          "x": 4.964333333333334,
+          "y": 1.846666666666667,
+          "w": 3.4043333333333337,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "一次通过 vs 返工一次，隐性成本差 0.01–0.02 元/Wh。",
+          "x": 4.964333333333334,
+          "y": 2.2733333333333334,
+          "w": 3.4043333333333337,
+          "h": 0.7399999999999998,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 8.868666666666668,
+          "y": 1.4433333333333336,
+          "w": 3.8843333333333336,
+          "h": 1.75,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "03",
+          "x": 9.108666666666668,
+          "y": 1.6133333333333335,
+          "w": 3.4043333333333337,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "质保条款",
+          "x": 9.108666666666668,
+          "y": 1.846666666666667,
+          "w": 3.4043333333333337,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "容量保持率的承诺从 70% 提到 80%，账面成本立刻多 3%。",
+          "x": 9.108666666666668,
+          "y": 2.2733333333333334,
+          "w": 3.4043333333333337,
+          "h": 0.7399999999999998,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：结构性拆解，用于解释报价差异；单一项目的实际构成取决于技术路线与合同条款。",
+          "x": 0.62,
+          "y": 6.55,
+          "w": 11.6,
+          "h": 0.32,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "text": "“",
+          "x": 0.5,
+          "y": 1.5350000000000001,
+          "w": 1.5,
+          "h": 1.21,
+          "fontSize": 66,
+          "bold": true,
+          "color": "E6EFE8",
+          "transparency": 68
+        },
+        {
+          "type": "text",
+          "text": "价格触底不是终点，是重新分层。",
+          "x": 0.62,
+          "y": 2.805,
+          "w": 10.4,
+          "h": 0.55,
+          "valign": "top",
+          "fontSize": 30,
+          "lineSpacingMultiple": 1.32,
+          "color": "E6EFE8",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "shape",
+          "x": 0.62,
+          "y": 3.7950000000000004,
+          "w": 1.15,
+          "h": 0.05,
+          "fill": "E6EFE8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "本报告判断",
+          "x": 0.62,
+          "y": 4.015000000000001,
+          "w": 10.4,
+          "h": 0.34,
+          "fontSize": 15,
+          "bold": true,
+          "color": "E6EFE8"
+        },
+        {
+          "type": "text",
+          "text": "基于 2025 年中标价与电芯成本的对照",
+          "x": 0.62,
+          "y": 4.3950000000000005,
+          "w": 10.4,
+          "h": 0.3,
+          "fontSize": 12,
+          "color": "E6EFE8",
+          "transparency": 24
+        }
+      ]
+    },
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "role": "body",
+          "text": "03 / 04 风险",
+          "x": 0.58,
+          "y": 2.32,
+          "w": 8,
+          "h": 0.34,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 12,
+          "color": "E6EFE8",
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 1.6
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "关税只是第一道门",
+          "x": 0.58,
+          "y": 2.78,
+          "w": 10.6,
+          "h": 1.5,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 46,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "E6EFE8",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 4.46,
+          "w": 1.7,
+          "h": 0.05,
+          "fill": "E6EFE8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "真正的门槛在认证、并网和账期上，它们都比税率更难对付。",
+          "x": 0.58,
+          "y": 4.72,
+          "w": 9.4,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 16,
+          "color": "E6EFE8",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0,
+          "transparency": 18
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "关税的三个转折点",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "line",
+          "x": 1.43,
+          "y": 2.07,
+          "w": 10.473,
+          "h": 0,
+          "color": "CFDED4",
+          "width": 2
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 1.3199999999999998,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "2025.04",
+          "x": 0.7799999999999999,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "173%",
+          "x": 0.58,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.7333333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "对华储能锂电池关税一度抬到 173%，订单当月冻结。",
+          "x": 0.5299999999999999,
+          "y": 3.473333333333333,
+          "w": 1.8,
+          "h": 1.05,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 4.811,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "2025.05",
+          "x": 4.271,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "30%",
+          "x": 4.071000000000001,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.7333333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "日内瓦会谈后统一加征 30%，需求回来但利润没回来。",
+          "x": 4.021,
+          "y": 3.473333333333333,
+          "w": 1.8,
+          "h": 1.05,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 8.302000000000001,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "2026.01",
+          "x": 7.7620000000000005,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "301 + FEOC",
+          "x": 7.562000000000001,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.7333333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "301 条款与 FEOC 限制同时生效，影响从电池扩到系统。",
+          "x": 7.5120000000000005,
+          "y": 3.473333333333333,
+          "w": 1.8,
+          "h": 1.05,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 11.793000000000001,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "2026 年内",
+          "x": 11.253,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "本地含量",
+          "x": 11.053,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.7333333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "要么本地组装，要么让出市场——二选一。",
+          "x": 11.003,
+          "y": 3.473333333333333,
+          "w": 1.8,
+          "h": 1.05,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "来源：中国储能网（2026-03-16）、能源杂志（2025-12-15）。关税与条款以官方公告为准，本页只做时间线整理。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "本地化要过三道门，税率只是第一道",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.2233333333333336,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.4433333333333336,
+          "w": 3.871,
+          "h": 2.1,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "01",
+          "x": 0.82,
+          "y": 1.6133333333333335,
+          "w": 3.391,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "认证",
+          "x": 0.82,
+          "y": 1.846666666666667,
+          "w": 3.391,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "UL 9540A、IEC 62619、并网规约；一项不过，标书都进不去。周期 6–12 个月。",
+          "x": 0.82,
+          "y": 2.2733333333333334,
+          "w": 3.391,
+          "h": 1.0900000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 4.731,
+          "y": 1.4433333333333336,
+          "w": 3.871,
+          "h": 2.1,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "02",
+          "x": 4.971,
+          "y": 1.6133333333333335,
+          "w": 3.391,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "并网",
+          "x": 4.971,
+          "y": 1.846666666666667,
+          "w": 3.391,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "构网能力、故障穿越、弱电网适应性；靠当地电网公司的一纸结论，不靠参数表。",
+          "x": 4.971,
+          "y": 2.2733333333333334,
+          "w": 3.391,
+          "h": 1.0900000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 8.882,
+          "y": 1.4433333333333336,
+          "w": 3.871,
+          "h": 2.1,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "03",
+          "x": 9.122,
+          "y": 1.6133333333333335,
+          "w": 3.391,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "本地含量",
+          "x": 9.122,
+          "y": 1.846666666666667,
+          "w": 3.391,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "电芯之外的本土采购比例；决定能否拿到当地补贴与优先并网权。",
+          "x": 9.122,
+          "y": 2.2733333333333334,
+          "w": 3.391,
+          "h": 1.0900000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：门类是行业通行要求，具体条款以目标市场当期法规为准。",
+          "x": 0.62,
+          "y": 6.55,
+          "w": 11.6,
+          "h": 0.32,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "账期与汇率，吃掉的是毛利不是收入",
+          "x": 0.58,
+          "y": 0.55,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.28,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 2,
+          "w": 3.871,
+          "h": 1.72,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "典型账期",
+          "x": 0.82,
+          "y": 2.16,
+          "w": 3.391,
+          "h": 0.25,
+          "fontSize": 10,
+          "color": "4F6659",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "90–180",
+          "x": 0.82,
+          "y": 2.47,
+          "w": 3.391,
+          "h": 0.58,
+          "fontSize": 28,
+          "bold": true,
+          "color": "C0653A",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "天，EPC 项目更长",
+          "x": 0.82,
+          "y": 3.3199999999999994,
+          "w": 3.391,
+          "h": 0.24,
+          "fontSize": 9,
+          "color": "4F6659"
+        },
+        {
+          "type": "shape",
+          "x": 4.731,
+          "y": 2,
+          "w": 3.871,
+          "h": 1.72,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "质保准备金",
+          "x": 4.971,
+          "y": 2.16,
+          "w": 3.391,
+          "h": 0.25,
+          "fontSize": 10,
+          "color": "4F6659",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "5–8%",
+          "x": 4.971,
+          "y": 2.47,
+          "w": 3.391,
+          "h": 0.58,
+          "fontSize": 28,
+          "bold": true,
+          "color": "C0653A",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "占合同额，20 年摊",
+          "x": 4.971,
+          "y": 3.3199999999999994,
+          "w": 3.391,
+          "h": 0.24,
+          "fontSize": 9,
+          "color": "4F6659"
+        },
+        {
+          "type": "shape",
+          "x": 8.882,
+          "y": 2,
+          "w": 3.871,
+          "h": 1.72,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "汇兑敞口",
+          "x": 9.122,
+          "y": 2.16,
+          "w": 3.391,
+          "h": 0.25,
+          "fontSize": 10,
+          "color": "4F6659",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "3–5%",
+          "x": 9.122,
+          "y": 2.47,
+          "w": 3.391,
+          "h": 0.58,
+          "fontSize": 28,
+          "bold": true,
+          "color": "C0653A",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "text",
+          "text": "新兴市场货币波动区间",
+          "x": 9.122,
+          "y": 3.3199999999999994,
+          "w": 3.391,
+          "h": 0.24,
+          "fontSize": 9,
+          "color": "4F6659"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "一笔 0.42 元/Wh 的合同，账期半年、质保 6%、汇兑 4%——三项叠加后实际到手可能只剩 0.36 元/Wh。这解释了为什么规模增长与利润增长会背离：收入按签单确认，现金按交付回笼。",
+          "x": 0.62,
+          "y": 3.95,
+          "w": 12.073,
+          "h": 0.95,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 15,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：账期与准备金来自公开招标文件与行业访谈区间；汇率波动按新兴市场货币历史区间估计。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "六件事同时发生",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.2233333333333336,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.4433333333333336,
+          "w": 3.8976666666666664,
+          "h": 1.34,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "01",
+          "x": 0.82,
+          "y": 1.6133333333333335,
+          "w": 3.4176666666666664,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "价格",
+          "x": 0.82,
+          "y": 1.846666666666667,
+          "w": 3.4176666666666664,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "系统 0.42 元/Wh 起",
+          "x": 0.82,
+          "y": 2.2733333333333334,
+          "w": 3.4176666666666664,
+          "h": 0.33000000000000007,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 4.717666666666666,
+          "y": 1.4433333333333336,
+          "w": 3.8976666666666664,
+          "h": 1.34,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "02",
+          "x": 4.957666666666666,
+          "y": 1.6133333333333335,
+          "w": 3.4176666666666664,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "关税",
+          "x": 4.957666666666666,
+          "y": 1.846666666666667,
+          "w": 3.4176666666666664,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "30% 起 + 301/FEOC",
+          "x": 4.957666666666666,
+          "y": 2.2733333333333334,
+          "w": 3.4176666666666664,
+          "h": 0.33000000000000007,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 8.855333333333332,
+          "y": 1.4433333333333336,
+          "w": 3.8976666666666664,
+          "h": 1.34,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "03",
+          "x": 9.095333333333333,
+          "y": 1.6133333333333335,
+          "w": 3.4176666666666664,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "本地化",
+          "x": 9.095333333333333,
+          "y": 1.846666666666667,
+          "w": 3.4176666666666664,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "认证与本地含量",
+          "x": 9.095333333333333,
+          "y": 2.2733333333333334,
+          "w": 3.4176666666666664,
+          "h": 0.33000000000000007,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 3.0233333333333334,
+          "w": 3.8976666666666664,
+          "h": 1.34,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "04",
+          "x": 0.82,
+          "y": 3.1933333333333334,
+          "w": 3.4176666666666664,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "账期",
+          "x": 0.82,
+          "y": 3.4266666666666667,
+          "w": 3.4176666666666664,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "90–180 天，垫资重",
+          "x": 0.82,
+          "y": 3.8533333333333335,
+          "w": 3.4176666666666664,
+          "h": 0.33000000000000007,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 4.717666666666666,
+          "y": 3.0233333333333334,
+          "w": 3.8976666666666664,
+          "h": 1.34,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "05",
+          "x": 4.957666666666666,
+          "y": 3.1933333333333334,
+          "w": 3.4176666666666664,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "并网",
+          "x": 4.957666666666666,
+          "y": 3.4266666666666667,
+          "w": 3.4176666666666664,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "构网能力成为门槛",
+          "x": 4.957666666666666,
+          "y": 3.8533333333333335,
+          "w": 3.4176666666666664,
+          "h": 0.33000000000000007,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 8.855333333333332,
+          "y": 3.0233333333333334,
+          "w": 3.8976666666666664,
+          "h": 1.34,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "06",
+          "x": 9.095333333333333,
+          "y": 3.1933333333333334,
+          "w": 3.4176666666666664,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "人才",
+          "x": 9.095333333333333,
+          "y": 3.4266666666666667,
+          "w": 3.4176666666666664,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "会并网的人最贵",
+          "x": 9.095333333333333,
+          "y": 3.8533333333333335,
+          "w": 3.4176666666666664,
+          "h": 0.33000000000000007,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "这六件事里，只有价格可以靠谈判解决。",
+          "x": 0.62,
+          "y": 6.55,
+          "w": 11.6,
+          "h": 0.32,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "role": "body",
+          "text": "04 / 04 打法",
+          "x": 0.58,
+          "y": 2.32,
+          "w": 8,
+          "h": 0.34,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 12,
+          "color": "E6EFE8",
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 1.6
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "三条战线，一张 12 个月的表",
+          "x": 0.58,
+          "y": 2.78,
+          "w": 10.6,
+          "h": 1.5,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 46,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "E6EFE8",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 4.46,
+          "w": 1.7,
+          "h": 0.05,
+          "fill": "E6EFE8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "把「卖设备」改成「卖交付」，把「出口」改成「落地」。",
+          "x": 0.58,
+          "y": 4.72,
+          "w": 9.4,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 16,
+          "color": "E6EFE8",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0,
+          "transparency": 18
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "三条战线：产品、交付、资本",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.9,
+          "w": 3.871,
+          "h": 1.5,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.9
+        },
+        {
+          "type": "text",
+          "text": "产品",
+          "x": 0.7,
+          "y": 2.08,
+          "w": 3.6310000000000002,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "line",
+          "x": 4.470999999999999,
+          "y": 2.65,
+          "w": 0.24000000000000002,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.5,
+          "endArrowType": "triangle"
+        },
+        {
+          "type": "shape",
+          "x": 4.731,
+          "y": 1.9,
+          "w": 3.871,
+          "h": 1.5,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.9
+        },
+        {
+          "type": "text",
+          "text": "交付",
+          "x": 4.851,
+          "y": 2.08,
+          "w": 3.6310000000000002,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "line",
+          "x": 8.622,
+          "y": 2.65,
+          "w": 0.24000000000000002,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.5,
+          "endArrowType": "triangle"
+        },
+        {
+          "type": "shape",
+          "x": 8.882,
+          "y": 1.9,
+          "w": 3.871,
+          "h": 1.5,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.9
+        },
+        {
+          "type": "text",
+          "text": "资本",
+          "x": 9.001999999999999,
+          "y": 2.08,
+          "w": 3.6310000000000002,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "三条战线的顺序不能反：先有可复用的产品，交付才谈得上标准化；交付有了标准，资本才敢定价。",
+          "x": 0.62,
+          "y": 4.5,
+          "w": 12.073,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 15,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：打法为本报告建议，非行业共识。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "12 个月：从签约到并网",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "line",
+          "x": 1.43,
+          "y": 2.07,
+          "w": 10.473,
+          "h": 0,
+          "color": "CFDED4",
+          "width": 2
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 1.3199999999999998,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "M0",
+          "x": 0.7799999999999999,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "立项",
+          "x": 0.58,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "国别尽调：认证清单、并网规约、税则。",
+          "x": 0.5299999999999999,
+          "y": 3.19,
+          "w": 1.8,
+          "h": 1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 3.9382500000000005,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "M2",
+          "x": 3.3982500000000004,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "选型",
+          "x": 3.1982500000000003,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "按当地电网强弱定构网方案，锁定电芯供应。",
+          "x": 3.1482500000000004,
+          "y": 3.19,
+          "w": 1.8,
+          "h": 1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 6.5565,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "M5",
+          "x": 6.0165,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "认证",
+          "x": 5.8165000000000004,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "送样测试；同步启动本地伙伴尽调。",
+          "x": 5.7665,
+          "y": 3.19,
+          "w": 1.8,
+          "h": 1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 9.174750000000001,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "M8",
+          "x": 8.63475,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "交付",
+          "x": 8.434750000000001,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "首批到港、施工、并网调试。",
+          "x": 8.38475,
+          "y": 3.19,
+          "w": 1.8,
+          "h": 1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 11.793000000000001,
+          "y": 1.95,
+          "w": 0.22,
+          "h": 0.22,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "M12",
+          "x": 11.253,
+          "y": 2.37,
+          "w": 1.3,
+          "h": 0.26,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "bold": true,
+          "color": "4F6659",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "复盘",
+          "x": 11.053,
+          "y": 2.67,
+          "w": 1.7,
+          "h": 0.45000000000000007,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "text": "成本回归模型，决定是否复制到第二国。",
+          "x": 11.003,
+          "y": 3.19,
+          "w": 1.8,
+          "h": 1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "align": "center",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：里程碑为典型项目节奏，实际取决于认证排期与当地电网审批速度。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "缺的不是销售，是这三种人",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.6233333333333334,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.2233333333333336,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.4433333333333336,
+          "w": 3.871,
+          "h": 1.85,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "01",
+          "x": 0.82,
+          "y": 1.6133333333333335,
+          "w": 3.391,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "并网工程师",
+          "x": 0.82,
+          "y": 1.846666666666667,
+          "w": 3.391,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "能读懂当地电网规约、能把构网参数调到验收通过的人。",
+          "x": 0.82,
+          "y": 2.2733333333333334,
+          "w": 3.391,
+          "h": 0.8400000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 4.731,
+          "y": 1.4433333333333336,
+          "w": 3.871,
+          "h": 1.85,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "02",
+          "x": 4.971,
+          "y": 1.6133333333333335,
+          "w": 3.391,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "国别交付经理",
+          "x": 4.971,
+          "y": 1.846666666666667,
+          "w": 3.391,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "懂关税、认证、劳务与施工，一个人管一个国家的落地。",
+          "x": 4.971,
+          "y": 2.2733333333333334,
+          "w": 3.391,
+          "h": 0.8400000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "shape",
+          "x": 8.882,
+          "y": 1.4433333333333336,
+          "w": 3.871,
+          "h": 1.85,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "text",
+          "text": "03",
+          "x": 9.122,
+          "y": 1.6133333333333335,
+          "w": 3.391,
+          "h": 0.18333333333333335,
+          "fontSize": 10,
+          "bold": true,
+          "charSpacing": 1.4,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "结构融资",
+          "x": 9.122,
+          "y": 1.846666666666667,
+          "w": 3.391,
+          "h": 0.3666666666666667,
+          "fontSize": 20,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "text",
+          "text": "把项目现金流讲成银行听得懂的语言，替公司卸掉账期。",
+          "x": 9.122,
+          "y": 2.2733333333333334,
+          "w": 3.391,
+          "h": 0.8400000000000003,
+          "fontSize": 14,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "这三类岗位都可以外聘，但决策权必须留在总部。",
+          "x": 0.62,
+          "y": 6.55,
+          "w": 11.6,
+          "h": 0.32,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 10,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "单 GWh 模型：收入、成本、净现金",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "table",
+          "x": 0.58,
+          "y": 1.62,
+          "w": 12.173,
+          "h": 2.7,
+          "rows": [
+            [
+              {
+                "text": "科目",
+                "options": {
+                  "bold": true,
+                  "color": "E6EFE8",
+                  "fill": {
+                    "color": "1F4438"
+                  }
+                }
+              },
+              {
+                "text": "元/Wh",
+                "options": {
+                  "bold": true,
+                  "color": "E6EFE8",
+                  "fill": {
+                    "color": "1F4438"
+                  }
+                }
+              },
+              {
+                "text": "说明",
+                "options": {
+                  "bold": true,
+                  "color": "E6EFE8",
+                  "fill": {
+                    "color": "1F4438"
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "text": "合同价"
+              },
+              {
+                "text": "0.420"
+              },
+              {
+                "text": "2026 年初系统报价下沿"
+              }
+            ],
+            [
+              {
+                "text": "电芯与材料"
+              },
+              {
+                "text": "−0.260"
+              },
+              {
+                "text": "电芯报价触底区间"
+              }
+            ],
+            [
+              {
+                "text": "PCS / 温控 / 结构"
+              },
+              {
+                "text": "−0.095"
+              },
+              {
+                "text": "含集成人工与调试"
+              }
+            ],
+            [
+              {
+                "text": "质保与运维准备金"
+              },
+              {
+                "text": "−0.028"
+              },
+              {
+                "text": "按合同额 6.7% 计提"
+              }
+            ],
+            [
+              {
+                "text": "毛利"
+              },
+              {
+                "text": "0.037"
+              },
+              {
+                "text": "约 8.8%——这就是全部空间"
+              }
+            ]
+          ],
+          "options": {
+            "colW": [
+              3.2,
+              2,
+              6.2
+            ],
+            "fontSize": 12,
+            "valign": "middle"
+          }
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "8.8% 的毛利要覆盖账期利息、汇率损失与售后，剩下的才是净现金。算不过这笔账的项目，签得越多亏得越快。",
+          "x": 0.62,
+          "y": 4.55,
+          "w": 12.073,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 15,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：按公开报价与成本区间构造的示意模型，用于判断量级与结构，不构成报价依据。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "2026 三种情景：量、价、利润",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 1.62,
+          "w": 7.3,
+          "h": 3.9,
+          "radius": 0.12,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "lineWidth": 0.8
+        },
+        {
+          "type": "chart",
+          "chartType": "bar",
+          "x": 0.8799999999999999,
+          "y": 1.86,
+          "w": 6.7,
+          "h": 3.4,
+          "data": [
+            {
+              "name": "2026 出口量（GWh，情景假设）",
+              "labels": [
+                "保守",
+                "基准",
+                "乐观"
+              ],
+              "values": [
+                130,
+                160,
+                195
+              ]
+            }
+          ],
+          "showLegend": false,
+          "showValue": true,
+          "fontSize": 12
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "三种情景的差别不在需求",
+          "x": 8.3,
+          "y": 1.72,
+          "w": 4.4,
+          "h": 0.5,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 20,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "需求和 2025 年一样好。差别在于：保守情景假定 301 与 FEOC 让美国市场基本关闭，基准情景假定本地组装能拿到一半市场，乐观情景假定关税再次回落。",
+          "x": 8.3,
+          "y": 2.36,
+          "w": 4.4,
+          "h": 1.75,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 14,
+          "color": "1E2B24",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "三种情景下，价格都在 0.40–0.45 元/Wh；变的只有量与利润——所以先修利润，再赌量。",
+          "x": 8.3,
+          "y": 4.55,
+          "w": 4.4,
+          "h": 1,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 14,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "口径：情景为本报告假设（基于 2025 年 115.3 GWh 出口基数与关税情形），不是预测。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "text": "规模不再自动等于利润，能算清账的才敢签单。",
+          "x": 0.62,
+          "y": 2.805,
+          "w": 10.4,
+          "h": 0.55,
+          "valign": "top",
+          "fontSize": 30,
+          "lineSpacingMultiple": 1.32,
+          "color": "E6EFE8",
+          "fontFace": "Microsoft YaHei"
+        },
+        {
+          "type": "shape",
+          "x": 0.62,
+          "y": 3.7950000000000004,
+          "w": 1.15,
+          "h": 0.05,
+          "fill": "E6EFE8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "本报告判断",
+          "x": 0.62,
+          "y": 4.015000000000001,
+          "w": 10.4,
+          "h": 0.34,
+          "fontSize": 15,
+          "bold": true,
+          "color": "E6EFE8"
+        },
+        {
+          "type": "text",
+          "text": "单 GWh 模型与三种情景的共同结论",
+          "x": 0.62,
+          "y": 4.3950000000000005,
+          "w": 10.4,
+          "h": 0.3,
+          "fontSize": 12,
+          "color": "E6EFE8",
+          "transparency": 24
+        }
+      ]
+    },
+    {
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "五条判断",
+          "x": 0.58,
+          "y": 0.52,
+          "w": 11.9,
+          "h": 0.62,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 34,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "1F4438",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "line",
+          "x": 0.6,
+          "y": 1.24,
+          "w": 11.85,
+          "h": 0,
+          "color": "C0653A",
+          "width": 1.4
+        },
+        {
+          "type": "text",
+          "text": "01",
+          "x": 0.58,
+          "y": 1.78,
+          "w": 0.85,
+          "h": 0.6,
+          "fontSize": 30,
+          "bold": true,
+          "color": "C0653A",
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "把「卖电池」升级成「卖交付」，因为溢价已经转移到并网与质保。",
+          "x": 1.48,
+          "y": 1.82,
+          "w": 11.073,
+          "h": 0.8,
+          "fontSize": 19,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "text": "02",
+          "x": 0.58,
+          "y": 2.73,
+          "w": 0.85,
+          "h": 0.6,
+          "fontSize": 30,
+          "bold": true,
+          "color": "C0653A",
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "先修单 GWh 模型，再谈规模；8.8% 的毛利经不起一次汇兑。",
+          "x": 1.48,
+          "y": 2.77,
+          "w": 11.073,
+          "h": 0.8,
+          "fontSize": 19,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "text": "03",
+          "x": 0.58,
+          "y": 3.6799999999999997,
+          "w": 0.85,
+          "h": 0.6,
+          "fontSize": 30,
+          "bold": true,
+          "color": "C0653A",
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "认证与并网是前置成本，不是项目费用，要按国别建手册。",
+          "x": 1.48,
+          "y": 3.7199999999999998,
+          "w": 11.073,
+          "h": 0.8,
+          "fontSize": 19,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "text": "04",
+          "x": 0.58,
+          "y": 4.63,
+          "w": 0.85,
+          "h": 0.6,
+          "fontSize": 30,
+          "bold": true,
+          "color": "C0653A",
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "账期必须转移：项目融资与质保保险，比降价更能救利润。",
+          "x": 1.48,
+          "y": 4.67,
+          "w": 11.073,
+          "h": 0.8,
+          "fontSize": 19,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "text": "05",
+          "x": 0.58,
+          "y": 5.58,
+          "w": 0.85,
+          "h": 0.6,
+          "fontSize": 30,
+          "bold": true,
+          "color": "C0653A",
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "只复制已经跑通的国别，不要同时开三个新市场。",
+          "x": 1.48,
+          "y": 5.62,
+          "w": 11.073,
+          "h": 0.8,
+          "fontSize": 19,
+          "color": "1E2B24",
+          "valign": "top"
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "本页为结论汇总，证据见前 23 页；数据截至 2026 年 3 月。",
+          "x": 0.62,
+          "y": 6.62,
+          "w": 12.073,
+          "h": 0.3,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 9,
+          "color": "4F6659",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0
+        }
+      ]
+    },
+    {
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "role": "body",
+          "text": "讨论",
+          "x": 0.58,
+          "y": 2.32,
+          "w": 8,
+          "h": 0.34,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 12,
+          "color": "E6EFE8",
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 1.6
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "先算账，再出海",
+          "x": 0.58,
+          "y": 2.78,
+          "w": 10.6,
+          "h": 1.5,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 46,
+          "bold": true,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "color": "E6EFE8",
+          "align": "left",
+          "valign": "mid",
+          "margin": 0,
+          "charSpacing": 0,
+          "lineSpacingMultiple": 1.32
+        },
+        {
+          "type": "shape",
+          "x": 0.58,
+          "y": 4.46,
+          "w": 1.7,
+          "h": 0.05,
+          "fill": "E6EFE8",
+          "line": false
+        },
+        {
+          "type": "text",
+          "role": "body",
+          "text": "把这三张表带回团队：单 GWh 模型、国别门槛清单、12 个月里程碑。",
+          "x": 0.58,
+          "y": 4.72,
+          "w": 9.4,
+          "h": 0.7,
+          "fontFace": "Microsoft YaHei",
+          "fontSize": 16,
+          "color": "E6EFE8",
+          "bold": false,
+          "italic": false,
+          "underline": false,
+          "strike": false,
+          "align": "left",
+          "valign": "top",
+          "margin": 0.02,
+          "charSpacing": 0,
+          "transparency": 18
+        }
+      ]
+    }
+  ]
+}

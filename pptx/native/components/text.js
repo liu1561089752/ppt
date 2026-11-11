@@ -1,17 +1,37 @@
 'use strict';
 
 const { resolveTheme } = require('../themes/design_system');
+const { estimateTextHeight } = require('../engine/text_measure');
+
+/**
+ * The height this text will actually need, measured the way engine/layout.js measures it.
+ *
+ * `title()` used to hand back a flat 0.62 in box. A title long enough to wrap to two lines then
+ * overflowed its own box - which is exactly what happened to a 20 pt heading reading
+ * "内蒙古阿拉善 200MW/800MWh" in a 4.4 in column, and `--strict` refused the deck for it. A component
+ * that invents a box has to invent the right one; omit `h` and this is what it uses.
+ */
+function measuredHeight(value, widthIn, fontSize, theme, options = {}) {
+  const lineHeight = options.lineSpacingMultiple
+    || theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
+  const measure = { lineHeight, safetyFactor: 0.9 };
+  if (Number.isFinite(options.charSpacing) && options.charSpacing !== 0) measure.letterSpacingPt = options.charSpacing;
+  return estimateTextHeight(String(value), widthIn, fontSize, measure);
+}
 
 function title(text, options = {}) {
   const theme = resolveTheme(options.theme);
+  const boxWidth = options.w === undefined ? 11.9 : options.w;
+  const fontSize = options.fontSize || theme.sizes.title;
+  const tracking = options.charSpacing === undefined ? theme.typography.titleTracking : options.charSpacing;
   return {
     type: 'text', role: 'title', text,
     x: options.x === undefined ? theme.layouts.pageMarginX : options.x,
     y: options.y === undefined ? 0.62 : options.y,
-    w: options.w === undefined ? 11.9 : options.w,
-    h: options.h === undefined ? 0.62 : options.h,
+    w: boxWidth,
+    h: options.h === undefined ? measuredHeight(text, boxWidth, fontSize, theme, { charSpacing: tracking }) : options.h,
     fontFace: options.fontFace || theme.fonts.heading,
-    fontSize: options.fontSize || theme.sizes.title,
+    fontSize,
     bold: options.bold === undefined
       ? ['bold', 'bolder', '600', '700', '800', '900'].includes(String(theme.typography.titleWeight).toLowerCase())
         || Number(theme.typography.titleWeight) >= 600
@@ -23,7 +43,7 @@ function title(text, options = {}) {
     align: options.align || 'left',
     valign: 'mid',
     margin: 0,
-    charSpacing: options.charSpacing === undefined ? theme.typography.titleTracking : options.charSpacing,
+    charSpacing: tracking,
     lineSpacingMultiple: options.lineSpacingMultiple === undefined ? theme.typography.lineSpacingMultiple : options.lineSpacingMultiple,
     paraSpaceAfterPt: options.paraSpaceAfterPt,
     transparency: options.transparency
@@ -68,4 +88,4 @@ function divider(options = {}) {
   };
 }
 
-module.exports = { title, paragraph, divider };
+module.exports = { title, paragraph, divider, measuredHeight };

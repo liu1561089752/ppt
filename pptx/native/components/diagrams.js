@@ -1,6 +1,7 @@
 'use strict';
 
 const { resolveTheme } = require('../themes/design_system');
+const { estimateTextHeight } = require('../engine/text_measure');
 
 function textBlock(fontSizePt, theme, minimum = 0.26) {
   const lineSpacing = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
@@ -71,13 +72,30 @@ function timeline(items, options = {}) {
   const x = options.x === undefined ? 1.0 : options.x;
   const y = options.y === undefined ? 2.4 : options.y;
   const w = options.w === undefined ? 11.2 : options.w;
+  const pageWidth = options.pageWidth || 13.333;
   const spacing = points.length > 1 ? w / (points.length - 1) : 0;
   const headingSize = options.titleSize || theme.sizes.heading;
-  const titleHeight = textBlock(headingSize, theme, 0.42);
+  const lineHeight = theme.typography?.lineSpacingMultiple || theme.lineSpacingMultiple || 1.22;
+  const measure = (value, boxWidth, size) => estimateTextHeight(String(value), boxWidth, size,
+    { lineHeight, safetyFactor: 0.9 });
+  // Every label box is centred on its dot, so the first and last one hang past the dot by half a box:
+  // at the right-hand end that ran off the page. Clamped here, and the tallest title across the row
+  // sets the height for all of them, so a two-line point does not push its own body out of line.
+  const boxLeft = (centre, boxWidth) => {
+    const left = Math.max(0.08, centre - boxWidth / 2);
+    return Math.min(left, pageWidth - 0.08 - boxWidth);
+  };
+  const titleHeight = Math.max(
+    textBlock(headingSize, theme, 0.42),
+    ...points.map((point) => measure(point.title || '', 1.7, headingSize))
+  );
   const dateY = y + 0.42;
   const titleY = dateY + 0.3;
   const bodyY = titleY + titleHeight + 0.07;
-  const bodyHeight = options.descriptionHeight || 0.8;
+  const bodyHeight = options.descriptionHeight || Math.max(
+    0.6,
+    ...points.map((point) => measure(point.description || '', 1.8, theme.sizes.caption))
+  );
   const elements = [];
   if (points.length > 1) {
     elements.push({
@@ -95,20 +113,20 @@ function timeline(items, options = {}) {
     });
     elements.push({
       type: 'text', text: point.date || '',
-      x: pointX - 0.65, y: dateY, w: 1.3, h: 0.26,
+      x: boxLeft(pointX, 1.3), y: dateY, w: 1.3, h: 0.26,
       fontFace: theme.fonts.body,
       fontSize: theme.sizes.caption, bold: true, color: theme.colors.muted, align: 'center'
     });
     elements.push({
       type: 'text', text: point.title || '',
-      x: pointX - 0.85, y: titleY, w: 1.7, h: titleHeight,
+      x: boxLeft(pointX, 1.7), y: titleY, w: 1.7, h: titleHeight,
       fontFace: theme.fonts.heading,
       fontSize: headingSize, bold: true, color: theme.colors.primary, align: 'center'
     });
     if (point.description) {
       elements.push({
         type: 'text', text: point.description,
-        x: pointX - 0.9, y: bodyY, w: 1.8, h: bodyHeight,
+        x: boxLeft(pointX, 1.8), y: bodyY, w: 1.8, h: bodyHeight,
         fontFace: theme.fonts.body,
         fontSize: theme.sizes.caption, color: theme.colors.muted, align: 'center', valign: 'top'
       });
