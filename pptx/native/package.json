@@ -11,6 +11,7 @@
     "deck:json": "node cli.js ../examples/native-cover.spec.json native-cover.pptx --report native-cover.json",
     "deck:render": "python scripts/render_check.py native-deck.pptx --output-dir render-check/native-deck",
     "lint": "node scripts/lint_static.js",
+    "housekeeping": "node scripts/check_housekeeping.js",
     "test": "node scripts/lint_static.js --quiet && node --test \"../tests/*.test.js\"",
     "demo": "node ../examples/native_demo.js native-demo.pptx",
     "demo:components": "node ../examples/native_components_demo.js native-components-demo.pptx",
@@ -25,7 +26,7 @@
     "render:layouts": "python scripts/render_check.py native-layouts-demo.pptx --output-dir render-check/native-layouts-demo",
     "render:images": "python scripts/render_check.py native-images-demo.pptx --output-dir render-check/native-images-demo",
     "render:stress": "python scripts/render_check.py native-stress-deck.pptx --output-dir render-check/native-stress-deck",
-    "render:all": "npm run render:demo && npm run render:components && npm run render:layouts && npm run render:images && npm run render:stress",
+    "render:all": "npm run render:demo && npm run render:components && npm run render:layouts && npm run render:images && npm run render:stress && npm run render:theme && npm run render:parity",
     "audit:images": "node scripts/audit_deck.js native-images-demo.pptx",
     "audit:stress": "node scripts/audit_deck.js native-stress-deck.pptx --fail-on-warning",
     "verify:pictures": "node scripts/inspect_pictures.js native-images-demo.pptx",
@@ -56,7 +57,9 @@
     "preview:layouts": "python scripts/preview_deck.py native-layouts-demo.pptx --output-dir preview/layouts --sheet preview/layouts-sheet.png",
     "preview:images": "python scripts/preview_deck.py native-images-demo.pptx --output-dir preview/images --sheet preview/images-sheet.png",
     "preview:stress": "python scripts/preview_deck.py native-stress-deck.pptx --output-dir preview/stress --sheet preview/stress-sheet.png",
-    "preview:all": "npm run preview:deck && npm run preview:demo && npm run preview:components && npm run preview:layouts && npm run preview:images && npm run preview:stress"
+    "preview:all": "npm run preview:deck && npm run preview:demo && npm run preview:components && npm run preview:layouts && npm run preview:images && npm run preview:stress",
+    "render:theme": "python scripts/render_check.py native-design-migration-demo.pptx --output-dir render-check/native-design-migration-demo",
+    "render:parity": "python scripts/render_check.py native-design-parity-demo.pptx --output-dir render-check/native-design-parity-demo"
   },
   "dependencies": {
     "pptxgenjs": "^3.12.0",

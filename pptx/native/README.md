@@ -156,6 +156,17 @@ the document and the source disagree. It lists three kinds of thing:
   whose line has no fill, and whether a file triggers a repair prompt. LibreOffice and WPS are what
   this machine can see, and they disagree with each other, so none of it becomes a fixture.
 
+## Where the rest of the documentation lives
+
+| document | answers |
+| --- | --- |
+| `STRUCTURE.md` | what **every file** in this tree is, who writes it, whether it is tracked, and what was thrown away on the last pass. `npm run housekeeping` checks that the tree still matches it: no stray file, no dead reference, no CI script that does not exist, no tracked binary output. |
+| `MIGRATION.md` | the HTML-pipeline → native-engine ledger, item by item |
+| `REMOVAL.md` | what was cut, what it was worth, and which gate replaced it |
+| `LIMITS.md` | what the writer refuses, generated from the code (`npm run limits:update`) |
+| `DEPLOY.md` | build/render cost, concurrency, serving it as a job |
+| `parity/README.md` | native output against the HTML original, property by property |
+
 ## There is no HTML path
 
 The converter that used to live at `native/pipeline/` and `pptx/batch_html2pptx.js` — the DOM/CSS

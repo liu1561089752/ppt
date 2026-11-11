@@ -34,6 +34,11 @@ jobs:
       - name: Lint and unit tests
         working-directory: pptx/native
         run: npm test
+      - name: Regenerate the refusal list and compare it to the committed one
+        working-directory: pptx/native
+        run: |
+          node scripts/limits_report.js --update
+          git diff --exit-code LIMITS.md
       - name: Syntax-check the scripts CI runs by hand
         run: |
           node --check pptx/batch_native_pptx.js
@@ -53,7 +58,7 @@ jobs:
           npm run demo:layouts
           npm run demo:images
           npm run demo:stress
-          npm run batch:example
+          npm run batch
       - name: Audit generated decks for editability
         working-directory: pptx/native
         run: |
@@ -92,7 +97,6 @@ jobs:
           npm run render:all
           npm run render:theme
           npm run render:parity
-          npm run render:batch
       - name: Draw offline layout previews
         working-directory: pptx/native
         run: npm run preview:all

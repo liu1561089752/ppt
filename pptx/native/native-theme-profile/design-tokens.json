@@ -1,0 +1,164 @@
+{
+  "source": "html-css",
+  "rawCssVariables": {
+    "color-background": "#101820",
+    "color-foreground": "#F5F7F8",
+    "color-primary": "#F2AA4C",
+    "color-accent": "#00A6A6",
+    "color-muted": "#AAB7C4",
+    "color-surface": "#1B2836",
+    "color-border": "#344657",
+    "font-heading": "\"Aptos Display\", sans-serif",
+    "font-body": "\"Aptos\", sans-serif",
+    "font-cjk": "\"Microsoft YaHei\", sans-serif",
+    "font-size-title": "38px",
+    "font-size-heading": "26px",
+    "font-size-body": "18px",
+    "font-size-caption": "12px",
+    "space-xs": "8px",
+    "space-sm": "12px",
+    "space-md": "20px",
+    "space-lg": "32px",
+    "space-xl": "48px",
+    "radius-card": "14px",
+    "hero-gradient": "linear-gradient(135deg, #142536 0%, #234B61 58%, #E56A42 100%)",
+    "card-shadow": "0 8px 24px rgba(0, 0, 0, 0.20)",
+    "surface-opacity": "0.92"
+  },
+  "theme": {
+    "colors": {
+      "background": "101820",
+      "foreground": "F5F7F8",
+      "primary": "F2AA4C",
+      "accent": "00A6A6",
+      "muted": "AAB7C4",
+      "surface": "1B2836",
+      "border": "344657"
+    },
+    "fonts": {
+      "heading": "Aptos Display",
+      "body": "Aptos",
+      "cjk": "Microsoft YaHei"
+    },
+    "sizes": {
+      "title": 28.5,
+      "heading": 19.5,
+      "body": 13.5,
+      "caption": 9.0
+    },
+    "spacing": {
+      "xs": 0.0833,
+      "sm": 0.125,
+      "md": 0.2083,
+      "lg": 0.3333,
+      "xl": 0.5
+    },
+    "radii": {
+      "medium": 0.1458
+    },
+    "typography": {},
+    "layouts": {},
+    "backgrounds": {
+      "gradient": {
+        "angle": 315.0,
+        "stops": [
+          {
+            "position": 0.0,
+            "color": "142536",
+            "transparency": 0.0
+          },
+          {
+            "position": 0.58,
+            "color": "234B61",
+            "transparency": 0.0
+          },
+          {
+            "position": 1.0,
+            "color": "E56A42",
+            "transparency": 0.0
+          }
+        ],
+        "source": "css-linear-gradient"
+      }
+    },
+    "effects": {
+      "shadow": {
+        "type": "outer",
+        "color": "000000",
+        "opacity": 0.2,
+        "blur": 18.0,
+        "distance": 6.0,
+        "angle": 90.0,
+        "source": "css-box-shadow"
+      },
+      "opacity": 0.92
+    }
+  },
+  "cssSelectors": {
+    ":root": {
+      "--color-background": "#101820",
+      "--color-foreground": "#F5F7F8",
+      "--color-primary": "#F2AA4C",
+      "--color-accent": "#00A6A6",
+      "--color-muted": "#AAB7C4",
+      "--color-surface": "#1B2836",
+      "--color-border": "#344657",
+      "--font-heading": "\"Aptos Display\", sans-serif",
+      "--font-body": "\"Aptos\", sans-serif",
+      "--font-cjk": "\"Microsoft YaHei\", sans-serif",
+      "--font-size-title": "38px",
+      "--font-size-heading": "26px",
+      "--font-size-body": "18px",
+      "--font-size-caption": "12px",
+      "--space-xs": "8px",
+      "--space-sm": "12px",
+      "--space-md": "20px",
+      "--space-lg": "32px",
+      "--space-xl": "48px",
+      "--radius-card": "14px",
+      "--hero-gradient": "linear-gradient(135deg, #142536 0%, #234B61 58%, #E56A42 100%)",
+      "--card-shadow": "0 8px 24px rgba(0, 0, 0, 0.20)",
+      "--surface-opacity": "0.92"
+    },
+    "*": {
+      "box-sizing": "border-box"
+    },
+    "body": {
+      "color": "var(--color-foreground)",
+      "background": "var(--color-background)",
+      "font-family": "var(--font-body)",
+      "font-size": "var(--font-size-body)"
+    },
+    "h1": {
+      "display": "flex",
+      "align-items": "center",
+      "position": "absolute",
+      "left": "104px",
+      "top": "75px",
+      "width": "691px",
+      "height": "96px",
+      "margin": "0",
+      "color": "var(--color-primary)",
+      "font-family": "var(--font-heading)",
+      "font-size": "var(--font-size-title)",
+      "font-weight": "700",
+      "line-height": "1.1"
+    },
+    ".card": {
+      "position": "absolute",
+      "left": "104px",
+      "top": "341px",
+      "width": "643px",
+      "height": "197px",
+      "padding": "0",
+      "background": "var(--color-surface)",
+      "border": "1px solid var(--color-border)",
+      "border-radius": "var(--radius-card)"
+    }
+  },
+  "notes": [
+    "CSS tokens are best-effort mappings; review before production use.",
+    "Simple linear-gradient() and single box-shadow declarations are extracted as migration hints; review CSS angle, shadow units, opacity scope and renderer differences before applying.",
+    "Complex selectors, multiple shadows, filters, pseudo-elements, blend modes and browser-only effects are not recreated automatically."
+  ]
+}

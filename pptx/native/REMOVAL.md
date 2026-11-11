@@ -22,7 +22,7 @@ also why the test count dropped by more than half — see the last section.
 | `examples/pipeline-*.html` (21 files) | — | the fixtures the analyser was tested against |
 | `scripts/{convert_examples,stress_html,scale_gate,audit_report_baseline,promote_goldens,limits_report}.js` | — | the scripts that only existed to drive the above (`limits_report.js` was rewritten, not dropped) |
 | `pptx/scripts/extract_html_{design_tokens,style}.py` | — | theme extraction from an HTML file |
-| `native/baselines/reports.json` | — | the converter's per-property report baseline |
+| `native/baselines/reports.json` | — | the converter's per-property report baseline (nothing read it after the cut; the file itself was deleted during the 2026 housekeeping pass) |
 | `tests/native_spec.test.js`, `tests/native_cell_lists.test.js`, `tests/native_picture_layout.test.js` | 25 + 29 + 39 tests | the builder's, the analyser's cell lists and its picture/layout fixtures |
 
 `index.js` no longer exports `convertHtml` / `convertFile`, and the lazy `require('./pipeline')` that
@@ -34,7 +34,7 @@ imported the pipeline, so the cut left no seam — that was verified by grep bef
 | gate | before | after |
 | --- | --- | --- |
 | visual golden | 21 HTML fixtures converted by `pipeline/cli.js`, 69 pages | `golden/specs.json`: 10 native decks, 65 pages, built by `cli.js` or by the demo script itself |
-| text fit | same fixtures, 677 boxes | same corpus, 262 boxes, 0 needing an extra line, 0 lost words |
+| text fit | same fixtures, 677 boxes | same corpus, 466 boxes, 0 needing an extra line, 0 lost words |
 | stress | HTML archetypes converted (40 / 120 / 300 pages) | `scripts/stress_spec.js`: N pages straight from the engine API, 0.7 s / 1.7 s / 4.0 s of a 180 s budget, zero warnings at 40 / 120 / 300 pages and seeds 1/3/7/13/21/99 |
 | OOXML integrity | the converted stress deck | the same check on `stress40/120/300.pptx`: 0 integrity problems |
 | limits catalogue | generated from 157 `recordUnsupported` call sites in the analyser | generated from 66 `throw` sites in the engine/core/CLI plus the 110 conditions in `validateDeck` |
