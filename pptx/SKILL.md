@@ -222,7 +222,12 @@ After research, commit the deck design and page briefs to disk so the build stag
    const { preset } = require('<engine>/themes/presets');   // 'ink' | 'sand' | 'sage' | 'clay'
 
    module.exports = preset('sand', {
-     fonts: { heading: 'Source Han Sans SC', body: 'Source Han Sans SC', cjk: 'Source Han Sans SC' }
+     // `numeric` is the face numbers, dates and measurements are drawn in (tabular figures). It
+     // defaults to the heading face; declare it when the deck has a face with better figures.
+     fonts: {
+       heading: 'Source Han Sans SC', body: 'Source Han Sans SC',
+       cjk: 'Source Han Sans SC', numeric: 'Source Han Sans SC'
+     }
    });
    ```
 
@@ -244,7 +249,7 @@ After research, commit the deck design and page briefs to disk so the build stag
        border: 'E1D2BC'
      },
      fonts: { heading: 'Source Han Sans SC', body: 'Source Han Sans SC' },
-     sizes: { title: 34, heading: 20, body: 14, caption: 10 },   // points
+     sizes: { display: 44, title: 34, heading: 20, body: 14, caption: 10, micro: 9 },   // points
      spacing: { pageX: 0.9, pageY: 0.62, md: 0.24, lg: 0.4 },    // inches
      radii: { small: 0.06, medium: 0.12, large: 0.2 },
      effects: { cardBorder: true }
@@ -486,7 +491,7 @@ NATIVE QUALITY BAR (applies to every page)
   • **Exactly the chosen palette on every page.** Every colour comes from `theme.colors.*`; background/primary/accent must match `slides_brief.json.design.palette`.
   • **Every text colour on every background passes WCAG AA (4.5:1).** Test the accent on the background before you use it for body copy; accents are for rules, labels and figures, not for paragraphs.
   • **Native objects only.** Text is a `text` element (one run per style, `a:t` in the file). A table is `a:tbl`. A chart is a chart part with an embedded workbook. A picture is a `p` picture with real bytes. **A page rendered as an image is a failed page** — no screenshot of a layout, no base64, no "just this once".
-  • **Typography comes from the theme's scale.** Title / heading / body / caption only; no invented sizes, no font below `caption`.
+  • **Typography comes from the theme's scale.** display / title / heading / body / caption / micro only; no invented sizes, no font below `caption`.
   • **Fill the page, not the top half of it.** A render of six template pages showed every block
     finishing around y = 4.5 in on a 7.5 in canvas: the bottom third was empty on pages that had
     nothing wrong with them. Every content page needs something that reaches the lower band — a
@@ -500,7 +505,13 @@ NATIVE QUALITY BAR (applies to every page)
   forecast on the page where it appears — never mixed into a row of measured facts.
 • **Never fabricate.** No invented statistics, no invented URLs, no invented image paths. A number you did not find is a number you do not show.
   • **Photos are Unsplash, downloaded, attributed.** Credit line on the page (`Photo: <name> / Unsplash`), full credit in `slides_brief.json.credits`.
-  • **No icons font, no SVG flowchart, no connector spaghetti, no code-drawn map, no decorative timeline drawn from a hundred little shapes.** A diagram is either a component (`processFlow`, `timeline`) or it does not belong on the page.
+  • **No icon font, no SVG flowchart, no connector spaghetti, no code-drawn map, no decorative timeline
+    drawn from a hundred hairlines.** The icon font is the one place this engine deliberately departs
+    from the HTML-era look, and the reason is not taste: a Material Icons glyph is a character in a font
+    the *viewer's* machine has to own. We do not embed fonts, so on a machine without it the icon is a
+    tofu box, and the page is broken in a way nobody notices until it matters. Draw the few shapes that
+    carry meaning (a rule, a filled circle, a number in a coloured disc) instead of borrowing glyphs. A diagram is
+    either a component (`processFlow`, `timeline`, `comparison`) or it does not belong on the page.
   • **Numbers, dates and technical terms** render in the numeric face the theme declares; don't let a Chinese body face set a column of figures if the theme has a Latin pair.
   • **Headers and footers are OPTIONAL, not mandatory.** Add a page header/footer (deck title, page number, brand mark, footnote bar) only when the user asked.
   • **Speaker notes go to `notes`**, never onto the canvas.

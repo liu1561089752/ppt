@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const { preset, presetNames } = require('../native/themes/presets');
 const { contrastRatio } = require('../native/themes/design_system');
 const templates = require('../native/templates');
+const components = require('../native/components');
 
 test('every preset keeps its text legible', () => {
   presetNames.forEach((name) => {
@@ -63,6 +64,24 @@ test('a section page is one colour field with legible ink', () => {
   const rule = page.elements.find((element) => element.type === 'shape');
   assert.ok(contrastRatio(rule.fill, page.background) >= 3,
     'the rule is visible on its own field: ' + contrastRatio(rule.fill, page.background).toFixed(2));
+});
+
+test('numbers get a face of their own, defaulting to the heading', () => {
+  // SKILL.md told writers "render numbers in the numeric face the theme declares" while the theme had
+  // no such slot - the field did not exist, so every number silently rendered in the heading face.
+  const theme = preset('sand');
+  assert.equal(theme.fonts.numeric, theme.fonts.heading, 'a theme with no numeric face inherits the heading');
+  const declared = preset('sand', { fonts: { heading: 'Aptos Display', body: 'Aptos', numeric: 'Consolas' } });
+  assert.equal(declared.fonts.numeric, 'Consolas');
+  const card = components.kpiCard({ theme: declared, label: '增长率', value: '128%' });
+  const value = card.find((element) => element.type === 'text' && element.fontSize > 20);
+  assert.equal(value.fontFace, 'Consolas', 'the KPI value is drawn in the numeric face');
+});
+
+test('the size scale has the two ends the original declared', () => {
+  const { sizes } = preset('ink');
+  assert.ok(Number.isFinite(sizes.display) && sizes.display > sizes.title, 'display sits above title');
+  assert.ok(Number.isFinite(sizes.micro) && sizes.micro < sizes.caption, 'micro sits below caption');
 });
 
 test('an unknown preset is refused, not silently defaulted', () => {

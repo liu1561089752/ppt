@@ -20,6 +20,11 @@ function resolveTheme(input = {}) {
   const merged = mergeObject(defaults, source);
   merged.colors = mergeObject(defaults.colors, source.colors);
   merged.fonts = mergeObject(defaults.fonts, source.fonts);
+  // Numbers, dates and measurements get their own slot: a deck can declare a face with tabular
+  // figures without declaring a second heading face for everything. It defaults to the heading face,
+  // which is what SKILL.md has always promised ("the numeric face the theme declares") - the field
+  // simply did not exist, so the promise was empty.
+  merged.fonts.numeric = (source.fonts && source.fonts.numeric) || merged.fonts.numeric || merged.fonts.heading;
   merged.sizes = mergeObject(defaults.sizes, source.sizes);
   merged.spacing = mergeObject({
     xs: 0.08, sm: 0.16, md: 0.24, lg: 0.36, xl: 0.56, pageX: 0.72, pageY: 0.52

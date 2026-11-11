@@ -39,7 +39,7 @@ function kpiCard(options = {}) {
     { type: 'text', text: label, x: x + inset, y: labelY, w: innerWidth, h: labelHeight,
       fontSize: theme.sizes.caption, color: options.muted || theme.colors.muted, fontFace: options.fontFace || theme.fonts.body },
     { type: 'text', text: value, x: x + inset, y: valueY, w: innerWidth, h: valueHeight,
-      fontSize: valueSize, bold: true, color, fontFace: options.valueFontFace || theme.fonts.heading },
+      fontSize: valueSize, bold: true, color, fontFace: options.valueFontFace || theme.fonts.numeric || theme.fonts.heading },
     ...(note === null ? [] : [{ type: 'text', text: note, x: x + inset, y: noteY, w: innerWidth, h: noteHeight,
       fontSize: 9, color: options.muted || theme.colors.muted }])
   ];
