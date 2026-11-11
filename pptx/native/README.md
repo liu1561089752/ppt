@@ -128,6 +128,7 @@ The claim is not that the deck looks right — it is that the deck *is* objects.
 ```bash
 node ../scripts/audit_deck.js deck.pptx --min-text-shapes 0   # per-slide object census, no page raster
 python ../scripts/render_check.py deck.pptx --output-dir render/   # LibreOffice → PDF → PNG, look at it
+python ../scripts/render_check.py deck.pptx --output-dir render/ --slides 2,5-6   # only those pages
 python ../scripts/check_text_fit.py deck.pptx                 # measured text vs the boxes it got
 node ../cli.js deck.spec.json --strict                        # bounds / overflow / overlap
 ```

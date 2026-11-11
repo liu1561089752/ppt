@@ -158,7 +158,11 @@ curl -sS 'https://api.bochaai.com/v1/web-search' \
   • `freshness`: `noLimit` (default) · `oneDay` · `oneWeek` · `oneMonth` · `oneYear` · or an explicit `YYYY-MM-DD..YYYY-MM-DD` range. Use the tightest window the question tolerates; "最新/今天/今年" needs one of these, or the answer will be last year's.
   • `count`: 1–10 (8 is a good default).
   • `summary: true` returns an LLM-written `summary` per result — read the snippets first, and only visit a page when the snippet cannot settle the question.
-  • Read `data.webPages.value[]`: each entry has `name`, `url`, `siteName`, `snippet`, `summary`, `datePublished`. Quote the numbers you take, and keep the `url` — it belongs in the deck's source line.
+  • **Discard a hit you would not cite.** A search returns near-misses — a different product, a
+  tangential commodity-price piece, a report from four years ago. Drop them and say so in your own
+  notes; a number is only usable if the page it came from is about this deck's subject and its date
+  is inside your freshness window.
+• Read `data.webPages.value[]`: each entry has `name`, `url`, `siteName`, `snippet`, `summary`, `datePublished`. Quote the numbers you take, and keep the `url` — it belongs in the deck's source line.
   • Batch 2–3 queries in one turn (they run concurrently), and prefer one wide query over five narrow ones. Budget: at most ~10 searches per deck.
   • Follow up with a page visit (`web_fetch <url>`) only for pages whose snippet is ambiguous or whose data you are going to chart.
 
@@ -385,11 +389,20 @@ node <engine>/cli.js deck.js out.pptx --report out.json --layout-out layout.json
 **Step 4.7 — look at it.** A deck that passes the gates can still look wrong.
 
 ```bash
-python <engine>/scripts/render_check.py out.pptx --output-dir render/    # LibreOffice → PDF → PNG
 python <engine>/scripts/preview_deck.py out.pptx --output-dir preview/ --sheet preview/sheet.png
+python <engine>/scripts/render_check.py out.pptx --output-dir render/    # LibreOffice → PDF → PNG
+python <engine>/scripts/render_check.py out.pptx --output-dir render/ --slides 3,7-9   # one fix, one page
 node <engine>/scripts/audit_deck.js out.pptx --min-text-shapes 0         # object census per page
 python <engine>/scripts/verify_native_ooxml.py out.pptx                  # schema / enumerated values
 ```
+
+**Review in two passes, cheap one first.** `preview_deck.py --sheet` draws every page into one image with
+Pillow — no LibreOffice, seconds, and it is honest about being a layout preview: geometry, z-order, colour
+and fitting are real (it reads the written boxes), glyph shaping and effects are not. Look at the sheet
+first: an empty third of a page, a column that does not line up, a card that runs into the footer all show
+at that size. Then open the LibreOffice pages — all of them for a short deck, and `--slides 14,18` for the
+ones you are fixing in a long one (a 25-page render takes ~14 s, three pages ~8 s; the PDF export is the
+floor either way).
 
 `render_check.py` writes one PNG per page — **open them with your image tool and look**, page by page, before you report anything. The census tells you a page is objects; only your eyes tell you it is a good page. If a page is empty in the bottom third, has two blocks fighting for the same band, or has a photo cropped through someone's face, fix it and re-render.
 
@@ -433,7 +446,11 @@ NATIVE QUALITY BAR (applies to every page)
   • **Native objects only.** Text is a `text` element (one run per style, `a:t` in the file). A table is `a:tbl`. A chart is a chart part with an embedded workbook. A picture is a `p` picture with real bytes. **A page rendered as an image is a failed page** — no screenshot of a layout, no base64, no "just this once".
   • **Typography comes from the theme's scale.** Title / heading / body / caption only; no invented sizes, no font below `caption`.
   • **Diversify layouts across pages** — cover, section header, split text+image, bento grid, KPI row, timeline, comparison, chart, table, quote, closing. Never repeat the same layout back-to-back.
-  • **Never fabricate.** No invented statistics, no invented URLs, no invented image paths. A number you did not find is a number you do not show.
+  • **Say what the data is as of.** Research has an end date; a deck that says "2026" while its newest
+  source is from October 2026 is making a claim the material does not support. Put the cutoff in the
+  cover's metadata line (「数据截至 2026 年 10 月」) and keep any forward-looking number labelled as a
+  forecast on the page where it appears — never mixed into a row of measured facts.
+• **Never fabricate.** No invented statistics, no invented URLs, no invented image paths. A number you did not find is a number you do not show.
   • **Photos are Unsplash, downloaded, attributed.** Credit line on the page (`Photo: <name> / Unsplash`), full credit in `slides_brief.json.credits`.
   • **No icons font, no SVG flowchart, no connector spaghetti, no code-drawn map, no decorative timeline drawn from a hundred little shapes.** A diagram is either a component (`processFlow`, `timeline`) or it does not belong on the page.
   • **Numbers, dates and technical terms** render in the numeric face the theme declares; don't let a Chinese body face set a column of figures if the theme has a Latin pair.
@@ -564,7 +581,7 @@ For anything `python-pptx` cannot reach: unpack with `ooxml/scripts/unpack.py`, 
 
 ```bash
 python <engine>/scripts/verify_native_ooxml.py edited.pptx     # schema + enumerated values
-python <engine>/scripts/render_check.py edited.pptx --output-dir render/edited
+python <engine>/scripts/render_check.py edited.pptx --output-dir render/edited   # add --slides 12,15 to loop faster
 ```
 
 A part that opens in LibreOffice can still be a part PowerPoint offers to repair — say so rather than claiming the edit is verified.

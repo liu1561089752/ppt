@@ -65,14 +65,30 @@ def pdfium_document(pdf: Path):
     return pdfium.PdfDocument(str(pdf))
 
 
-def render_with_poppler(pdf: Path, prefix: Path) -> list[Path]:
-    run(["pdftoppm", "-png", "-r", "120", str(pdf), str(prefix)])
+def contiguous(pages: list[int]) -> list[tuple[int, int]]:
+    """Page numbers as runs: `pdftoppm` takes a first and a last, not a list."""
+    runs: list[tuple[int, int]] = []
+    for page in pages:
+        if runs and page == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], page)
+        else:
+            runs.append((page, page))
+    return runs
+
+
+def render_with_poppler(pdf: Path, prefix: Path, pages: list[int] | None = None) -> list[Path]:
+    if pages is None:
+        run(["pdftoppm", "-png", "-r", "120", str(pdf), str(prefix)])
+    else:
+        for first, last in contiguous(pages):
+            run(["pdftoppm", "-png", "-r", "120", "-f", str(first), "-l", str(last),
+                 str(pdf), str(prefix)])
     return sorted(prefix.parent.glob(prefix.name + "-*.png"))
 
 
-def render_with_pdfium(document, prefix: Path) -> list[Path]:
+def render_with_pdfium(document, prefix: Path, pages: list[int] | None = None) -> list[Path]:
     written = []
-    for index in range(len(document)):
+    for index in (range(len(document)) if pages is None else [page - 1 for page in pages]):
         page = document[index]
         bitmap = page.render(scale=2.0)
         try:
@@ -90,6 +106,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("pptx", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("render-check"))
+    parser.add_argument(
+        "--slides", default=None,
+        help="render only these pages, e.g. `3` or `1,4-6`; the PDF is still exported whole, "
+             "so this saves the raster, not the conversion")
     args = parser.parse_args()
 
     source = args.pptx.resolve()
@@ -107,6 +127,28 @@ def main() -> int:
         bad_member = archive.testzip()
         if bad_member:
             raise SystemExit(f"Corrupt ZIP member: {bad_member}")
+
+    pages = None
+    if args.slides:
+        pages = []
+        for part in args.slides.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" in part:
+                first, last = (int(value) for value in part.split("-", 1))
+                pages.extend(range(min(first, last), max(first, last) + 1))
+            else:
+                pages.append(int(part))
+        pages = sorted(set(pages))
+        if not pages:
+            raise SystemExit("--slides selected no page")
+        beyond = [page for page in pages if page < 1 or page > expected_pages]
+        if beyond:
+            raise SystemExit(
+                f"--slides asks for page {beyond[0]}, but the deck has {expected_pages}"
+            )
+    wanted = len(pages) if pages is not None else expected_pages
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     soffice = find_soffice()
@@ -140,24 +182,29 @@ def main() -> int:
         target_pdf.write_bytes(pdf.read_bytes())
         prefix = args.output_dir / (source.stem + "-slide")
         if shutil.which("pdftoppm"):
-            images = render_with_poppler(pdf, prefix)
+            images = render_with_poppler(pdf, prefix, pages)
         else:
             if document is None:
                 document = pdfium_document(pdf)
             if document is None:
                 raise SystemExit(
                     "Cannot rasterise the PDF: install poppler (pdftoppm) or pypdfium2")
-            images = render_with_pdfium(document, prefix)
-        if len(images) != expected_pages:
+            images = render_with_pdfium(document, prefix, pages)
+        if len(images) != wanted:
             raise SystemExit(
-                f"Expected {expected_pages} rendered slide images, found {len(images)}"
+                f"Expected {wanted} rendered slide images, found {len(images)}"
             )
         if document is not None:
             # pypdfium2 finalisers are order dependent; closing explicitly avoids
             # "Set changed size during iteration" at interpreter shutdown.
             document.close()
 
-    print(f"Rendered and verified {expected_pages} slides from {source.name}")
+    if pages is None:
+        print(f"Rendered and verified {expected_pages} slides from {source.name}")
+    else:
+        listed = ",".join(str(page) for page in pages)
+        print(f"Rendered and verified {wanted} of {expected_pages} slides "
+              f"(pages {listed}) from {source.name}")
     print(f"PDF and PNG previews: {args.output_dir.resolve()}")
     return 0
 
