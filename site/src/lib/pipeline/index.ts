@@ -21,6 +21,7 @@ import { stage2Research, enrichResearchForPlan, trackChosenImages } from './rese
 import { stage3Plan } from './plan'
 import { stage4Spec, repairSpecWithWarnings } from './spec'
 import { sparsePages } from './design'
+import { reviewDeckSpec } from './quality'
 import { buildPptx, engineRoot } from './native'
 import { isMockLLM } from './mock'
 import { normalizePreset, themeFor } from './theme'
@@ -244,7 +245,7 @@ async function runPipeline(input: GenerateInput): Promise<void> {
     // saveGenerated 失败时不会走到这里(异常向上),内层保留作兜底。
     rmSync(outPath, { force: true })
 
-    const engineReport = buildEngineReport(built)
+    const engineReport = buildEngineReport(built, artifact.spec)
     const outline = outlineOf(plan)
     const themeSnapshotJson = JSON.stringify(themeSnapshotFor(plan, artifact.spec))
     const finishedAt = new Date()
@@ -347,7 +348,7 @@ function outlineOf(plan: OutlinePlan): Array<{ title: string; template: string; 
 }
 
 /** engineReport 入库内容:预览/排障都要的一份(JSON 字符串) */
-function buildEngineReport(built: NativeBuildResult): string {
+function buildEngineReport(built: NativeBuildResult, spec?: DeckSpecJson): string {
   const parsed = (() => {
     try {
       return JSON.parse(built.report) as Record<string, unknown>
@@ -370,6 +371,7 @@ function buildEngineReport(built: NativeBuildResult): string {
     slides: built.slides,
     pageSize: built.pageSize,
     layout: built.layout,
+    quality: spec ? reviewDeckSpec(spec, spec.slides.length) : undefined,
   })
 }
 

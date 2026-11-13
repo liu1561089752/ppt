@@ -11,6 +11,7 @@ import { chat, parseJsonLoose } from '@/lib/kimi-client'
 import { PAGE_ARCHETYPES, buildPlanPrompt, type SpecSourceImage } from '@/lib/pptx-prompts'
 import { isMockLLM, mockOutline } from './mock'
 import { normalizePreset } from './theme'
+import { reviewOutlinePlan } from './quality'
 
 export interface ResearchForPlan {
   facts: string
@@ -81,6 +82,11 @@ export async function stage3Plan(
       })
       await addUsage(taskId, res.usage?.promptTokens ?? 0, res.usage?.completionTokens ?? 0)
       const plan = parsePlan(res.content, input, research.facts)
+      const quality = reviewOutlinePlan(plan)
+      if (quality.issues.length) {
+        console.warn('[pipeline] 大纲质量检查:', quality.issues.map((issue) => issue.code).join(', '))
+        await emitEvent(taskId, 'status', { status: 'generating', stage: `大纲质量检查 ${quality.score}/100（${quality.issues.filter((issue) => issue.severity === 'warning').length} 项需关注）` })
+      }
       await emitEvent(taskId, 'status', {
         status: 'generating',
         stage: `大纲就绪:${plan.pages.length} 页(${plan.styleName} / ${plan.preset})`,

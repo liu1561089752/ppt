@@ -18,6 +18,7 @@ import { checkSpec } from './native'
 import { isMockLLM, mockDeckSpec } from './mock'
 import { themeFor } from './theme'
 import { fixSpecContrast } from './contrast'
+import { reviewDeckSpec } from './quality'
 import { enforceDeckDesign } from './design'
 import {
   SPEC_MAX_REPAIRS,
@@ -283,6 +284,11 @@ export async function stage4Spec(
         ? { basePrompt }
         : { previousOutput: lastRaw, errors: lastErrors })
       if (outcome.spec) {
+        const quality = reviewDeckSpec(outcome.spec, input.slideCount)
+        if (quality.issues.length) {
+          console.warn('[pipeline] Deck Spec 质量检查:', quality.issues.map((issue) => issue.code).join(', '))
+          await emitEvent(taskId, 'status', { status: 'generating', stage: `页面结构质量检查 ${quality.score}/100（${quality.issues.filter((issue) => issue.severity === 'warning').length} 项需关注）` })
+        }
         await setProgress(taskId, 'generating', 70, `规格就绪(${outcome.spec.slides.length} 页)`)
         await emitEvent(taskId, 'tool_response', {
           name: 'deck_spec',
