@@ -1,4 +1,4 @@
-import type { OutlinePlan, PageOutline, DeckSpecJson, PreviewSlide } from './types'
+import type { OutlinePlan, DeckSpecJson, PreviewSlide } from './types'
 
 export interface QualityIssue {
   code: string
@@ -34,21 +34,11 @@ export interface DeckQualityReport {
   issues: QualityIssue[]
 }
 
-const VISUAL_FALLBACK: Record<string, string> = {
-  cover: '以标题和副标题建立主题，使用强弱层级与大面积留白，不堆叠信息卡片。',
-  section: '用章节标题、短引导语和强烈色块建立叙事停顿，不放常规内容列表。',
-  hero: '采用主标题与辅助视觉的非对称构图，形成一个明确视觉焦点。',
-  content: '围绕一个结论组织少量证据，采用清晰标题、正文和重点强调。',
-  editorial: '采用杂志式编辑布局，以一段主张配合侧栏注释或关键事实。',
-  kpi: '用少量大数字形成视觉层级，每个指标配简短解释，避免重复卡片堆叠。',
-  comparison: '建立明确的对照轴，左右内容必须可比较，最后给出结论。',
-  process: '用步骤、阶段或因果关系形成连续阅读路径。',
-  quote: '突出一句关键引述，来源和解释作为次级信息。',
-  bento: '用不等权重的模块形成大小节奏，主模块明显大于辅助模块。',
-  table: '用结构化表格承载精确比较，表前给结论，表后给解读。',
-  chart: '用图表表达一个趋势或差异，标题写结论而非图表名称。',
-  image: '让图片承担主要叙事，配简短标题和必要注释，图片必须与页面结论相关。',
-}
+/**
+ * 构图契约的真源在 @/lib/pptx-prompts(提示词模块是唯一消费者,且它是叶子模块,
+ * 不会把 pipeline 拉进 lib 层的依赖环)。这里保留同名转出,兼容既有 import 路径。
+ */
+export { VISUAL_FALLBACK, compositionGuidance } from '@/lib/pptx-prompts'
 
 function compact(value: unknown): string {
   return String(value || '').replace(/\s+/g, ' ').trim()
@@ -107,7 +97,7 @@ export function reviewOutlinePlan(plan: OutlinePlan): OutlineQualityReport {
       message: `第 ${index + 1} 页缺少一句话核心结论。`,
     })
   })
-  for (const [message, matches] of messageMap) {
+  for (const matches of messageMap.values()) {
     if (matches.length > 1) issues.push({
       code: 'DUPLICATE_KEY_MESSAGE', severity: 'warning', pages: matches,
       message: `第 ${matches.join('、')} 页的核心结论重复。`,
@@ -239,12 +229,4 @@ export function reviewRenderedLayout(
   })
   const deductions = issues.reduce((sum, issue) => sum + (issue.severity === 'warning' ? 12 : 3), 0)
   return { score: Math.max(0, 100 - deductions), pages, issues }
-}
-
-/** One shared composition contract is injected into both planning and spec prompts. */
-export function compositionGuidance(page: PageOutline): string {
-  const archetype = compact(page.template) || 'content'
-  const base = VISUAL_FALLBACK[archetype] || VISUAL_FALLBACK.content
-  const intent = compact(page.visualIntent)
-  return intent ? `${base} 本页专项视觉意图：${intent}` : base
 }

@@ -265,11 +265,27 @@ export interface SpecPromptInput {
   images?: SpecSourceImage[]
 }
 
-/** 一页大纲:页面原型名 + 自包含的要点 */
+/**
+ * 一页大纲:页面原型名 + 自包含的要点。
+ *
+ * 这里是**唯一真源**:pipeline/types.ts 直接 re-export 本类型(见其 PageOutline 别名)。
+ * 曾经两边各写一份,加了 keyMessage / visualIntent 之后只有一处能编译 —— 版面提示词
+ * 拿到的字段与大纲解析写回的字段必须是同一份契约。
+ */
 export interface OutlinePage {
   title: string
   template: string
   brief: string
+  /** 本页唯一核心结论(规格阶段据此保持信息焦点) */
+  keyMessage?: string
+  /** 视觉表达意图:应该让观众看到 / 比较 / 理解什么 */
+  visualIntent?: string
+  /** 面向图库的英文场景检索词,由规划模型给出 */
+  imageQuery?: string
+  /** 页面级检索后绑定到本页的具体图片 ID(由 pipeline/research.ts 写回) */
+  imageId?: string
+  /** 本页引用的真实来源(标题或 URL),只填研究资料里确实存在的 */
+  evidenceRefs?: string[]
 }
 
 /** 与 pipeline/types.ts 的 PageOutline 同形,便于跨模块引用 */
@@ -287,6 +303,41 @@ export interface OutlinePlan {
 export interface SpecThemeLike {
   name?: string
   colors: Record<string, string>
+}
+
+// ---------- 构图契约 ----------
+
+/**
+ * 每种页面原型的默认构图策略。规划阶段(visualIntent)与规格阶段
+ * (buildSpecPrompt 的"构图执行要求")共用这一份措辞:模型在两层看到的是同一条约束,
+ * 而不是"先给一句意图、到规格阶段再自由发挥"。
+ */
+export const VISUAL_FALLBACK: Record<string, string> = {
+  cover: '以标题和副标题建立主题,使用强弱层级与大面积留白,不堆叠信息卡片。',
+  section: '用章节标题、短引导语和强烈色块建立叙事停顿,不放常规内容列表。',
+  hero: '采用主标题与辅助视觉的非对称构图,形成一个明确视觉焦点。',
+  content: '围绕一个结论组织少量证据,采用清晰标题、正文和重点强调。',
+  editorial: '采用杂志式编辑布局,以一段主张配合侧栏注释或关键事实。',
+  kpi: '用少量大数字形成视觉层级,每个指标配简短解释,避免重复卡片堆叠。',
+  comparison: '建立明确的对照轴,左右内容必须可比较,最后给出结论。',
+  process: '用步骤、阶段或因果关系形成连续阅读路径。',
+  quote: '突出一句关键引述,来源和解释作为次级信息。',
+  bento: '用不等权重的模块形成大小节奏,主模块明显大于辅助模块。',
+  table: '用结构化表格承载精确比较,表前给结论,表后给解读。',
+  chart: '用图表表达一个趋势或差异,标题写结论而非图表名称。',
+  image: '让图片承担主要叙事,配简短标题和必要注释,图片必须与页面结论相关。',
+  credits: '以来源清单承载图片与素材署名,不承载正文论据。',
+}
+
+/**
+ * 一页的构图执行要求:原型默认策略 + 本页专项视觉意图。
+ * 单一实现(曾经 quality.ts 与 pptx-prompts.ts 各有一份,只有一份被真正调用)。
+ */
+export function compositionGuidance(page: { template?: string; visualIntent?: string }): string {
+  const archetype = String(page?.template || '').trim().toLowerCase() || 'content'
+  const base = VISUAL_FALLBACK[archetype] || VISUAL_FALLBACK.content
+  const intent = String(page?.visualIntent || '').replace(/\s+/g, ' ').trim()
+  return intent ? `${base} 本页专项视觉意图：${intent}` : base
 }
 
 /** 用户的额外要求(表单收集):规划与规格共用同一措辞,保证两层都遵守 */
@@ -615,6 +666,7 @@ export function buildSpecPrompt(plan: OutlinePlan, input: SpecPromptInput, theme
     if (page.keyMessage) lines.push(`   核心结论：${page.keyMessage}`)
     if (page.visualIntent) lines.push(`   视觉意图：${page.visualIntent}`)
     lines.push(`   构图执行要求：${compositionGuidance(page)}`)
+    if (page.imageId) lines.push(`   本页指定配图：image_id=${page.imageId}(只能在这一页使用,不要挪到别的页)`)
     if (page.evidenceRefs?.length) lines.push(`   证据引用：${page.evidenceRefs.join('；')}`)
     lines.push(`   页面内容：${page.brief}`)
   })

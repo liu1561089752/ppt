@@ -44,3 +44,7 @@ work/*/deck.pptx
 work/*/layout.json
 work/*/preview.png
 work/*/p*.png
+
+# 站点用 bun 锁文件;npm 只是本地备选,不产生第二份锁
+site/package-lock.json
+site/node_modules/

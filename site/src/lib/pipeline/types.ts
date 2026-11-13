@@ -23,30 +23,13 @@ export interface GenerateInput {
 export const FINAL_STATUSES = ['succeeded', 'failed', 'refunded', 'cancelled']
 
 // ── S3 大纲 ────────────────────────────────────────────────────────────────
+//
+// 页大纲 / 大纲计划的**类型真源在 @/lib/pptx-prompts**(提示词模块是唯一消费者,
+// 且它是叶子模块:不 import 任何 pipeline 代码)。这里只转出别名 —— 曾经两边各写
+// 一份 OutlinePage,加了 keyMessage / visualIntent 之后只有一侧能编译。
 
-/** 一页的大纲:标题 + 页面原型(引擎模板名) + 内容要点 */
-export interface PageOutline {
-  title: string
-  template: string
-  brief: string
-  /** 页面核心结论,供规格阶段保持信息焦点 */
-  keyMessage?: string
-  /** 视觉表达意图,描述应该让观众看到/比较/理解什么 */
-  visualIntent?: string
-  /** 面向图库的英文场景检索词,由规划模型给出 */
-  imageQuery?: string
-  /** 对应研究来源标题或 URL,只引用真实证据 */
-  evidenceRefs?: string[]
-}
-
-/** S3 产物:只在"讲什么"层面做决定,不产出任何样式/坐标 */
-export interface OutlinePlan {
-  title: string
-  styleName: string
-  /** 引擎主题预设名(ink / sand / sage / clay),见 themes/presets.js */
-  preset: string
-  pages: PageOutline[]
-}
+/** 一页大纲:标题 + 页面原型(引擎模板名) + 内容要点 */
+export type { OutlinePage, OutlinePage as PageOutline, OutlinePlan } from '@/lib/pptx-prompts'
 
 // ── S4 Deck Spec(引擎 core/schema.js 的真值)────────────────────────────────
 

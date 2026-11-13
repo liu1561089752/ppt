@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build && (cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ || echo '[build] standalone copy skipped (non-posix shell)')",
-    "start": "NODE_ENV=production bun .next/standalone/server.js",
+    "build": "next build",
+    "postbuild": "node scripts/postbuild-standalone.mjs",
+    "start": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "prebuild": "tsc --noEmit",

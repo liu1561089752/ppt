@@ -27,6 +27,8 @@ interface Colors {
 }
 
 export interface DesignImage {
+  /** 图库资产 ID(页面级绑定按它对齐;主题级候选可能没有) */
+  id?: string
   path: string
   caption: string
   author?: string
@@ -50,6 +52,10 @@ export interface DesignReport {
   fontSizesRaised: number
   imagesInjected: number
   templatesDowngraded: number
+  /** 按页面绑定纠正的图片(模型选错图 / 漏选图) */
+  imagesRebound: number
+  /** 跨页重复使用的图片(改指未被占用的候选,或直接摘掉元素) */
+  imagesDeduped: number
 }
 
 /** 章节类模板:用主题的 primary 深底,与正文页形成明暗节奏 */
@@ -83,17 +89,58 @@ function hasImage(element: AnyElement): boolean {
   return (element.children || []).some(hasImage)
 }
 
+/** 一页里所有 image 元素(含容器内的),带它所在的数组与下标,便于就地改写/摘除 */
+interface ImageSlot {
+  element: AnyElement
+  siblings: AnyElement[]
+  index: number
+}
+
+function collectImageSlots(elements: AnyElement[], out: ImageSlot[] = []): ImageSlot[] {
+  elements.forEach((element, index) => {
+    if (element?.type === 'image') out.push({ element, siblings: elements, index })
+    if (Array.isArray(element?.children)) collectImageSlots(element.children, out)
+  })
+  return out
+}
+
+function creditOf(image: DesignImage): Record<string, string> {
+  return {
+    subject: image.caption || '配图',
+    author: image.author || 'Unsplash',
+    licence: image.licence || 'Unsplash License',
+  }
+}
+
 /**
  * 就地修正一份 deck 的背景/字号/图片,返回改动统计。
- * 图池按页序消费:同一张图不会在一份稿子里出现两次(用完即弃)。
+ *
+ * 图片按"页面绑定优先"落地(planPages[i].imageId = S3.5 页面级检索的结果):
+ *   - 该页有绑定 → 图片元素一律改指绑定的那张(模型选错图/选了别的页的图都会被纠正)
+ *   - 该页没绑定但原型是 image → 从池里取一张未占用的补上;池空则把原型降级成 content
+ *   - 任何一张图在一份稿子里只能用一次:重复的改指未占用候选,池里没有了就摘掉元素
+ *     (宁可少一张图,也不要在两页上放同一张照片)
  */
-export function enforceDeckDesign(spec: unknown, images: DesignImage[] = []): DesignReport {
-  const report: DesignReport = { backgroundsLocked: 0, fontSizesRaised: 0, imagesInjected: 0, templatesDowngraded: 0 }
+export function enforceDeckDesign(
+  spec: unknown,
+  images: DesignImage[] = [],
+  planPages: Array<{ imageId?: string }> = [],
+): DesignReport {
+  const report: DesignReport = {
+    backgroundsLocked: 0,
+    fontSizesRaised: 0,
+    imagesInjected: 0,
+    templatesDowngraded: 0,
+    imagesRebound: 0,
+    imagesDeduped: 0,
+  }
   const deck = (spec || {}) as { slides?: unknown; theme?: { colors?: Colors } }
   const colors = deck.theme?.colors
   if (!colors) return report
   const slides = Array.isArray(deck.slides) ? (deck.slides as { template?: unknown; background?: unknown; elements?: AnyElement[] }[]) : []
-  const pool = [...images]
+  const pool = images.filter((image) => image.path)
+  const byId = new Map<string, DesignImage>()
+  for (const image of pool) if (image.id) byId.set(image.id, image)
   const usedPaths = new Set<string>()
 
   const walk = (element: AnyElement) => {
@@ -110,7 +157,8 @@ export function enforceDeckDesign(spec: unknown, images: DesignImage[] = []): De
     ;(element.children || []).forEach(walk)
   }
 
-  for (const slide of slides) {
+  for (let pageIndex = 0; pageIndex < slides.length; pageIndex++) {
+    const slide = slides[pageIndex]
     const template = typeof slide.template === 'string' ? slide.template : 'content'
 
     // ① 背景锁回主题色板:模型自造的十六进制值一律丢弃(它不属于这套预设),
@@ -120,22 +168,20 @@ export function enforceDeckDesign(spec: unknown, images: DesignImage[] = []): De
       report.backgroundsLocked += 1
     }
 
-    // ③ image 页补图(在字号修正之前,让注入的 image 也走同一套元素树)
     const elements = Array.isArray(slide.elements) ? slide.elements : []
     slide.elements = elements
+
+    // ③ 页面绑定的图片优先(在补图之前:绑定本身就是"该用哪张图"的答案)
+    const bound = planPages[pageIndex]?.imageId ? byId.get(planPages[pageIndex].imageId as string) : undefined
+
+    // ② image 原型页没有图:用绑定的那张,否则从池里补一张未占用的
     if (template === 'image' && !elements.some(hasImage)) {
-      const picked = pool.find((image) => !usedPaths.has(image.path))
+      const picked = bound && !usedPaths.has(bound.path)
+        ? bound
+        : pool.find((image) => !usedPaths.has(image.path))
       if (picked) {
         usedPaths.add(picked.path)
-        elements.unshift({
-          type: 'image',
-          path: picked.path,
-          credit: {
-            subject: picked.caption,
-            author: picked.author || 'Unsplash',
-            licence: picked.licence || 'Unsplash License',
-          },
-        })
+        elements.unshift({ type: 'image', path: picked.path, credit: creditOf(picked) })
         report.imagesInjected += 1
       } else {
         // 没有可用图就别留着"图片页"占位
@@ -144,7 +190,52 @@ export function enforceDeckDesign(spec: unknown, images: DesignImage[] = []): De
       }
     }
 
-    // ② 字号抬到 PPT 尺度
+    // ④ 绑定纠正 + 跨页去重
+    const slots = collectImageSlots(elements)
+    const dropped = new Set<ImageSlot>()
+    for (const slot of slots) {
+      const current = typeof slot.element.path === 'string' ? slot.element.path : ''
+      if (bound && current && current !== bound.path) {
+        slot.element.path = bound.path
+        slot.element.credit = creditOf(bound)
+        usedPaths.add(bound.path)
+        report.imagesRebound += 1
+        continue
+      }
+      if (!bound && current && usedPaths.has(current)) {
+        const replacement = pool.find((image) => !usedPaths.has(image.path))
+        if (replacement) {
+          slot.element.path = replacement.path
+          slot.element.credit = creditOf(replacement)
+          usedPaths.add(replacement.path)
+          report.imagesDeduped += 1
+        } else {
+          dropped.add(slot)
+          report.imagesDeduped += 1
+        }
+        continue
+      }
+      if (current) usedPaths.add(current)
+    }
+    // 同一页内重复引用同一张图时,后来的那几处也摘掉(一页一张就够)
+    const seenOnPage = new Set<string>()
+    for (const slot of slots) {
+      if (dropped.has(slot)) continue
+      const path = typeof slot.element.path === 'string' ? slot.element.path : ''
+      if (!path) continue
+      if (seenOnPage.has(path)) {
+        dropped.add(slot)
+        report.imagesDeduped += 1
+        continue
+      }
+      seenOnPage.add(path)
+    }
+    // 从后往前摘:下标不会因为删除而失效
+    for (const slot of [...dropped].sort((a, b) => b.index - a.index)) {
+      slot.siblings.splice(slot.index, 1)
+    }
+
+    // ⑤ 字号抬到 PPT 尺度
     elements.forEach(walk)
   }
 

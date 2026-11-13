@@ -96,7 +96,7 @@ async function runPipeline(input: GenerateInput): Promise<void> {
     // S3 大纲(只决定讲什么,不产任何样式)
     const plan = await stage3Plan(input, taskId, research)
     // The outline determines which pages truly need imagery; search those scenes individually.
-    await enrichResearchForPlan(input, taskId, plan, research)
+    const pageImages = await enrichResearchForPlan(input, taskId, plan, research)
 
     // 计划落库守卫(M-12 同族):任务在调研/规划期间被结算则终止,后续规格/构建/落盘全部不再发生
     const planSaved = await db.generationTask.updateMany({
@@ -108,11 +108,17 @@ async function runPipeline(input: GenerateInput): Promise<void> {
       return
     }
 
-    // Unsplash 合规:对实际进入方案(brief 引用了 URL)的图片触发下载统计
-    trackChosenImages(research.images, plan.pages.map((p) => p.brief))
+    // Unsplash 合规:只对"真的要进稿子"的图片触发下载统计
+    // (页面级绑定 + brief 里引用到的两张清单都算,候选池里的其它图不算)
+    trackChosenImages(
+      research.images,
+      plan.pages.map((p) => p.brief),
+      plan.pages.map((p) => p.imageId || '').filter(Boolean),
+    )
 
     await emitEvent(taskId, 'answer', {
-      text: `大纲已就绪:**${plan.title}**(${plan.styleName},${plan.pages.length} 页)\n\n开始生成原生规格…`,
+      text: `大纲已就绪:**${plan.title}**(${plan.styleName},${plan.pages.length} 页)`
+        + (pageImages.bound ? `\n\n已为 ${pageImages.bound} 页绑定配图,开始生成原生规格…` : '\n\n开始生成原生规格…'),
     })
 
     // S4 Deck Spec(引擎 schema 校验,带错误重试)+ S5 构建
