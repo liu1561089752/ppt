@@ -17,7 +17,7 @@ import { saveGenerated } from '@/lib/file-storage'
 import { hasLLMKey, getKimiModel } from '@/lib/kimi-client'
 import { emitEvent } from './events'
 import { refundTask, settleTaskCredits, FINAL_STATUSES } from './credits'
-import { stage2Research, trackChosenImages } from './research'
+import { stage2Research, enrichResearchForPlan, trackChosenImages } from './research'
 import { stage3Plan } from './plan'
 import { stage4Spec, repairSpecWithWarnings } from './spec'
 import { sparsePages } from './design'
@@ -94,6 +94,8 @@ async function runPipeline(input: GenerateInput): Promise<void> {
 
     // S3 大纲(只决定讲什么,不产任何样式)
     const plan = await stage3Plan(input, taskId, research)
+    // The outline determines which pages truly need imagery; search those scenes individually.
+    await enrichResearchForPlan(input, taskId, plan, research)
 
     // 计划落库守卫(M-12 同族):任务在调研/规划期间被结算则终止,后续规格/构建/落盘全部不再发生
     const planSaved = await db.generationTask.updateMany({

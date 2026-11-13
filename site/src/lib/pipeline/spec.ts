@@ -263,6 +263,7 @@ export async function stage4Spec(
       facts: research.facts,
       // 给 LLM 的是已落盘的 path;url 只作说明,写进 deck 会被引擎判为读不到
       images: images.map((image) => ({
+        id: image.id,
         url: image.path,
         path: image.path,
         caption: image.caption,
