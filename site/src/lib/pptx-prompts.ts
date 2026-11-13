@@ -236,6 +236,8 @@ export function resolvePresetTheme(preset?: string | null, language = 'zh-CN'): 
 
 /** 一张可用配图。`path` 是管线落盘后的路径(引擎只认本地文件与 data: URI) */
 export interface SpecSourceImage {
+  /** Unsplash provider photo ID, used to select/attribute a concrete asset */
+  id?: string
   /** 原始地址;阶段 4 的管线也用它传"已落盘的路径"(见 buildSpecPrompt 的说明) */
   url: string
   /** 已落盘的路径(优先于 url) */
@@ -399,11 +401,16 @@ export function buildPlanPrompt(input: SpecPromptInput): string {
   }
 
   const usable = (input.images || []).filter((image) => image.path || image.url)
-  lines.push('', '## 配图')
+  lines.push('', '## 配图素材库')
   if (usable.length > 0) {
     lines.push(
-      `本次有 ${usable.length} 张可用配图:可以安排 1-${Math.min(3, usable.length)} 页以图为主(用 hero 或 content 原型,在 brief 里写明"配图 + 画面要表达什么 + 需要署名"),其余页面用文字、指标与表格承载。`,
+      `本次检索并下载了 ${usable.length} 张候选配图。最多安排 ${Math.min(3, usable.length)} 页使用图片；只在图片能强化该页信息时使用，不要为了填版而使用。`,
     )
+    for (const image of usable) {
+      lines.push(`- image_id=${image.id || 'unknown'} | 描述：${image.caption || '无描述'} | 摄影师：${image.author || 'Unknown'} | 页面：${image.pageUrl || image.url} | 本地素材：${image.path || '不可用'}`)
+    }
+    lines.push('如果某页使用图片，必须在该页 brief 中原样写出 image_id=<对应 ID>，并说明画面与该页核心观点的关系；同一张图片不得重复用于多页。')
+    lines.push('不要在 brief 中编造素材 ID、摄影师或图片来源。')
   } else {
     lines.push('本次没有可用配图:不要安排整页大图,用 kpi / bento / editorial / table 承载视觉重心。')
   }

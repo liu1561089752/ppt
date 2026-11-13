@@ -15,6 +15,7 @@ import { normalizePreset } from './theme'
 export interface ResearchForPlan {
   facts: string
   images: Array<{
+    id?: string
     url: string
     description: string
     author?: string
@@ -44,6 +45,7 @@ export async function stage3Plan(
   }
 
   const images: SpecSourceImage[] = research.images.map((image) => ({
+    id: image.id,
     url: image.url,
     path: image.localPath,
     caption: image.description,
