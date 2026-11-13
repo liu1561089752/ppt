@@ -12,7 +12,7 @@
     "deck:render": "python scripts/render_check.py native-deck.pptx --output-dir render-check/native-deck",
     "lint": "node scripts/lint_static.js",
     "housekeeping": "node scripts/check_housekeeping.js",
-    "test": "node scripts/lint_static.js --quiet && node --test \"../tests/*.test.js\"",
+    "test": "node scripts/lint_static.js --quiet && node --test ../tests/*.test.js",
     "demo": "node ../examples/native_demo.js native-demo.pptx",
     "demo:components": "node ../examples/native_components_demo.js native-components-demo.pptx",
     "demo:layouts": "node ../examples/native_layouts_demo.js native-layouts-demo.pptx",
