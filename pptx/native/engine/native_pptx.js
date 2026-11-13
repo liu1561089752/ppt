@@ -2365,13 +2365,20 @@ async function patchTitlePlaceholders(outputPath, deck, laidOut) {
  * the build from an arbitrary directory. \`options.baseDir\` is the spec's own directory; an absolute
  * path and a \`data:\` URI are left alone.
  */
+function isAbsoluteAssetPath(value) {
+  // Specs can be authored on Windows and built on Linux (or vice versa).
+  // path.isAbsolute follows the host OS; win32.isAbsolute preserves drive-letter
+  // and UNC paths even when the generator runs on POSIX.
+  return path.isAbsolute(value) || path.win32.isAbsolute(value);
+}
+
 function withResolvedAssets(deck, baseDir) {
   if (!baseDir || !deck || !Array.isArray(deck.slides)) return deck;
   const resolveElement = (element) => {
     if (!element || typeof element !== 'object') return element;
     const copy = Object.assign({}, element);
     if (copy.type === 'image' && typeof copy.path === 'string'
-      && !path.isAbsolute(copy.path) && !/^data:/iu.test(copy.path)) {
+      && !isAbsoluteAssetPath(copy.path) && !/^data:/iu.test(copy.path)) {
       copy.path = path.resolve(baseDir, copy.path);
     }
     if (Array.isArray(copy.children)) copy.children = copy.children.map(resolveElement);
