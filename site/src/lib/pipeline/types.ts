@@ -33,6 +33,8 @@ export interface PageOutline {
   keyMessage?: string
   /** 视觉表达意图,描述应该让观众看到/比较/理解什么 */
   visualIntent?: string
+  /** 面向图库的英文场景检索词,由规划模型给出 */
+  imageQuery?: string
   /** 对应研究来源标题或 URL,只引用真实证据 */
   evidenceRefs?: string[]
 }
