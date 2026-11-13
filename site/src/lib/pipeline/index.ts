@@ -15,7 +15,7 @@ import { db } from '@/lib/db'
 import { CONFIG, PATHS } from '@/lib/config'
 import { saveGenerated } from '@/lib/file-storage'
 import { hasLLMKey, getKimiModel } from '@/lib/kimi-client'
-import { emitEvent } from './events'
+import { emitEvent, setRepairRounds } from './events'
 import { refundTask, settleTaskCredits, FINAL_STATUSES } from './credits'
 import { stage2Research, enrichResearchForPlan, trackChosenImages } from './research'
 import { stage3Plan } from './plan'
@@ -238,6 +238,8 @@ async function runPipeline(input: GenerateInput): Promise<void> {
     })
     artifact.spec = quality.spec
     built = quality.built
+    // 修复轮数落库:它既是质量指标(修了几轮才合格),也是成本指标(每轮都是一次 LLM + 一次构建)
+    await setRepairRounds(taskId, quality.repairs.filter((repair) => !repair.rolledBack).length)
     const qcProblems = quality.problems.filter((problem) => problem.severity === 'warning')
     if (quality.repairs.length) {
       const fixedPages = Array.from(new Set(quality.repairs.filter((r) => !r.rolledBack).flatMap((r) => r.pages)))

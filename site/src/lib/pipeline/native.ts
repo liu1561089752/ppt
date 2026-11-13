@@ -71,7 +71,53 @@ function appendCapture(current: string, chunk: string): string {
 }
 
 /** spawn 一次 cli.js:cwd 固定为引擎根(引擎按 root 解析自己的 node_modules) */
+/**
+ * 引擎子进程并发闸。
+ *
+ * 每次构建都是一个吃满单核的 node 进程;不限并发时,3 个任务同时进来就是 3 个进程
+ * 抢 2 个核 —— 三个都变慢,还可能一起撞上构建超时,于是**全部**失败、全部退款。
+ * 排队比并发正确:`NATIVE_BUILD_CONCURRENCY` 默认 1(2 核 2G 的生产机就是这个值)。
+ *
+ * 闸门只管引擎进程,不管别的事;拿不到闸门的调用方只是等待,不会被拒绝。
+ */
+export function engineConcurrency(): number {
+  const raw = Number(process.env.NATIVE_BUILD_CONCURRENCY)
+  if (!Number.isFinite(raw) || raw < 1) return 1
+  return Math.min(8, Math.floor(raw))
+}
+
+let engineActive = 0
+const engineQueue: Array<() => void> = []
+
+function acquireEngineSlot(): Promise<() => void> {
+  const limit = engineConcurrency()
+  return new Promise<() => void>((resolveSlot) => {
+    const grant = () => {
+      engineActive++
+      let released = false
+      resolveSlot(() => {
+        if (released) return
+        released = true
+        engineActive--
+        const next = engineQueue.shift()
+        if (next) next()
+      })
+    }
+    if (engineActive < limit) grant()
+    else engineQueue.push(grant)
+  })
+}
+
+/** 当前排队/占用情况(诊断用:doctor 与日志会读它) */
+export function engineConcurrencyState(): { active: number; waiting: number; limit: number } {
+  return { active: engineActive, waiting: engineQueue.length, limit: engineConcurrency() }
+}
+
 function runCli(root: string, args: string[], timeoutMs: number): Promise<RunOutput> {
+  return acquireEngineSlot().then((release) => runCliUnlocked(root, args, timeoutMs).finally(release))
+}
+
+function runCliUnlocked(root: string, args: string[], timeoutMs: number): Promise<RunOutput> {
   return new Promise<RunOutput>((done) => {
     let settled = false
     let stdout = ''

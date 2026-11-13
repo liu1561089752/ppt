@@ -10,7 +10,7 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { extname, join, resolve } from 'path'
 import { PATHS } from '@/lib/config'
-import { setProgress, emitEvent } from './events'
+import { setProgress, emitEvent, addCost } from './events'
 import type { GenerateInput, OutlinePlan } from './types'
 import { isMockLLM, mockResearch } from './mock'
 import { webSearchDetailed, hasBochaKey, type SearchSource } from '@/lib/search-client'
@@ -123,6 +123,8 @@ export async function stage2Research(input: GenerateInput, taskId: string): Prom
   const researchQueries = buildSearchQueries(input.topic)
   const sources: SearchSource[] = []
   const sections: string[] = []
+  // 成本记账:搜索按次计费,图床按次限流 —— 都要落库,否则"这份 deck 花了多少"没人答得出
+  let searches = 0
   if (hasBochaKey() || hasLLMKey()) {
     await emitEvent(taskId, 'status', {
       status: 'generating',
@@ -131,6 +133,7 @@ export async function stage2Research(input: GenerateInput, taskId: string): Prom
     for (const query of researchQueries) {
       try {
         await emitEvent(taskId, 'tool_call', { name: 'web_search', args: query })
+        searches++
         const result = await webSearchDetailed(query)
         if (result.text.trim()) {
           sections.push(`### 研究问题：${query}（通道：${result.provider}）\n${result.text.slice(0, 2800)}`)
@@ -154,6 +157,7 @@ export async function stage2Research(input: GenerateInput, taskId: string): Prom
     const queries = Array.from(new Set([input.topic, toImageKeyword(input.topic)])).filter(Boolean)
     for (const query of queries) {
       try {
+        searches++
         const found = await searchPhotos(query, 6, 'landscape')
         photos.push(...found.filter(isUsablePhoto).map((photo) => ({ ...photo, searchQuery: query })))
         if (photos.length >= 6) break
@@ -171,6 +175,7 @@ export async function stage2Research(input: GenerateInput, taskId: string): Prom
   const images = await downloadImages(input, taskId, uniquePhotos)
   const unique = uniqueSources(sources)
   const validImages = images.filter((image) => image.localPath).length
+  await addCost(taskId, { searches, images: validImages })
   await setProgress(taskId, 'generating', 25, `资料就绪（${unique.length} 个来源，${validImages} 张配图）`)
   return { facts: sections.join('\n\n'), sources: unique, images, researchQueries }
 }
@@ -336,6 +341,7 @@ export async function enrichResearchForPlan(
     report.bound++
   }
 
+  await addCost(taskId, { searches: report.searched, images: report.bound })
   await emitEvent(taskId, 'status', {
     status: 'generating',
     stage: `页面级配图就绪:${report.bound}/${report.searched} 页(另有 ${report.skipped.length} 页无合适图)`,

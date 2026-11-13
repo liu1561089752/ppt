@@ -58,7 +58,43 @@ export async function emitEvent(taskId: string, type: string, payload: unknown):
   }
 }
 
-/** 累计 token 用量(事务内读改写,SQLite 写锁下并发安全) */
+/**
+ * 记账:这一份 deck 到底花了多少次搜索、多少张图。
+ *
+ * 搜索按次计费、图床按次限流,token 只是三者之一。以前只记 token,于是"这份 deck 成本
+ * 多少"这个问题没人答得出来。用原子 increment 而不是读改写,阶段之间并发也不会丢计数。
+ */
+export async function addCost(
+  taskId: string,
+  cost: { searches?: number; images?: number },
+): Promise<void> {
+  const searches = Math.max(0, Math.floor(cost.searches || 0))
+  const images = Math.max(0, Math.floor(cost.images || 0))
+  if (!searches && !images) return
+  try {
+    await db.generationTask.update({
+      where: { id: taskId },
+      data: {
+        ...(searches ? { searchCount: { increment: searches } } : {}),
+        ...(images ? { imageCount: { increment: images } } : {}),
+      },
+    })
+  } catch {
+    /* 记账失败不影响交付 */
+  }
+}
+
+/** 视觉闭环跑了几轮修复(成本与质量都看这个数) */
+export async function setRepairRounds(taskId: string, rounds: number): Promise<void> {
+  try {
+    await db.generationTask.update({
+      where: { id: taskId },
+      data: { repairRounds: Math.max(0, Math.floor(rounds)) },
+    })
+  } catch {
+    /* 忽略 */
+  }
+}
 export async function addUsage(taskId: string, prompt: number, completion: number): Promise<void> {
   if (prompt === 0 && completion === 0) return
   try {

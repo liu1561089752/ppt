@@ -143,8 +143,18 @@ export interface EngineDoctorResult {
 
 // ── 常量 ──────────────────────────────────────────────────────────────────
 
-/** 单次引擎构建超时(毫秒):--strict 全量测量 + OOXML 写入,180s 足够 25 页 */
-export const ENGINE_BUILD_TIMEOUT_MS = 180_000
+/** 读一个毫秒级 env 覆盖;缺省/非法/过小都退回默认值,绝不退回"无超时" */
+function envMs(name: string, fallback: number): number {
+  const raw = Number(process.env[name])
+  if (!Number.isFinite(raw) || raw < 5_000) return fallback
+  return Math.min(600_000, Math.floor(raw))
+}
+
+/**
+ * 单次引擎构建超时(毫秒):--strict 全量测量 + OOXML 写入,180s 足够 25 页。
+ * `NATIVE_BUILD_TIMEOUT_MS` 可覆盖(慢盘 / 超大页数),上限 10 分钟。
+ */
+export const ENGINE_BUILD_TIMEOUT_MS = envMs('NATIVE_BUILD_TIMEOUT_MS', 180_000)
 
 /** `--check` 只做 schema 校验,给短超时 */
 export const ENGINE_CHECK_TIMEOUT_MS = 30_000

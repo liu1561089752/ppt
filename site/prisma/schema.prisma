@@ -110,6 +110,9 @@ model GenerationTask {
   model            String?
   promptTokens     Int?
   completionTokens Int?
+  searchCount      Int?      // 本任务实际发出的搜索请求数(搜索按次计费)
+  imageCount       Int?      // 本任务实际下载并采用的候选图数
+  repairRounds     Int?      // 视觉闭环实际执行的修复轮数(0=未修复)
   durationMs       Int?
   outline          String?   // JSON string of OutlineSlide[](列表/详情页纲要)
   theme            String?   // JSON string of ThemeConfig(列表页配色摘要)

@@ -170,6 +170,9 @@ async function main(): Promise<void> {
       creditsUsed: true,
       promptTokens: true,
       completionTokens: true,
+      searchCount: true,
+      imageCount: true,
+      repairRounds: true,
     },
   })
   if (!after) throw new Error('任务读不回来了(DB 写失败?)')
@@ -241,7 +244,13 @@ async function main(): Promise<void> {
   say(`[8] outline/theme ${after.outline ? `${JSON.parse(after.outline).length} 条大纲` : '缺'} / ${after.theme ? `theme.name=${JSON.parse(after.theme).name}` : '缺'}`)
   if (!after.outline) problems.push('outline 为空')
   if (!after.theme) problems.push('theme 为空')
-  say(`[9] 账务          creditsUsed=${after.creditsUsed} tokens=${(after.promptTokens ?? 0)}+${(after.completionTokens ?? 0)}  qcWarnings=${after.qcWarnings ?? 'null'}`)
+  say(`[9] 账务          creditsUsed=${after.creditsUsed} tokens=${(after.promptTokens ?? 0)}+${(after.completionTokens ?? 0)}`
+    + ` searches=${after.searchCount ?? 0} images=${after.imageCount ?? 0} repairRounds=${after.repairRounds ?? 0}`
+    + `  qcWarnings=${after.qcWarnings ?? 'null'}`)
+  // mock 下不检索图库、也不修复:这两项必须是 0,非 0 说明有路径在 fixture 里偷偷花钱
+  if ((after.searchCount ?? 0) !== 0 || (after.imageCount ?? 0) !== 0) {
+    problems.push(`mock 模式不该产生搜索/图片成本,实际 searches=${after.searchCount} images=${after.imageCount}`)
+  }
 
   if (cleanup) {
     await db.chatMessage.deleteMany({ where: { taskId: task.id } }).catch(() => {})
