@@ -355,16 +355,20 @@ const ELEMENT_REFERENCE = `## 元素契约(每个元素都会写成一类真正�
 | text | text | role("title" 或 "heading"), fontSize, bold, italic, color, align, valign, bullet |
 | shape | h | fill, lineColor, lineWidth, radius, shadow, transparency |
 | line | h | color, width, dash, beginArrowType, endArrowType |
-| image | path, h, credit | fit(cover/contain/crop/fill), radius, altText, outline, shadow |
+| image | path, h, credit | fit(cover/contain/crop/fill), focus, zoom, filter, radius, altText, outline, shadow |
 | chart | chartType, h, data | options{showLegend, showValue, chartColors, legendPos, barDir} |
 | table | h, rows | options{colW, fontSize, valign}, source |
-| container | children | columns(1-6), gap, rowGap, crossGap, padding, fill, radius, align |
+| container | children | background, columns(1-6), columnTracks, rowGap, crossGap, gap, padding, fill, radius, lineColor, shadow, align, justify, columnSpan, rowSpan |
 
 排布规则(引擎 layout.js 的实测行为,照做就不会越界):
 - 元素**不要写 x / y / w**:顶层元素自上而下流式排布,宽度随页面与容器的栏宽。
 - **文字元素不要写 h**:高度由布局按字号与栏宽实测;写了 h 反而可能压字或留大洞。
 - shape / line / image / chart / table 不是文字,必须给 h(面板高度)。
-- 分栏用 container 的 columns:列宽自动均分;卡片 = container(fill/radius/padding)+ 子元素。
+- **卡片 = container + \`background: true\` + fill/radius/padding**。只写 fill 而漏掉
+  \`background\` 的容器**不会被画出来**:整页会变成"标题 + 一堆散字"。
+- 分栏:等分用 \`columns\`;不对称版心用 \`columns\` + \`columnTracks:[{"fr":1.6},{"fr":1}]\`
+  (左文右图、图表 2:1、表 2:1 都靠它)。
+- 网格里让一格占更多地方用 \`columnSpan\`(首卡跨 2 列是最省事的节奏手段)。
 - 标题文本一律写 role: "title"(小标题写 "heading"),正文不写 role。
 - chartType 取值:bar / line / pie / doughnut / area / radar / scatter。
 - chart 的 data 形如 [{"name":"系列","labels":["Q1","Q2"],"values":[18,34]}]。
@@ -517,124 +521,191 @@ function resolveColors(options: {
   return out
 }
 
-/** 每种原型的元素骨架(不带坐标:排布交给布局) */
+/**
+ * 每种原型的元素骨架(不带坐标:排布交给布局)。
+ *
+ * 这些骨架是**契约的一部分**,不是散文:模型会照着抄。所以每条都必须是引擎真能排出来的形状,
+ * 而且必须带上那几个"不写就没效果"的开关 —— 踩过的坑:
+ *   - 卡片只写 fill 不写 `background: true`,引擎一个像素都不画(卡片全隐形,整份稿子看起来
+ *     只剩标题和一堆散字);
+ *   - 全用 `columns` 等分列,整份稿子就是"标题 + 三个等宽卡片";`columnTracks` 才能做
+ *     左文右图、图表 2:1 这类版心节奏。
+ */
 function templateRecipes(c: EngineColors): string {
+  /** 卡片骨架:background 是开关,fill/radius/lineColor 只有配上它才画得出来 */
+  const card = (children: string): string =>
+    `{"type":"container","background":true,"fill":"${c.surface}","lineColor":"${c.border}",`
+    + `"radius":0.12,"padding":0.26,"gap":0.1,"children":[${children}]}`
+
   return `## 每种原型的元素骨架(照骨架填内容,不要自己发明排布)
-封面 cover:
+
+通用开关:
+- 卡片 = container + **\`background: true\`** + fill/radius/padding。**漏掉 background,卡片不会被画出来**。
+- 等分栏用 \`columns\`;不对称版心用 \`columns\` + \`columnTracks:[{"fr":1.6},{"fr":1}]\`(数字是宽度比例)。
+- 每页第一行是 kicker(可选),第二行是 role:"title";正文段落不写 role。
+- 一页最多两个视觉重心。卡片之间必须留 gap;不要一页塞 6 个等宽卡片。
+
+封面 cover(居中由站点处理,不要写 x/y):
 {"template":"cover","background":"${c.background}","elements":[
-  {"type":"text","text":"KICKER 一行(可选)","fontSize":10,"color":"${c.accent}"},
-  {"type":"text","role":"title","text":"主标题","fontSize":36,"bold":true,"color":"${c.primary}"},
-  {"type":"shape","h":0.03,"fill":"${c.accent}","line":false},
-  {"type":"text","text":"副标题 / 汇报人 / 日期","fontSize":14,"color":"${c.muted}"}]}
+  {"type":"text","text":"KICKER 一行(可选)","fontSize":10,"bold":true,"color":"${c.accent}"},
+  {"type":"text","role":"title","text":"主标题","fontSize":40,"bold":true,"color":"${c.primary}"},
+  {"type":"shape","h":0.05,"fill":"${c.accent}","line":false},
+  {"type":"text","text":"副标题 / 汇报人 / 日期","fontSize":15,"color":"${c.muted}"}]}
 
 章节过渡 section(整页色块,字用底色):
 {"template":"section","background":"${c.primary}","elements":[
-  {"type":"text","text":"CHAPTER 01","fontSize":12,"color":"${c.background}"},
-  {"type":"text","role":"title","text":"章节标题","fontSize":30,"bold":true,"color":"${c.background}"},
+  {"type":"text","text":"CHAPTER 01","fontSize":11,"bold":true,"color":"${c.accent}"},
+  {"type":"text","role":"title","text":"章节标题","fontSize":28,"bold":true,"color":"${c.background}"},
   {"type":"shape","h":0.04,"fill":"${c.accent}","line":false},
   {"type":"text","text":"一句过渡说明","fontSize":14,"color":"${c.background}"}]}
 
-主张页 hero:
+主张页 hero(左文右数据的不对称版心):
 {"template":"hero","background":"${c.background}","elements":[
-  {"type":"text","text":"OVERVIEW / KEY MESSAGE","fontSize":10,"color":"${c.accent}"},
-  {"type":"text","role":"title","text":"这一页只讲一个主张","fontSize":34,"bold":true,"color":"${c.primary}"},
-  {"type":"text","text":"两到三句说明:为什么成立、靠什么支撑。","fontSize":14,"color":"${c.foreground}"},
-  {"type":"shape","h":0.06,"fill":"${c.accent}","line":false}]}
+  {"type":"text","text":"核心主张","fontSize":10,"bold":true,"color":"${c.accent}"},
+  {"type":"text","role":"title","text":"这一页只讲一个主张","fontSize":32,"bold":true,"color":"${c.foreground}"},
+  {"type":"container","columns":2,"columnTracks":[{"fr":1.5},{"fr":1}],"gap":0.4,"children":[
+    {"type":"container","gap":0.14,"children":[
+      {"type":"text","text":"两到三句说明:为什么成立、靠什么支撑。","fontSize":15,"color":"${c.foreground}"},
+      {"type":"shape","h":0.02,"fill":"${c.border}","line":false},
+      {"type":"text","text":"补充一句限定条件或口径。","fontSize":12,"color":"${c.muted}"}]},
+    ${card(`{"type":"text","text":"三个数字","fontSize":10,"bold":true,"color":"${c.accent}"},
+      {"type":"container","columns":2,"columnTracks":[{"fr":1},{"fr":2}],"gap":0.16,"children":[
+        {"type":"text","text":"69%","fontSize":26,"bold":true,"color":"${c.accent}"},
+        {"type":"container","gap":0.02,"children":[
+          {"type":"text","text":"指标名","fontSize":13,"color":"${c.foreground}"},
+          {"type":"text","text":"一句注解","fontSize":10,"color":"${c.muted}"}]}]}`)}]}]}
 
-阐释页 content:
+阐释页 content(标题 + 分隔线 + 正文,必要时加一张要点卡):
 {"template":"content","background":"${c.background}","elements":[
   {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
   {"type":"shape","h":0.02,"fill":"${c.border}","line":false},
-  {"type":"text","text":"一段 60-120 字的正文,给出判断和依据。","fontSize":14,"color":"${c.foreground}"}]}
+  {"type":"text","text":"一段 60-120 字的正文,先给判断,再给依据,最后给边界。","fontSize":14,"color":"${c.foreground}"},
+  ${card(`{"type":"text","role":"heading","text":"要点小标题","fontSize":15,"bold":true,"color":"${c.primary}"},
+    {"type":"text","text":"把它写成一句能独立成立的话。","fontSize":13,"color":"${c.foreground}"}`)}]}
 
-编辑式 editorial(导语 + 双栏):
+编辑式 editorial(导语 + 主栏 1.4 : 注栏 1):
 {"template":"editorial","background":"${c.background}","elements":[
-  {"type":"text","text":"INSIGHT / ANALYSIS","fontSize":10,"color":"${c.accent}"},
+  {"type":"text","text":"INSIGHT / ANALYSIS","fontSize":10,"bold":true,"color":"${c.accent}"},
   {"type":"text","role":"title","text":"页标题","fontSize":28,"bold":true,"color":"${c.foreground}"},
-  {"type":"text","text":"先给能独立成立的核心判断。","fontSize":18,"bold":true,"color":"${c.primary}"},
-  {"type":"container","columns":2,"gap":0.26,"children":[
-    {"type":"container","fill":"${c.surface}","radius":0.12,"padding":0.26,"gap":0.1,"children":[
-      {"type":"text","role":"heading","text":"观点与背景","fontSize":16,"bold":true,"color":"${c.primary}"},
-      {"type":"text","text":"说明问题背景、关键事实和上下文。","fontSize":13,"color":"${c.foreground}"}]},
-    {"type":"container","fill":"${c.surface}","radius":0.12,"padding":0.26,"gap":0.1,"children":[
-      {"type":"text","role":"heading","text":"证据与行动","fontSize":16,"bold":true,"color":"${c.primary}"},
-      {"type":"text","text":"用数据、案例或行动建议支撑结论。","fontSize":13,"color":"${c.foreground}"}]}]}]}
+  {"type":"text","text":"先给能独立成立的核心判断(一句)。","fontSize":17,"color":"${c.primary}"},
+  {"type":"shape","h":0.04,"fill":"${c.accent}","line":false},
+  {"type":"container","columns":2,"columnTracks":[{"fr":1.4},{"fr":1}],"gap":0.38,"children":[
+    {"type":"container","gap":0.12,"children":[
+      {"type":"text","role":"heading","text":"论点","fontSize":16,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"两段论证,每段 40-70 字。","fontSize":14,"color":"${c.foreground}"}]},
+    ${card(`{"type":"text","role":"heading","text":"注","fontSize":14,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"口径 / 来源 / 限制条件,可以比正文更短。","fontSize":12,"color":"${c.muted}"}`)}]}]}
 
-指标页 kpi(卡片 = container,2-4 张):
+指标页 kpi(首卡跨 2 列形成节奏,其余等分):
 {"template":"kpi","background":"${c.background}","elements":[
   {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
-  {"type":"container","columns":4,"gap":0.22,"children":[
-    {"type":"container","fill":"${c.surface}","radius":0.12,"padding":0.24,"gap":0.08,"children":[
-      {"type":"text","text":"69%","fontSize":30,"bold":true,"color":"${c.accent}"},
-      {"type":"text","text":"指标名(≤8 字)","fontSize":14,"color":"${c.foreground}"},
-      {"type":"text","text":"一句注解(≤20 字)","fontSize":10,"color":"${c.muted}"}]}]},
+  {"type":"container","columns":3,"gap":0.22,"rowGap":0.22,"children":[
+    {"type":"container","background":true,"fill":"${c.surface}","lineColor":"${c.border}","radius":0.12,"padding":0.26,"gap":0.1,"columnSpan":2,"children":[
+      {"type":"text","text":"62%","fontSize":38,"bold":true,"color":"${c.accent}"},
+      {"type":"text","text":"最重要的那个指标(一句话说清它是什么)","fontSize":14,"color":"${c.foreground}"},
+      {"type":"text","text":"口径与时间范围","fontSize":11,"color":"${c.muted}"}]},
+    ${card(`{"type":"text","text":"3.2s","fontSize":26,"bold":true,"color":"${c.accent}"},
+      {"type":"text","text":"指标名","fontSize":13,"color":"${c.foreground}"},
+      {"type":"text","text":"注解","fontSize":10,"color":"${c.muted}"}`)},
+    ${card(`{"type":"text","text":"153","fontSize":26,"bold":true,"color":"${c.accent}"},
+      {"type":"text","text":"指标名","fontSize":13,"color":"${c.foreground}"},
+      {"type":"text","text":"注解","fontSize":10,"color":"${c.muted}"}`)},
+    ${card(`{"type":"text","text":"34","fontSize":26,"bold":true,"color":"${c.accent}"},
+      {"type":"text","text":"指标名","fontSize":13,"color":"${c.foreground}"},
+      {"type":"text","text":"注解","fontSize":10,"color":"${c.muted}"}`)}]},
   {"type":"text","text":"口径 / 时间说明","fontSize":10,"color":"${c.muted}"}]}
 
-对比页 comparison(两栏 + 结论):
+对比页 comparison(两栏同构 + 结论条):
 {"template":"comparison","background":"${c.background}","elements":[
   {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
   {"type":"container","columns":2,"gap":0.26,"children":[
-    {"type":"container","fill":"${c.surface}","radius":0.12,"padding":0.26,"gap":0.1,"children":[
-      {"type":"text","role":"heading","text":"方案 A","fontSize":16,"bold":true,"color":"${c.primary}"},
-      {"type":"text","text":"两到三句说明,含关键差异。","fontSize":13,"color":"${c.foreground}"}]},
-    {"type":"container","fill":"${c.surface}","radius":0.12,"padding":0.26,"gap":0.1,"children":[
-      {"type":"text","role":"heading","text":"方案 B","fontSize":16,"bold":true,"color":"${c.primary}"},
-      {"type":"text","text":"两到三句说明,含关键差异。","fontSize":13,"color":"${c.foreground}"}]}]},
-  {"type":"text","text":"一句结论","fontSize":12,"color":"${c.muted}"}]}
+    ${card(`{"type":"text","role":"heading","text":"方案 A","fontSize":16,"bold":true,"color":"${c.muted}"},
+      {"type":"text","text":"两到三句说明,含关键差异。","fontSize":14,"color":"${c.foreground}"}`)},
+    ${card(`{"type":"text","role":"heading","text":"方案 B","fontSize":16,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"两到三句说明,含关键差异。","fontSize":14,"color":"${c.foreground}"}`)}]},
+  {"type":"container","background":true,"fill":"${c.primary}","radius":0.12,"padding":0.22,"children":[
+    {"type":"text","text":"一句结论:两者差别到底在哪里。","fontSize":13,"color":"${c.background}"}]}]}
 
-流程页 process(每列一个步骤,3-5 列):
+流程页 process(3-5 列,每列一步):
 {"template":"process","background":"${c.background}","elements":[
   {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
   {"type":"container","columns":4,"gap":0.2,"children":[
-    {"type":"container","fill":"${c.surface}","radius":0.12,"padding":0.22,"gap":0.08,"children":[
-      {"type":"text","text":"01","fontSize":20,"bold":true,"color":"${c.accent}"},
+    ${card(`{"type":"text","text":"01","fontSize":22,"bold":true,"color":"${c.accent}"},
       {"type":"text","role":"heading","text":"步骤名","fontSize":14,"bold":true,"color":"${c.foreground}"},
-      {"type":"text","text":"一句说明(≤20 字)","fontSize":11,"color":"${c.muted}"}]}]}]}
+      {"type":"text","text":"一句说明(≤20 字)","fontSize":11,"color":"${c.muted}"}`)},
+    ${card(`{"type":"text","text":"02","fontSize":22,"bold":true,"color":"${c.accent}"},
+      {"type":"text","role":"heading","text":"步骤名","fontSize":14,"bold":true,"color":"${c.foreground}"},
+      {"type":"text","text":"一句说明","fontSize":11,"color":"${c.muted}"}`)},
+    ${card(`{"type":"text","text":"03","fontSize":22,"bold":true,"color":"${c.accent}"},
+      {"type":"text","role":"heading","text":"步骤名","fontSize":14,"bold":true,"color":"${c.foreground}"},
+      {"type":"text","text":"一句说明","fontSize":11,"color":"${c.muted}"}`)}]},
+  {"type":"text","text":"一句总括:这套流程解决什么问题。","fontSize":11,"color":"${c.muted}"}]}
 
-引语页 quote:
-{"template":"quote","background":"${c.surface}","elements":[
-  {"type":"text","role":"title","text":"结论先行","fontSize":20,"bold":true,"color":"${c.primary}"},
-  {"type":"text","text":"「这一页只放一句能独立成立的话。」","fontSize":26,"bold":true,"color":"${c.foreground}"},
-  {"type":"shape","h":0.02,"fill":"${c.border}","line":false},
-  {"type":"text","text":"— 出处 / 年份","fontSize":11,"color":"${c.muted}"}]}
+引语页 quote(整页居中,字要大):
+{"template":"quote","background":"${c.primary}","elements":[
+  {"type":"text","role":"title","text":"结论先行","fontSize":18,"bold":true,"color":"${c.accent}"},
+  {"type":"text","text":"「这一页只放一句能独立成立的话。」","fontSize":30,"bold":true,"color":"${c.background}"},
+  {"type":"shape","h":0.04,"w":2.2,"fill":"${c.accent}","line":false},
+  {"type":"text","text":"— 出处 / 年份","fontSize":11,"color":"${c.border}"}]}
 
-要点网格 bento(3-6 格):
+要点网格 bento(格数必须是 列数 的整数倍;首格跨 2 列形成不等权重,示范为 4 格 = 2+1+1+1):
 {"template":"bento","background":"${c.background}","elements":[
   {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
-  {"type":"container","columns":3,"gap":0.2,"rowGap":0.2,"children":[
-    {"type":"container","fill":"${c.surface}","radius":0.12,"padding":0.24,"gap":0.08,"children":[
-      {"type":"text","role":"heading","text":"要点名(≤10 字)","fontSize":15,"bold":true,"color":"${c.primary}"},
-      {"type":"text","text":"一到两句说明。","fontSize":12,"color":"${c.foreground}"}]}]}]}
+  {"type":"container","columns":3,"gap":0.22,"rowGap":0.22,"children":[
+    {"type":"container","background":true,"fill":"${c.surface}","lineColor":"${c.border}","radius":0.12,"padding":0.26,"gap":0.1,"columnSpan":2,"children":[
+      {"type":"text","role":"heading","text":"主格(最重要的一条)","fontSize":17,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"两句说明,把这一格讲透。","fontSize":13,"color":"${c.foreground}"}]},
+    ${card(`{"type":"text","role":"heading","text":"辅格","fontSize":15,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"一到两句说明。","fontSize":12,"color":"${c.foreground}"}`)},
+    ${card(`{"type":"text","role":"heading","text":"辅格","fontSize":15,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"一到两句说明。","fontSize":12,"color":"${c.foreground}"}`)},
+    ${card(`{"type":"text","role":"heading","text":"辅格","fontSize":15,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"一到两句说明。","fontSize":12,"color":"${c.foreground}"}`)}]}]}
 
-数据表 table(首行表头,必须给 h):
+数据表 table(表占主栏 2 份,读数占 1 份;表必须给 h):
 {"template":"table","background":"${c.background}","elements":[
   {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
-  {"type":"table","h":3.6,"options":{"fontSize":12,"valign":"middle"},"rows":[
-    [{"text":"列一","options":{"bold":true}},{"text":"列二","options":{"bold":true}},{"text":"列三","options":{"bold":true}}],
-    ["值","值","值"]]},
-  {"type":"text","text":"一句读出结论","fontSize":11,"color":"${c.muted}"}]}`
+  {"type":"container","columns":2,"columnTracks":[{"fr":2},{"fr":1}],"gap":0.3,"children":[
+    {"type":"table","h":3.4,"options":{"fontSize":12,"valign":"middle"},"rows":[
+      [{"text":"列一","options":{"bold":true}},{"text":"列二","options":{"bold":true}},{"text":"列三","options":{"bold":true}}],
+      ["值","值","值"]]},
+    {"type":"container","gap":0.12,"children":[
+      {"type":"text","role":"heading","text":"读数","fontSize":14,"bold":true,"color":"${c.primary}"},
+      {"type":"text","text":"表里最该被记住的一条是什么。","fontSize":12,"color":"${c.foreground}"}]}]}]}`
 }
 
 /** 图表页与配图页的骨架(它们靠元素拼,不靠引擎的模板函数) */
 function extraRecipes(c: EngineColors): string {
-  return `图表页 chart(数据进图表,不要进图片;同一张图的系列必须同量级):
+  return `图表页 chart(数据进图表,不要进图片;同一个图表里的系列必须同量级。图占 2 份宽,读数占 1 份):
 {"template":"chart","background":"${c.background}","elements":[
-  {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
-  {"type":"chart","chartType":"bar","h":3.9,
-   "data":[{"name":"系列A","labels":["Q1","Q2","Q3","Q4"],"values":[18,34,52,69]}],
-   "options":{"showLegend":true,"showValue":true,"chartColors":["${c.primary}","${c.accent}"]}},
-  {"type":"text","text":"一句读图结论 + 口径说明","fontSize":10,"color":"${c.muted}"}]}
+  {"type":"text","text":"TREND","fontSize":10,"bold":true,"color":"${c.accent}"},
+  {"type":"text","role":"title","text":"标题写结论,不要写「图表」这两个字","fontSize":26,"bold":true,"color":"${c.foreground}"},
+  {"type":"container","columns":2,"columnTracks":[{"fr":2},{"fr":1}],"gap":0.3,"children":[
+    {"type":"container","gap":0.1,"children":[
+      {"type":"chart","chartType":"bar","h":3.5,
+       "data":[{"name":"系列A","labels":["Q1","Q2","Q3","Q4"],"values":[18,34,52,69]}],
+       "options":{"showLegend":true,"showValue":true,"chartColors":["${c.primary}","${c.accent}"]}},
+      {"type":"text","text":"数据来源 / 口径","fontSize":10,"color":"${c.muted}"}]},
+    {"type":"container","gap":0.12,"children":[
+      {"type":"container","background":true,"fill":"${c.surface}","lineColor":"${c.border}","radius":0.12,"padding":0.22,"children":[
+        {"type":"text","text":"69","fontSize":24,"bold":true,"color":"${c.accent}"},
+        {"type":"text","text":"最该被记住的那个数","fontSize":12,"color":"${c.muted}"}]},
+      {"type":"text","text":"一句读图结论:趋势说明了什么、为什么。","fontSize":12,"color":"${c.foreground}"}]}]}]}
 
-配图页 image(只有清单里给了 path 的图能用;credit 三个字段都不能空):
+配图页 image(只有清单里给了 path 的图能用;credit 三个字段都不能空。图占主栏,文字占次栏):
 {"template":"image","background":"${c.background}","elements":[
+  {"type":"text","text":"配图不是装饰","fontSize":10,"bold":true,"color":"${c.accent}"},
   {"type":"text","role":"title","text":"页标题","fontSize":26,"bold":true,"color":"${c.foreground}"},
-  {"type":"image","path":"<清单里的 path>","h":3.5,"fit":"cover","radius":0.12,"altText":"画面说明",
-   "credit":{"subject":"画面内容","author":"作者","licence":"许可"}},
-  {"type":"text","text":"这段图说明了什么。","fontSize":13,"color":"${c.foreground}"},
-  {"type":"text","text":"Photo by 作者 / 许可","fontSize":10,"color":"${c.muted}"}]}
+  {"type":"container","columns":2,"columnTracks":[{"fr":1.15},{"fr":1}],"gap":0.34,"children":[
+    {"type":"image","path":"<清单里的 path>","h":4.0,"fit":"cover","radius":0.12,"altText":"画面说明",
+     "credit":{"subject":"画面内容","author":"作者","licence":"许可"}},
+    {"type":"container","gap":0.12,"children":[
+      {"type":"text","text":"这张图说明了什么(与本页结论的关系)。","fontSize":14,"color":"${c.foreground}"},
+      {"type":"shape","h":0.02,"fill":"${c.border}","line":false},
+      {"type":"text","text":"Photo by 作者 / 许可","fontSize":10,"color":"${c.muted}"}]}]}]}
 
 其他原型也可以追加图表或配图元素:hero / content 页在标题与正文之后加一个 chart(h 3.2-4.0)
-或 image(h 3.2-3.8),再加一行注解即可,不要把图表塞进卡片里。`
+或 image(h 3.2-3.8),再加一行注解即可。不要把图表塞进卡片里,也不要整页只有一张图没有文字。`
 }
 
 /**

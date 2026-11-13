@@ -175,14 +175,16 @@ function normaliseSpec(
     theme,
     slides,
   }
-  // 设计兜底:背景锁回主题色板、字号抬到 PPT 尺度、图片按页面绑定落地(见 design.ts)
+  // 设计兜底:背景锁回主题色板、字号抬到 PPT 尺度、卡片开背景、图片按页面绑定落地(见 design.ts)
   const design = enforceDeckDesign(spec, images, plan.pages)
   if (design.backgroundsLocked || design.fontSizesRaised || design.imagesInjected
-    || design.templatesDowngraded || design.imagesRebound || design.imagesDeduped) {
+    || design.templatesDowngraded || design.imagesRebound || design.imagesDeduped
+    || design.surfacesEnabled) {
     console.log(
       `[pipeline] 设计兜底:背景 ${design.backgroundsLocked} 页 / 字号 ${design.fontSizesRaised} 处`
-        + ` / 补图 ${design.imagesInjected} 张 / 纠偏 ${design.imagesRebound} 张`
-        + ` / 去重 ${design.imagesDeduped} 张 / 降级 ${design.templatesDowngraded} 页`,
+        + ` / 卡片开底 ${design.surfacesEnabled} 张 / 补图 ${design.imagesInjected} 张`
+        + ` / 纠偏 ${design.imagesRebound} 张 / 去重 ${design.imagesDeduped} 张`
+        + ` / 降级 ${design.templatesDowngraded} 页`,
     )
   }
   // 对比度兜底:模型常在深底页照抄主题的深色正文,交出前统一翻成可读色(见 contrast.ts)

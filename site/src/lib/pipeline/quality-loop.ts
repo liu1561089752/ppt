@@ -169,7 +169,10 @@ export async function runQualityLoop(deps: QualityLoopDeps): Promise<QualityLoop
     const measureFn = deps.hooks?.measure ?? measureRenderedPages
     const pixels = await measureFn(render.dir || renderDir)
     const geometry = reviewGeometry(built.layout, spec, built.pageSize)
-    const pixelProblems = pixels.ok ? reviewPixels(pixels.pages) : []
+    const templates = spec.slides.map((slide) => String(slide.template || 'content'))
+    const pixelProblems = pixels.ok
+      ? reviewPixels(pixels.pages, { templates, renderer: render.renderer })
+      : []
 
     // 视觉模型按轮计费:第一次看全貌,最后一轮看结果;中途不为中间态花钱
     const runVision = (deps.hooks?.vision ? true : visionConfigured()) && (visionRounds === 0 || repairRound === maxRepairs)

@@ -1263,3 +1263,43 @@ test('relative media paths resolve against the spec, not the process', () => {
     require('node:path').resolve(base, 'assets/inner.jpg'), 'container children too');
   assert.equal(deck.slides[0].elements[0].path, 'assets/hero.jpg', 'and the caller\'s spec is not mutated');
 });
+
+test('a card container paints its own surface, radius included', () => {
+  const theme = { colors: { background: 'EEF3F6', surface: 'FFFFFF', border: 'CCCCCC', foreground: '111111' } };
+  const elements = layoutSlide({
+    elements: [{
+      type: 'container', background: true, fill: 'FFFFFF', lineColor: 'D5DEE2',
+      lineWidth: 0.75, radius: 0.14, padding: 0.2, children: [{ type: 'text', text: '卡片', fontSize: 14 }],
+    }],
+  }, normalizePageSize('wide'), theme);
+  const surface = elements.find((element) => element.type === 'shape');
+  assert.ok(surface, 'the card surface must be its own editable shape');
+  // 声明在容器上的面属性必须落到这张面上,而不是被写死成默认值
+  assert.equal(surface.fill, 'FFFFFF');
+  assert.equal(surface.lineColor, 'D5DEE2');
+  assert.equal(surface.lineWidth, 0.75);
+  assert.equal(surface.radius, 0.14);
+});
+
+test('an explicit background object still overrides the container surface', () => {
+  const theme = { colors: { background: 'EEF3F6', surface: 'FFFFFF', border: 'CCCCCC' } };
+  const elements = layoutSlide({
+    elements: [{
+      type: 'container', background: { fill: '1F4438', radius: 0.3 }, fill: 'FFFFFF', radius: 0.14,
+      children: [{ type: 'text', text: '深底卡', fontSize: 14 }],
+    }],
+  }, normalizePageSize('wide'), theme);
+  const surface = elements.find((element) => element.type === 'shape');
+  assert.equal(surface.fill, '1F4438');
+  assert.equal(surface.radius, 0.3);
+});
+
+test('a container without background still draws nothing', () => {
+  const theme = { colors: { background: 'EEF3F6', surface: 'FFFFFF', border: 'CCCCCC' } };
+  const elements = layoutSlide({
+    elements: [{
+      type: 'container', columns: 2, gap: 0.2, children: [{ type: 'text', text: '纯排布', fontSize: 14 }],
+    }],
+  }, normalizePageSize('wide'), theme);
+  assert.equal(elements.some((element) => element.type === 'shape'), false);
+});

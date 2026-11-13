@@ -56,6 +56,9 @@ jobs:
       - name: Pipeline contract tests
         working-directory: site
         run: bun run test:pipeline
+      - name: Every page skeleton in the prompt must survive the engine
+        working-directory: site
+        run: bun run test:recipes
       - name: Whole pipeline, mock LLM, real engine and DB
         working-directory: site
         run: bun run e2e:pipeline

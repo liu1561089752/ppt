@@ -44,6 +44,9 @@ interface AnyElement {
   role?: unknown
   path?: unknown
   credit?: unknown
+  fill?: unknown
+  background?: unknown
+  radius?: unknown
   children?: AnyElement[]
 }
 
@@ -56,6 +59,8 @@ export interface DesignReport {
   imagesRebound: number
   /** 跨页重复使用的图片(改指未被占用的候选,或直接摘掉元素) */
   imagesDeduped: number
+  /** 给了 fill 却没开 background 的卡片(引擎不会画它的底) */
+  surfacesEnabled: number
 }
 
 /** 章节类模板:用主题的 primary 深底,与正文页形成明暗节奏 */
@@ -133,6 +138,7 @@ export function enforceDeckDesign(
     templatesDowngraded: 0,
     imagesRebound: 0,
     imagesDeduped: 0,
+    surfacesEnabled: 0,
   }
   const deck = (spec || {}) as { slides?: unknown; theme?: { colors?: Colors } }
   const colors = deck.theme?.colors
@@ -144,6 +150,17 @@ export function enforceDeckDesign(
   const usedPaths = new Set<string>()
 
   const walk = (element: AnyElement) => {
+    // 卡片底线:给了 fill / lineColor / radius 却没开 `background` 的容器,引擎一个像素都不画。
+    // 模型经常只写 fill(提示词早期版本也这么示范),结果整份稿子看起来只有标题和散字。
+    // 这一条不改设计意图:你说"这张卡要有底",那就把它画出来。
+    if (element.type === 'container' && (element.background === undefined || element.background === null)) {
+      const wantsSurface = element.fill !== undefined
+        || (element.radius !== undefined && element.radius !== 0)
+      if (wantsSurface) {
+        element.background = true
+        report.surfacesEnabled += 1
+      }
+    }
     if (element.type === 'text') {
       const size = Number(element.fontSize)
       if (Number.isFinite(size) && size > 0) {
@@ -248,6 +265,65 @@ export interface SparsePage {
   /** 内容底边占页高的比例(0-1),越小越空 */
   fill: number
   template: string
+}
+
+/**
+ * 这些页不该垂直居中:正文页靠上对齐才符合阅读习惯(视线从标题往下走),
+ * 而封面/章节/引语这类"一句话"页面居中才显得是有意留白,而不是忘了写内容。
+ */
+const BALANCE_TEMPLATES = new Set(['cover', 'section', 'quote', 'hero', 'credits'])
+/** 居中后上下至少留这么多(英寸),否则宁可不动 */
+const MIN_BALANCE_MARGIN = 0.45
+/** 只有明显塌在上半屏的页才值得挪(否则改动只会引入抖动) */
+const BALANCE_TRIGGER = 0.78
+
+/**
+ * 确定的垂直配平:把"一句话"页面的内容挪到版心中间。
+ *
+ * 引擎是流式排布,内容永远从 startY 往下摞 —— 于是封面常常是"标题贴顶 + 下半页空白"。
+ * 这不是模型写错了内容,而是**几何**问题,不该再去让模型改内容;这里直接读第一遍
+ * 构建的真实几何,算出内容高度,再改这一页的 `startY` 让它在页内居中。
+ *
+ * 只动 BALANCE_TEMPLATES、只动明显塌顶的页、只在挪完还剩足够页边距时动手。
+ */
+export function balancePageGeometry(
+  spec: unknown,
+  layout: unknown,
+  pageSize?: { width?: number; height?: number },
+): number {
+  const deck = (spec || {}) as { slides?: Array<{ template?: unknown; startY?: number }> }
+  const slides = Array.isArray(deck.slides) ? deck.slides : []
+  const pages = Array.isArray(layout) ? (layout as Array<{ elements?: Array<{ y?: unknown; h?: unknown }> }>) : []
+  const pageHeight = Number(pageSize?.height) > 0 ? Number(pageSize!.height) : 7.5
+  let moved = 0
+  pages.forEach((page, index) => {
+    const slide = slides[index]
+    if (!slide) return
+    const template = String(slide.template || 'content')
+    if (!BALANCE_TEMPLATES.has(template)) return
+    const elements = Array.isArray(page?.elements) ? page.elements : []
+    if (!elements.length) return
+    let top = Number.POSITIVE_INFINITY
+    let bottom = 0
+    for (const element of elements) {
+      const y = Number(element.y)
+      const h = Number(element.h)
+      if (!Number.isFinite(y)) continue
+      top = Math.min(top, y)
+      bottom = Math.max(bottom, y + (Number.isFinite(h) ? h : 0))
+    }
+    if (!Number.isFinite(top) || bottom <= top) return
+    if (bottom / pageHeight > BALANCE_TRIGGER) return
+    const height = bottom - top
+    if (height > pageHeight - MIN_BALANCE_MARGIN * 2) return
+    const target = (pageHeight - height) / 2
+    const currentStart = Number.isFinite(Number(slide.startY)) ? Number(slide.startY) : top
+    const delta = target - top
+    if (Math.abs(delta) < 0.12) return
+    slide.startY = Math.max(MIN_BALANCE_MARGIN, currentStart + delta)
+    moved += 1
+  })
+  return moved
 }
 
 /** 这些模板本来就该"少字大图",不参与密度判定 */

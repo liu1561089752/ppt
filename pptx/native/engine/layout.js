@@ -93,13 +93,26 @@ function flattenElements(elements) {
  * A container may paint its own surface (`background`), which is emitted as a
  * regular editable shape behind its children. Returning the same descriptor in
  * both the layout and flatten passes keeps OOXML patch alignment exact.
+ *
+ * `background: true` means "this container is a card", and the card's surface is the
+ * container's own `fill` / `lineColor` / `lineWidth` / `radius` / `shadow`. Only `type`
+ * used to be passed through, so a container that declared `radius: 0.12` still drew a
+ * square panel: the writer's defaults filled it with the theme surface and stroked a
+ * hairline border, and every other declared surface property was silently dropped.
+ * An object form still wins key by key, so a surface that must differ from its frame
+ * stays expressible.
  */
 function containerBackgroundSpec(container) {
   const background = container && container.background;
   if (!background) return null;
-  if (background === true) return { type: 'shape' };
+  const inherited = {};
+  for (const key of ['fill', 'fillTransparency', 'lineColor', 'lineWidth', 'transparency',
+    'radius', 'shadow', 'line']) {
+    if (container[key] !== undefined) inherited[key] = container[key];
+  }
+  if (background === true) return Object.assign({ type: 'shape' }, inherited);
   if (typeof background !== 'object' || Array.isArray(background)) return null;
-  return Object.assign({ type: 'shape' }, background);
+  return Object.assign({ type: 'shape' }, inherited, background);
 }
 
 function normalizePadding(padding) {

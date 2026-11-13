@@ -20,7 +20,7 @@ import { refundTask, settleTaskCredits, FINAL_STATUSES } from './credits'
 import { stage2Research, enrichResearchForPlan, trackChosenImages } from './research'
 import { stage3Plan } from './plan'
 import { stage4Spec, repairSpecWithWarnings } from './spec'
-import { sparsePages } from './design'
+import { sparsePages, balancePageGeometry } from './design'
 import { reviewDeckSpec, reviewRenderedLayout } from './quality'
 import { runQualityLoop, type QualityLoopReport } from './quality-loop'
 import { buildPptx, engineRoot } from './native'
@@ -132,6 +132,26 @@ async function runPipeline(input: GenerateInput): Promise<void> {
 
     await emitEvent(taskId, 'status', { status: 'generating', stage: '正在构建原生 PPTX…' })
     let built = await buildDeck(artifact.spec, outPath, taskId, 85)
+
+    // 垂直配平:封面/章节/引语这类"一句话"页面居中摆放。
+    // 这是几何问题(流式排布让内容永远贴顶),用第一遍构建的真实盒子算,不劳模型改内容;
+    // 配平后必须重建,重建失败就把 startY 改回去,别把一份能交付的稿子换掉。
+    if (built.ok) {
+      const beforeBalance = JSON.stringify(artifact.spec)
+      const balancedPages = balancePageGeometry(artifact.spec, built.layout, built.pageSize)
+      if (balancedPages > 0) {
+        await emitEvent(taskId, 'status', { status: 'generating', stage: `正在配平 ${balancedPages} 页版心…` })
+        const rebalanced = await buildDeck(artifact.spec, outPath, taskId, 86)
+        if (rebalanced.ok) {
+          built = rebalanced
+        } else {
+          console.warn('[pipeline] 配平后的重建失败,回退到未配平版本:', rebalanced.error)
+          artifact.spec = JSON.parse(beforeBalance) as DeckSpecJson
+          const restored = await buildDeck(artifact.spec, outPath, taskId, 86)
+          if (restored.ok) built = restored
+        }
+      }
+    }
 
     // 布局警告不阻断交付,但值得再修一次(交给 LLM 带警告原文重写 spec)。
     // 密度补写会改动版面,可能在补完之后又冒出新的越界警告,所以这段要能重复调用。

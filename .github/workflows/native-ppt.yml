@@ -75,6 +75,9 @@ jobs:
           npm run stress
           python scripts/verify_native_ooxml.py stress40.pptx
           npm run gate:big
+      - name: Build the composition baseline (one page per archetype)
+        run: |
+          node pptx/native/cli.js work/design-baselines/probe.js /tmp/probe.pptx --strict --json
       - name: Verify editable OOXML, not just a rendered picture
         working-directory: pptx/native
         run: |

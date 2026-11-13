@@ -9,7 +9,7 @@
     "start": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:pipeline": "tsx --test src/lib/pipeline/review.test.ts src/lib/pipeline/vision.test.ts src/lib/pipeline/spec-merge.test.ts src/lib/pipeline/quality-loop.test.ts",
+    "test:pipeline": "tsx --test src/lib/pipeline/review.test.ts src/lib/pipeline/vision.test.ts src/lib/pipeline/spec-merge.test.ts src/lib/pipeline/quality-loop.test.ts src/lib/pipeline/design.test.ts",
     "prebuild": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -17,7 +17,8 @@
     "e2e:native": "tsx scripts/e2e-native.ts",
     "e2e:pipeline": "tsx --conditions=react-server scripts/e2e-pipeline.ts",
     "smoke": "node scripts/release-smoke.mjs",
-    "verify": "bun run typecheck && bun run lint && bun run test:pipeline && bun run engine:doctor && bun run e2e:native && bun run e2e:pipeline"
+    "verify": "bun run typecheck && bun run lint && bun run test:pipeline && bun run test:recipes && bun run engine:doctor && bun run e2e:native && bun run e2e:pipeline",
+    "test:recipes": "tsx scripts/recipe-probe.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
@@ -76,4 +77,3 @@
     "node": ">=20"
   }
 }
-

@@ -196,27 +196,53 @@ export function reviewGeometry(
   return dedupe(problems)
 }
 
+/** 这些原型天生"少字",不该按"内容没排到底"来判 */
+const SPARSE_BY_DESIGN = new Set(['cover', 'section', 'quote', 'credits'])
+
+export interface PixelReviewContext {
+  /** 每页的页面原型(与 metrics 的 page 对齐,1-based) */
+  templates?: string[]
+  /** 用的哪个渲染器:preview 会把图表画成占位框,图表页"看起来很空"是渲染器的局限 */
+  renderer?: string
+}
+
 /** 像素审查:渲染图上"看得出来"的问题 */
-export function reviewPixels(metrics: PagePixelMetrics[] | undefined): PageProblem[] {
+export function reviewPixels(
+  metrics: PagePixelMetrics[] | undefined,
+  context: PixelReviewContext = {},
+): PageProblem[] {
   if (!Array.isArray(metrics) || !metrics.length) return []
   const problems: PageProblem[] = []
+  const templates = context.templates || []
   for (const page of metrics) {
     const number = Number(page.page)
     if (!Number.isFinite(number)) continue
+    const template = String(templates[number - 1] || 'content')
+    const sparseByDesign = SPARSE_BY_DESIGN.has(template)
+    // 预览渲染器不画图表数据:图表页的"空"不是版面问题,降级成 info 并说明原因
+    const chartCaveat = context.renderer === 'preview' && template === 'chart'
     if (typeof page.ink_ratio === 'number' && page.ink_ratio < 0.03) {
-      problems.push({
-        page: number, code: 'PAGE_MOSTLY_EMPTY', severity: 'warning', source: 'pixels',
-        detail: `渲染后只有 ${(page.ink_ratio * 100).toFixed(1)}% 的像素有内容`,
-        advice: '这一页几乎是一张白纸:补一个真正承载信息的主体(图表 / 图片 / 指标块 / 对照),不要只留标题。',
-      })
+      if (!sparseByDesign) {
+        problems.push({
+          page: number, code: 'PAGE_MOSTLY_EMPTY',
+          severity: chartCaveat ? 'info' : 'warning', source: 'pixels',
+          detail: `渲染后只有 ${(page.ink_ratio * 100).toFixed(1)}% 的像素有内容`
+            + (chartCaveat ? '(预览渲染器把图表画成占位框,不代表真实放映效果)' : ''),
+          advice: '这一页几乎是一张白纸:补一个真正承载信息的主体(图表 / 图片 / 指标块 / 对照),不要只留标题。',
+        })
+      }
     }
     if (typeof page.content_bottom_ratio === 'number'
       && page.content_bottom_ratio > 0 && page.content_bottom_ratio < 0.62) {
-      problems.push({
-        page: number, code: 'CONTENT_STOPS_HIGH', severity: 'warning', source: 'pixels',
-        detail: `内容只排到页面高度的 ${Math.round(page.content_bottom_ratio * 100)}%`,
-        advice: '下半页是空的:把这一页补成完整的版面(多用一组对照/数据/步骤),不要靠放大字号填。',
-      })
+      if (!sparseByDesign) {
+        problems.push({
+          page: number, code: 'CONTENT_STOPS_HIGH',
+          severity: chartCaveat ? 'info' : 'warning', source: 'pixels',
+          detail: `内容只排到页面高度的 ${Math.round(page.content_bottom_ratio * 100)}%`
+            + (chartCaveat ? '(预览渲染器的图表占位框所致)' : ''),
+          advice: '下半页是空的:把这一页补成完整的版面(多用一组对照/数据/步骤),不要靠放大字号填。',
+        })
+      }
     }
     if (typeof page.distinct_colours === 'number' && page.distinct_colours < 6) {
       problems.push({
