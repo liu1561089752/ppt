@@ -31,3 +31,6 @@ jobs:
       - name: Type-check the native generation pipeline
         working-directory: site
         run: bun run typecheck
+      - name: Unit-test the review / repair contracts
+        working-directory: site
+        run: bun run test:pipeline

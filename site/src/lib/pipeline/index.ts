@@ -22,6 +22,7 @@ import { stage3Plan } from './plan'
 import { stage4Spec, repairSpecWithWarnings } from './spec'
 import { sparsePages } from './design'
 import { reviewDeckSpec, reviewRenderedLayout } from './quality'
+import { runQualityLoop, type QualityLoopReport } from './quality-loop'
 import { buildPptx, engineRoot } from './native'
 import { isMockLLM } from './mock'
 import { normalizePreset, themeFor } from './theme'
@@ -29,6 +30,8 @@ import {
   BUILD_MAX_REPAIRS,
   DENSITY_MAX_REPAIRS,
   isDensityRepairEnabled,
+  isVisualRepairEnabled,
+  visualRepairRounds,
   type DeckSpecJson,
   type GenerateInput,
   type NativeBuildResult,
@@ -198,6 +201,37 @@ async function runPipeline(input: GenerateInput): Promise<void> {
     }
     if (!built.ok) throw new Error(built.error || 'BUILD_FAILED')
 
+    // ── 视觉质量闭环:渲染 → 几何/像素/审美检查 → 只改问题页 → 重渲染 ──
+    // mock 下只检查不修(修复要调 LLM,fixture 重写没有意义);真实模式按轮数推进。
+    const quality = await runQualityLoop({
+      input,
+      taskId,
+      plan,
+      research,
+      spec: artifact.spec,
+      built,
+      outPath,
+      rebuild: async (nextSpec) => buildDeck(nextSpec, outPath, taskId, 95),
+      emitStage: async (stage) => emitEvent(taskId, 'status', { status: 'generating', stage }),
+      enabled: isVisualRepairEnabled() && !isMockLLM(),
+      maxRepairs: isMockLLM() ? 0 : visualRepairRounds(),
+    })
+    artifact.spec = quality.spec
+    built = quality.built
+    const qcProblems = quality.problems.filter((problem) => problem.severity === 'warning')
+    if (quality.repairs.length) {
+      const fixedPages = Array.from(new Set(quality.repairs.filter((r) => !r.rolledBack).flatMap((r) => r.pages)))
+      console.log(
+        `[pipeline] 视觉闭环:${quality.reviews} 次检查 / ${quality.repairs.length} 轮修复`
+          + `(改过第 ${fixedPages.join('、') || '-'} 页)/ 停因 ${quality.stopped} / 残留 warning ${qcProblems.length}`,
+      )
+    } else {
+      console.log(`[pipeline] 视觉闭环:${quality.reviews} 次检查 / 未修复 / 停因 ${quality.stopped}`)
+    }
+    if (quality.render && !quality.render.ok) {
+      console.warn('[pipeline] 成品渲染失败,视觉检查未执行:', quality.render.error)
+    }
+
     // 页数不足(引擎确实少写页)时按比例退款:与旧链路"部分失败"同一套账务口径
     const delivered = built.slides ?? artifact.spec.slides.length
     const missing = Math.max(0, input.slideCount - delivered)
@@ -251,7 +285,15 @@ async function runPipeline(input: GenerateInput): Promise<void> {
     // saveGenerated 失败时不会走到这里(异常向上),内层保留作兜底。
     rmSync(outPath, { force: true })
 
-    const engineReport = buildEngineReport(built, artifact.spec)
+    const engineReport = buildEngineReport(built, artifact.spec, quality)
+    const qcWarningPayload = [
+      ...(built.warningDetails || []),
+      ...qcProblems.map((problem) => ({
+        slide: problem.page,
+        code: `${problem.source.toUpperCase()}_${problem.code}`,
+        message: problem.detail,
+      })),
+    ]
     const outline = outlineOf(plan)
     const themeSnapshotJson = JSON.stringify(themeSnapshotFor(plan, artifact.spec))
     const finishedAt = new Date()
@@ -265,7 +307,7 @@ async function runPipeline(input: GenerateInput): Promise<void> {
         progressStage: '完成',
         durationMs: finishedAt.getTime() - startedAt.getTime(),
         finishedAt,
-        qcWarnings: built.warnings > 0 ? JSON.stringify(built.warningDetails || []) : null,
+        qcWarnings: qcWarningPayload.length ? JSON.stringify(qcWarningPayload) : null,
         outline: JSON.stringify(outline),
         theme: themeSnapshotJson,
         deckSpec: JSON.stringify(artifact.spec),
@@ -277,7 +319,7 @@ async function runPipeline(input: GenerateInput): Promise<void> {
       console.warn(`[pipeline] 任务 ${taskId} 已被结算(超时/取消),丢弃迟到的成功结果`)
       return
     }
-    // 质量提示:布局警告必须让调用方知道,在终态事件前发出
+    // 质量提示:布局警告与视觉检查的残留问题都必须让调用方知道,在终态事件前发出
     if (built.warnings > 0) {
       const pages = (built.warningDetails || [])
         .map((w) => w.slide ?? 0)
@@ -286,6 +328,22 @@ async function runPipeline(input: GenerateInput): Promise<void> {
       await emitEvent(taskId, 'answer', {
         text: `⚠️ 质量提示:引擎报了 ${built.warnings} 条布局警告${pages.length ? `(第 ${Array.from(new Set(pages)).join('、')} 页)` : ''},`
           + 'PPT 已生成,个别文字可能偏紧。',
+      })
+    }
+    if (qcProblems.length > 0) {
+      const pages = Array.from(new Set(qcProblems.map((problem) => problem.page))).sort((a, b) => a - b)
+      const kinds = Array.from(new Set(qcProblems.map((problem) => {
+        if (problem.source === 'vision') return '审美'
+        if (problem.source === 'pixels') return '版面留白'
+        return '排版'
+      })))
+      const repairedPages = quality.repairs.length
+        ? Array.from(new Set(quality.repairs.filter((r) => !r.rolledBack).flatMap((r) => r.pages)))
+        : []
+      await emitEvent(taskId, 'answer', {
+        text: `⚠️ 视觉检查:第 ${pages.join('、')} 页仍有 ${qcProblems.length} 条${kinds.join('/')}问题`
+          + (repairedPages.length ? `(已尝试修复第 ${repairedPages.join('、')} 页)` : '')
+          + '。成品已交付,建议人工过一遍这几页。',
       })
     }
     if (missing > 0) {
@@ -354,7 +412,7 @@ function outlineOf(plan: OutlinePlan): Array<{ title: string; template: string; 
 }
 
 /** engineReport 入库内容:预览/排障都要的一份(JSON 字符串) */
-function buildEngineReport(built: NativeBuildResult, spec?: DeckSpecJson): string {
+function buildEngineReport(built: NativeBuildResult, spec?: DeckSpecJson, quality?: QualityLoopReport): string {
   const parsed = (() => {
     try {
       return JSON.parse(built.report) as Record<string, unknown>
@@ -379,6 +437,21 @@ function buildEngineReport(built: NativeBuildResult, spec?: DeckSpecJson): strin
     layout: built.layout,
     quality: spec ? reviewDeckSpec(spec, spec.slides.length) : undefined,
     renderedLayout: spec ? reviewRenderedLayout(built.layout, spec, built.pageSize) : undefined,
+    // 视觉闭环:三种来源分开存,任何"审美评分"都不能冒充几何结果
+    renderReport: quality
+      ? {
+          enabled: quality.enabled,
+          stopped: quality.stopped,
+          reviews: quality.reviews,
+          repairs: quality.repairs,
+          render: quality.render,
+          pixels: quality.pixels,
+          vision: quality.vision,
+          problems: quality.problems,
+          note: quality.note,
+          ms: quality.ms,
+        }
+      : undefined,
   })
 }
 

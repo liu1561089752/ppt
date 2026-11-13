@@ -766,6 +766,59 @@ export function buildSpecRepairPrompt(
   return lines.join('\n')
 }
 
+// ---------- 阶段 5:按页修复 ----------
+
+/**
+ * 只重写"有问题的那几页"的提示词。
+ *
+ * 为什么不整份重写:整份重写会顺手改动本来没问题的页(实测:同一句 brief,
+ * 两次输出的卡片数量、图片位置、甚至原型都会变),而"修好 3 页、弄坏 8 页"
+ * 比不修更糟。这里给模型的输入是**问题页原文 + 其它页的一行摘要**,输出只收
+ * 问题页,合并由调用方按 index 做,非目标页一个字节都不动。
+ */
+export function buildPageRepairPrompt(
+  plan: OutlinePlan,
+  spec: { slides: Array<{ template?: string; background?: string; notes?: string; elements?: unknown[] }> },
+  targets: Array<{ page: number; lines: string[] }>,
+): string {
+  const lines: string[] = []
+  lines.push('这份 Deck Spec 已经能被引擎写成 pptx,但下面这几页有实测问题。')
+  lines.push('请**只重写这几页**,其余页保持原样 —— 输出的 slides 里只需要这几页。')
+  lines.push('')
+  lines.push('## 硬约束(违反会让整份规格被引擎拒绝,修复轮直接作废)')
+  lines.push('- 页数与顺序不变:每页仍对应原来的页码与页面原型。')
+  lines.push('- 元素不写 x / y / w;文字元素不写 h;shape / image / chart / table 必须有 h。')
+  lines.push('- 不新增图片:只能用下面"可用配图"里给出的 path,并原样抄 credit 三个字段。')
+  lines.push('- 颜色六位十六进制不带 #;单位英寸;不写任何标记语言 / 样式表 / 脚本。')
+  lines.push('- 内容不能变少到丢结论:改动幅度以"解决这条问题"为准,不要整页换题。')
+  lines.push('')
+  lines.push('## 要修的页')
+  for (const target of targets) {
+    const page = spec.slides[target.page - 1]
+    const outline = plan.pages[target.page - 1]
+    lines.push(`### 第 ${target.page} 页 · 原型 ${page?.template || outline?.template || 'content'}`)
+    if (outline?.title) lines.push(`- 页标题:${outline.title}`)
+    if (outline?.keyMessage) lines.push(`- 核心结论:${outline.keyMessage}`)
+    if (outline?.visualIntent) lines.push(`- 视觉意图:${outline.visualIntent}`)
+    lines.push('- 实测问题:')
+    for (const line of target.lines) lines.push(`  - ${line}`)
+    lines.push('- 这一页现在的元素:')
+    lines.push(JSON.stringify({ template: page?.template, background: page?.background, elements: page?.elements || [] }))
+    lines.push('')
+  }
+  lines.push('## 其它页(不要输出,不要改动,仅供理解上下文)')
+  spec.slides.forEach((slide, index) => {
+    if (targets.some((target) => target.page === index + 1)) return
+    lines.push(`${index + 1}. [${slide.template || 'content'}] ${plan.pages[index]?.title || ''}`)
+  })
+  lines.push('')
+  lines.push('## 输出格式(严格 JSON,不要代码块包裹)')
+  lines.push('{ "slides": [ { "index": <页码,从 1 开始>, "template": "原型的名字", "background": "十六进制", "notes": "讲稿(可选)", "elements": [ … ] } ] }')
+  lines.push('')
+  lines.push('只返回 JSON 对象。')
+  return lines.join('\n')
+}
+
 // ---------- 阶段 2:检索查询 ----------
 
 /** 构建搜索查询(3 条,覆盖数据/背景/案例) */

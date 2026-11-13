@@ -12,7 +12,7 @@
  *   4. pageSize / language / author。
  */
 import { chat, parseJsonLoose } from '@/lib/kimi-client'
-import { SPEC_SYSTEM, buildSpecPrompt, buildSpecRepairPrompt } from '@/lib/pptx-prompts'
+import { SPEC_SYSTEM, buildSpecPrompt, buildSpecRepairPrompt, buildPageRepairPrompt } from '@/lib/pptx-prompts'
 import { setProgress, emitEvent, addUsage } from './events'
 import { checkSpec } from './native'
 import { isMockLLM, mockDeckSpec } from './mock'
@@ -338,4 +338,127 @@ export async function repairSpecWithWarnings(
   })
   if (outcome.spec) return outcome.spec
   throw new Error(`规格修复未通过校验:${outcome.errors.slice(0, 3).join(' | ')}`)
+}
+
+// ── 阶段 5:只修问题页 ──────────────────────────────────────────────────────
+
+export interface PageRepairResult {
+  spec: DeckSpecJson
+  /** 真的被替换掉内容的页(1-based) */
+  repairedPages: number[]
+  /** 模型没给 / 给了空元素 / 编号越界的页 */
+  missedPages: number[]
+}
+
+interface RawPagePatch {
+  index?: unknown
+  template?: unknown
+  background?: unknown
+  notes?: unknown
+  elements?: unknown
+}
+
+/**
+ * 按页修复:只把问题页交给模型重写,合并时非目标页保持原对象不变。
+ *
+ * 与 `repairSpecWithWarnings`(整份重写)的差别不只是成本:整份重写会顺手改动
+ * 本来没问题的页,而视觉修复的验收标准是"只改了该改的"。合并 + 指纹比对
+ * (见 review.ts 的 changedPages)一起构成这条验收。
+ */
+export async function repairSpecPages(
+  input: GenerateInput,
+  taskId: string,
+  plan: OutlinePlan,
+  spec: DeckSpecJson,
+  targets: Array<{ page: number; lines: string[] }>,
+  research?: ResearchForSpec,
+): Promise<PageRepairResult> {
+  const valid = targets
+    .filter((target) => Number.isInteger(target.page) && target.page >= 1 && target.page <= spec.slides.length)
+    .map((target) => ({ ...target, lines: target.lines.slice(0, 8) }))
+  if (!valid.length) return { spec, repairedPages: [], missedPages: [] }
+  // fixture 是确定性的,重写没有意义;修复轮也不该在 mock 下花钱
+  if (isMockLLM()) return { spec, repairedPages: [], missedPages: valid.map((target) => target.page) }
+
+  const images = usableImages(research || { facts: '', images: [] })
+  const prompt = buildPageRepairPrompt(plan, spec, valid)
+  const missed: number[] = []
+  let lastErrors: string[] = []
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const userContent = attempt === 0
+      ? prompt
+      : `${prompt}\n\n## 你上一次的输出被引擎拒绝了,逐条修掉这些错误后重新只输出 JSON\n`
+        + lastErrors.slice(0, 12).map((error) => `- ${error}`).join('\n')
+    const res = await chat({
+      messages: [
+        { role: 'system', content: SPEC_SYSTEM },
+        { role: 'user', content: userContent },
+      ],
+      // 3-8 页的元素体量,留足推理空间
+      maxTokens: 20000,
+    })
+    await addUsage(taskId, res.usage?.promptTokens ?? 0, res.usage?.completionTokens ?? 0)
+    const parsed = parseJsonLoose<{ slides?: RawPagePatch[] }>(res.content || '')
+    const patches = Array.isArray(parsed?.slides) ? parsed!.slides! : []
+    if (!patches.length) {
+      lastErrors = ['输出里没有 slides 数组,或者 slides 为空']
+      continue
+    }
+
+    const mergedResult = mergePagePatches(spec, patches, plan, images, valid.map((target) => target.page))
+    const merged = mergedResult.spec
+    const repairedPages = mergedResult.repairedPages
+    for (const target of valid) if (!repairedPages.includes(target.page)) missed.push(target.page)
+    if (!repairedPages.length) {
+      lastErrors = ['没有一页拿到有效元素(merged 为空)']
+      continue
+    }
+
+    // 合并后仍要过一遍同一套确定性兜底与引擎校验
+    enforceDeckDesign(merged, images, plan.pages)
+    const fixed = fixSpecContrast(merged)
+    if (fixed > 0) console.log(`[pipeline] 修复页对比度兜底:修正 ${fixed} 处`)
+    const check = await checkSpec(merged)
+    if (check.ok) return { spec: merged, repairedPages, missedPages: [...new Set(missed)] }
+    lastErrors = check.errors
+    console.warn(`[pipeline] 按页修复第 ${attempt + 1} 次未通过引擎校验:`, check.errors.slice(0, 5).join(' | '))
+  }
+
+  throw new Error(`按页修复未通过引擎校验:${lastErrors.slice(0, 3).join(' | ')}`)
+}
+
+/**
+ * 页级补丁的合并规则(纯函数,可单测):
+ *   - 只接受 `targets` 里的页码 —— 模型顺手改的非目标页一律丢弃;
+ *   - 元素为空的补丁视为没改(index 越界同理);
+ *   - 原型以**大纲**为准(模型改原型会连带改掉这一页的构图契约);
+ *   - 背景/讲稿沿用模型给的值,没给就保留原来的。
+ * 非目标页的对象是浅拷贝后原样保留,内容与键序都不动。
+ */
+export function mergePagePatches(
+  spec: DeckSpecJson,
+  patches: RawPagePatch[],
+  plan: OutlinePlan,
+  images: UsableImage[],
+  targets: number[],
+): { spec: DeckSpecJson; repairedPages: number[] } {
+  const merged: DeckSpecJson = { ...spec, slides: spec.slides.map((slide) => ({ ...slide })) }
+  const repairedPages: number[] = []
+  for (const patch of patches) {
+    const index = Number(patch.index)
+    if (!Number.isInteger(index) || index < 1 || index > merged.slides.length) continue
+    if (!targets.includes(index)) continue
+    const elements = normaliseElements(patch.elements, images)
+    if (!elements.length) continue
+    const existing = merged.slides[index - 1]
+    merged.slides[index - 1] = {
+      template: plan.pages[index - 1]?.template || (typeof patch.template === 'string' ? patch.template : existing.template),
+      background: typeof patch.background === 'string' && patch.background ? patch.background : existing.background,
+      notes: typeof patch.notes === 'string' ? patch.notes : existing.notes,
+      elements,
+    }
+    repairedPages.push(index)
+  }
+  return { spec: merged, repairedPages }
 }

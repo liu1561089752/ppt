@@ -168,5 +168,25 @@ export function isDensityRepairEnabled(): boolean {
   return raw !== '0' && raw !== 'false' && raw !== 'off'
 }
 
+/**
+ * 视觉质量闭环的修复轮上限(渲染 → 检查 → 只改问题页 → 重渲染)。
+ * 每轮只重写有问题的页,但都要重新渲染一遍验结果;2 轮是"够用且不会无限循环"的折中。
+ * NATIVE_VISUAL_REPAIR=0 关掉修复(仍会检查并如实报告)。
+ */
+export const VISUAL_MAX_REPAIRS = 2
+
+/** 视觉修复开关(默认开;NATIVE_VISUAL_REPAIR=0 关闭) */
+export function isVisualRepairEnabled(): boolean {
+  const raw = (process.env.NATIVE_VISUAL_REPAIR || '').trim().toLowerCase()
+  return raw !== '0' && raw !== 'false' && raw !== 'off'
+}
+
+/** 视觉修复轮数(env NATIVE_VISUAL_REPAIR_ROUNDS,默认 VISUAL_MAX_REPAIRS,上限 4) */
+export function visualRepairRounds(): number {
+  const raw = Number((process.env.NATIVE_VISUAL_REPAIR_ROUNDS || '').trim())
+  if (!Number.isFinite(raw) || raw <= 0) return VISUAL_MAX_REPAIRS
+  return Math.min(4, Math.floor(raw))
+}
+
 /** 无密钥端到端自测开关:1 时 S2/S3/S4 全部返回确定性 fixture */
 export const MOCK_LLM_ENV = 'NATIVE_MOCK_LLM'

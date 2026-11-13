@@ -48,6 +48,7 @@ jobs:
           python -m py_compile pptx/scripts/extract_native_design.py pptx/scripts/check_slides.py
           python -m py_compile pptx/native/scripts/verify_native_ooxml.py pptx/native/scripts/corpus.py
           python -m py_compile pptx/native/scripts/visual_golden.py pptx/native/scripts/check_all_text_fit.py
+          python -m py_compile pptx/native/scripts/render_metrics.py pptx/native/scripts/preview_deck.py
       - name: Generate the example decks
         working-directory: pptx/native
         run: |

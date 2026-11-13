@@ -1,0 +1,74 @@
+name: Native PPT pipeline end-to-end (mock LLM)
+
+# 这条流水线跑的是"整条链路"而不是某个模块:
+#   site 装依赖 → 引擎装依赖 → 引擎就绪探测 → 渲染器依赖(Pillow / poppler)
+#   → mock LLM 下真实构建 PPTX + 真实落库 → 渲染成品并做逐页检查。
+# mock 只替换会花钱的三处(S2 搜索 / S3 大纲 / S4 规格);引擎构建、DB、账务、
+# 终态守卫、渲染与检查全部是真实代码。需要真实 API key 的路径在 CI 里不跑,
+# 也不会被写成"已验证"。
+
+on:
+  push:
+    branches: [main, native-ppt-engine]
+    paths:
+      - "site/**"
+      - "pptx/native/**"
+      - ".github/workflows/pipeline-e2e.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "pptx/native/**"
+      - ".github/workflows/pipeline-e2e.yml"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-only-secret-not-used-in-production-0123456789
+      DATABASE_URL: file:../db/ci.db
+      NATIVE_ENGINE_DIR: ../pptx/native
+      NATIVE_MOCK_LLM: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install the renderer's python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils fonts-noto-cjk python3-pil
+          python3 -m pip install --quiet python-pptx
+      - name: Install the native engine
+        working-directory: pptx/native
+        run: npm install --no-audit --no-fund
+      - name: Install the site
+        working-directory: site
+        run: bun install --frozen-lockfile
+      - name: Prepare the CI database
+        working-directory: site
+        run: bunx prisma generate && bunx prisma db push --skip-generate
+      - name: Engine probe
+        working-directory: site
+        run: bun run engine:doctor
+      - name: Pipeline contract tests
+        working-directory: site
+        run: bun run test:pipeline
+      - name: Whole pipeline, mock LLM, real engine and DB
+        working-directory: site
+        run: bun run e2e:pipeline
+      - name: Native engine unit tests
+        working-directory: pptx/native
+        run: npm test
+      - name: Collect evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-e2e-evidence
+          if-no-files-found: ignore
+          path: |
+            site/data/generated/**/*.pptx
+            site/data/generated/**/render/*.png
+            site/data/generated/**/render/*.pdf
