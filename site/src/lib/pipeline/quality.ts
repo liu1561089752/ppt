@@ -1,4 +1,4 @@
-import type { OutlinePlan, PageOutline, DeckSpecJson } from './types'
+import type { OutlinePlan, PageOutline, DeckSpecJson, PreviewSlide } from './types'
 
 export interface QualityIssue {
   code: string
@@ -9,6 +9,19 @@ export interface QualityIssue {
 export interface OutlineQualityReport {
   score: number
   archetypeCount: number
+  issues: QualityIssue[]
+}
+export interface RenderedPageMetrics {
+  page: number
+  elementCount: number
+  textCount: number
+  imageCount: number
+  contentBottomRatio: number
+  imageAreaRatio: number
+}
+export interface RenderedLayoutReport {
+  score: number
+  pages: RenderedPageMetrics[]
   issues: QualityIssue[]
 }
 export interface DeckQualityReport {
@@ -152,6 +165,80 @@ export function reviewDeckSpec(spec: DeckSpecJson, expectedPages: number): DeckQ
     tableElements,
     issues,
   }
+}
+
+/**
+ * Audit the geometry actually emitted by the native layout engine.
+ * Ratios use the real page dimensions; this is a deterministic geometry check,
+ * not a substitute for human review of rendered typography and art direction.
+ */
+export function reviewRenderedLayout(
+  layout: PreviewSlide[] | undefined,
+  spec: DeckSpecJson,
+  pageSize?: { width: number; height: number },
+): RenderedLayoutReport {
+  const pages: RenderedPageMetrics[] = []
+  const issues: QualityIssue[] = []
+  const width = Number(pageSize?.width) > 0 ? Number(pageSize?.width) : 13.333
+  const height = Number(pageSize?.height) > 0 ? Number(pageSize?.height) : 7.5
+  const pageArea = width * height
+  const sparseSkip = new Set(['cover', 'section', 'quote', 'image', 'credits'])
+  ;(layout || []).forEach((slide, index) => {
+    const elements = Array.isArray(slide?.elements) ? slide.elements : []
+    let bottom = 0
+    let imageArea = 0
+    let textCount = 0
+    let imageCount = 0
+    for (const element of elements) {
+      const x = Number(element.x)
+      const y = Number(element.y)
+      const w = Number(element.w)
+      const h = Number(element.h)
+      if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0) {
+        bottom = Math.max(bottom, y + h)
+        if (element.type === 'image') imageArea += w * h
+      }
+      if (element.type === 'text') textCount++
+      if (element.type === 'image') imageCount++
+    }
+    const template = compact(spec.slides[index]?.template) || 'content'
+    const contentBottomRatio = Math.round(Math.min(1, bottom / height) * 1000) / 1000
+    const imageAreaRatio = Math.round(Math.min(1, imageArea / pageArea) * 1000) / 1000
+    pages.push({
+      page: index + 1,
+      elementCount: elements.length,
+      textCount,
+      imageCount,
+      contentBottomRatio,
+      imageAreaRatio,
+    })
+    if (elements.length > 0 && !sparseSkip.has(template) && contentBottomRatio < 0.68) {
+      issues.push({
+        code: 'SPARSE_RENDERED_COMPOSITION',
+        severity: 'warning',
+        pages: [index + 1],
+        message: `第 ${index + 1} 页实际元素只延伸到页面高度的 ${Math.round(contentBottomRatio * 100)}%，下半部可能过空。`,
+      })
+    }
+    if (template !== 'image' && imageAreaRatio > 0.78) {
+      issues.push({
+        code: 'IMAGE_AREA_DOMINATES',
+        severity: 'info',
+        pages: [index + 1],
+        message: `第 ${index + 1} 页图片占页面面积约 ${Math.round(imageAreaRatio * 100)}%，请确认文字仍有足够阅读空间。`,
+      })
+    }
+    if (elements.length === 0) {
+      issues.push({
+        code: 'EMPTY_RENDERED_PAGE',
+        severity: 'warning',
+        pages: [index + 1],
+        message: `第 ${index + 1} 页没有实际布局元素。`,
+      })
+    }
+  })
+  const deductions = issues.reduce((sum, issue) => sum + (issue.severity === 'warning' ? 12 : 3), 0)
+  return { score: Math.max(0, 100 - deductions), pages, issues }
 }
 
 /** One shared composition contract is injected into both planning and spec prompts. */

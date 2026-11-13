@@ -21,7 +21,7 @@ import { stage2Research, enrichResearchForPlan, trackChosenImages } from './rese
 import { stage3Plan } from './plan'
 import { stage4Spec, repairSpecWithWarnings } from './spec'
 import { sparsePages } from './design'
-import { reviewDeckSpec } from './quality'
+import { reviewDeckSpec, reviewRenderedLayout } from './quality'
 import { buildPptx, engineRoot } from './native'
 import { isMockLLM } from './mock'
 import { normalizePreset, themeFor } from './theme'
@@ -372,6 +372,7 @@ function buildEngineReport(built: NativeBuildResult, spec?: DeckSpecJson): strin
     pageSize: built.pageSize,
     layout: built.layout,
     quality: spec ? reviewDeckSpec(spec, spec.slides.length) : undefined,
+    renderedLayout: spec ? reviewRenderedLayout(built.layout, spec, built.pageSize) : undefined,
   })
 }
 
