@@ -31,3 +31,16 @@ pptx/native/tea/*.png
 # HTML-era working directory. The reference HTML/CSS that the parity notes compare against is
 # tracked (pptx/examples/design-reference.*); this is its by-product.
 pipeline-converted/
+
+# ── Build caches ────────────────────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── site/ 的产物(与上面 *.pptx/*.pdf 同一条理由:能由 spec 重建,没有人读回)──────────────────
+site/data/generated/
+site/.work/
+
+# work/ 下的对比产物:spec.js 与 report.json 进库,deck/预览图/几何报告都是重建的
+work/*/deck.pptx
+work/*/layout.json
+work/*/preview.png
+work/*/p*.png
