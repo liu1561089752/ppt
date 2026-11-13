@@ -9,7 +9,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  reviewGeometry, reviewPixels, groupByPage, fingerprintPages, changedPages,
+  reviewGeometry, reviewComposition, reviewPixels, groupByPage, fingerprintPages, changedPages,
 } from './review'
 import type { DeckSpecJson, PreviewSlide } from './types'
 
@@ -147,4 +147,134 @@ test('the fingerprint is order-insensitive inside a page but page-sensitive', ()
   assert.deepEqual(changedPages(fingerprintPages(a), fingerprintPages(b)), [])
   // 页数变化也要能被看出来(否则"少写一页"会被当成没变)
   assert.deepEqual(changedPages(fingerprintPages(a), []), [1])
+})
+
+// ── 原型构图审查:该有的东西在不在 ────────────────────────────────────────
+
+function deckOf(slides: Array<Record<string, unknown>>): DeckSpecJson {
+  return {
+    title: 't',
+    theme: {
+      colors: {
+        background: 'EEF3F6', surface: 'FFFFFF', foreground: '12202B', muted: '5B6B75',
+        primary: '1F5C4D', accent: 'C2622F', border: 'D5DEE2',
+      },
+      fonts: { heading: 'x', body: 'x' },
+    },
+    slides: slides as unknown as DeckSpecJson['slides'],
+  }
+}
+
+test('a chart page with no chart is called out, a real chart passes', () => {
+  const textOnly = deckOf([{ template: 'chart', elements: [
+    { type: 'text', text: '趋势很好', fontSize: 26 },
+    { type: 'text', text: 'Q1 到 Q4 一路向上。', fontSize: 14 },
+  ] }])
+  const problems = reviewComposition(textOnly)
+  assert.equal(problems.length, 1)
+  assert.equal(problems[0].source, 'shape')
+  assert.equal(problems[0].code, 'SHAPE_MISSING_CHART')
+
+  const withChart = deckOf([{ template: 'chart', elements: [
+    { type: 'text', text: '趋势很好', fontSize: 26 },
+    { type: 'chart', chartType: 'bar', h: 3.5, data: [{ name: 'a', labels: ['Q1'], values: [1] }] },
+  ] }])
+  assert.deepEqual(reviewComposition(withChart), [])
+})
+
+test('table and image pages are checked for their own element type', () => {
+  assert.equal(reviewComposition(deckOf([{ template: 'table', elements: [{ type: 'text', text: 'x' }] }]))[0].code,
+    'SHAPE_MISSING_TABLE')
+  assert.equal(reviewComposition(deckOf([{ template: 'image', elements: [{ type: 'text', text: 'x' }] }]))[0].code,
+    'SHAPE_MISSING_IMAGE')
+})
+
+test('a kpi page made of prose has no metrics to look at', () => {
+  const prose = deckOf([{ template: 'kpi', elements: [
+    { type: 'text', text: '我们的产品在多个维度上都取得了显著进步,值得关注。', fontSize: 14 },
+  ] }])
+  assert.equal(reviewComposition(prose)[0].code, 'SHAPE_NO_METRICS')
+
+  const metrics = deckOf([{ template: 'kpi', elements: [
+    { type: 'container', background: true, fill: 'FFFFFF', children: [
+      { type: 'text', text: '62%', fontSize: 38 },
+      { type: 'text', text: '覆盖率', fontSize: 14 },
+    ] },
+    { type: 'container', background: true, fill: 'FFFFFF', children: [
+      { type: 'text', text: '3.2s', fontSize: 26 },
+      { type: 'text', text: '构建耗时', fontSize: 14 },
+    ] },
+  ] }])
+  assert.deepEqual(reviewComposition(metrics), [])
+})
+
+test('a comparison page that never made two columns is reported', () => {
+  const oneColumn = deckOf([{ template: 'comparison', elements: [
+    { type: 'text', text: '标题', fontSize: 26 },
+    { type: 'container', background: true, children: [{ type: 'text', text: '只有一栏', fontSize: 14 }] },
+  ] }])
+  assert.equal(reviewComposition(oneColumn)[0].code, 'SHAPE_NOT_TWO_COLUMNS')
+
+  const twoColumns = deckOf([{ template: 'comparison', elements: [
+    { type: 'container', columns: 2, children: [
+      { type: 'container', background: true, children: [{ type: 'text', text: 'A', fontSize: 14 }] },
+      { type: 'container', background: true, children: [{ type: 'text', text: 'B', fontSize: 14 }] },
+    ] },
+  ] }])
+  assert.deepEqual(reviewComposition(twoColumns), [])
+})
+
+test('a body page with only a title and one sentence is thin, two paragraphs is not', () => {
+  const thin = deckOf([{ template: 'content', elements: [
+    { type: 'text', role: 'title', text: '标题', fontSize: 26 },
+    { type: 'text', text: '一句话。', fontSize: 14 },
+  ] }])
+  assert.equal(reviewComposition(thin)[0].code, 'SHAPE_THIN_PAGE')
+
+  const full = deckOf([{ template: 'content', elements: [
+    { type: 'text', role: 'title', text: '标题', fontSize: 26 },
+    { type: 'text', text: '第一段。', fontSize: 14 },
+    { type: 'text', text: '第二段。', fontSize: 14 },
+  ] }])
+  assert.deepEqual(reviewComposition(full), [])
+})
+
+test('a body page whose main content is a chart is not called thin', () => {
+  const chartLed = deckOf([{ template: 'content', elements: [
+    { type: 'text', role: 'title', text: '标题', fontSize: 26 },
+    { type: 'chart', chartType: 'line', h: 3.5, data: [] },
+  ] }])
+  assert.deepEqual(reviewComposition(chartLed), [])
+})
+
+test('a pause page crowded with cards is reported as an info, not a hard warning', () => {
+  const crowded = deckOf([{ template: 'cover', elements: [
+    { type: 'text', role: 'title', text: '书名', fontSize: 40 },
+    { type: 'container', background: true, children: [{ type: 'text', text: 'a' }] },
+    { type: 'container', background: true, children: [{ type: 'text', text: 'b' }] },
+    { type: 'container', background: true, children: [{ type: 'text', text: 'c' }] },
+  ] }])
+  const problems = reviewComposition(crowded)
+  assert.equal(problems[0].code, 'SHAPE_OVERBUILT_PAUSE_PAGE')
+  assert.equal(problems[0].severity, 'info')
+})
+
+test('a page of seven or more cards is a card wall regardless of archetype', () => {
+  const cards = Array.from({ length: 7 }, (_, index) => ({
+    type: 'container', background: true, children: [{ type: 'text', text: `卡 ${index}` }],
+  }))
+  const wall = deckOf([{ template: 'bento', elements: [
+    { type: 'container', columns: 3, children: cards },
+  ] }])
+  const codes = reviewComposition(wall).map((problem) => problem.code)
+  assert.ok(codes.includes('SHAPE_CARD_WALL'), `actual codes: ${codes.join(',')}`)
+})
+
+test('composition problems carry a page number and an actionable advice', () => {
+  const problems = reviewComposition(deckOf([
+    { template: 'content', elements: [{ type: 'text', text: '标题' }] },
+    { template: 'chart', elements: [{ type: 'text', text: '只有文字' }] },
+  ]))
+  assert.deepEqual(problems.map((problem) => problem.page), [1, 2])
+  for (const problem of problems) assert.ok((problem.advice || '').length > 10)
 })

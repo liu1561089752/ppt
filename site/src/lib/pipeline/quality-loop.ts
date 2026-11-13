@@ -15,7 +15,7 @@
  */
 import { dirname, resolve } from 'path'
 import {
-  reviewGeometry, reviewPixels, groupByPage, fingerprintPages, changedPages,
+  reviewGeometry, reviewComposition, reviewPixels, groupByPage, fingerprintPages, changedPages,
   type PageProblem,
 } from './review'
 import { renderDeck, measureRenderedPages, type RenderResult, type PixelMetricsResult } from './render'
@@ -159,16 +159,17 @@ export async function runQualityLoop(deps: QualityLoopDeps): Promise<QualityLoop
     const render = await renderDeckFn(deps.outPath, renderDir)
     if (!render.ok) {
       // 渲染不出来不等于成品坏了:如实记录,视觉检查整块标为未执行
-      const geometry = reviewGeometry(built.layout, spec, built.pageSize)
+      const geometry = [...reviewGeometry(built.layout, spec, built.pageSize), ...reviewComposition(spec)]
       note = `无法渲染成品,视觉检查未执行:${render.error || '未知原因'}。`
-        + '几何检查与引擎校验仍然有效。'
+        + '构图检查、几何检查与引擎校验仍然有效。'
       return finish('render-unavailable', {
         render, pixels: undefined, vision: undefined, problems: geometry, built, spec,
       })
     }
     const measureFn = deps.hooks?.measure ?? measureRenderedPages
     const pixels = await measureFn(render.dir || renderDir)
-    const geometry = reviewGeometry(built.layout, spec, built.pageSize)
+    // 构图(该有的东西在不在)+ 几何(盒子的位置对不对)一起算:两者都不能省
+    const geometry = [...reviewGeometry(built.layout, spec, built.pageSize), ...reviewComposition(spec)]
     const templates = spec.slides.map((slide) => String(slide.template || 'content'))
     const pixelProblems = pixels.ok
       ? reviewPixels(pixels.pages, { templates, renderer: render.renderer })

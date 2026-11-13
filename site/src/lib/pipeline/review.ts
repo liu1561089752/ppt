@@ -1,7 +1,9 @@
 /**
  * pipeline/review.ts — 逐页问题的统一账本
  *
- * 三个来源的结论**分开记录**,绝不混成一个分数(几何分不能冒充审美分):
+ * 四个来源的结论**分开记录**,绝不混成一个分数(几何分不能冒充审美分):
+ *   shape    — 这一页有没有画出它该有的东西:图表页有没有图、对照页有没有两栏、
+ *              指标页有没有指标卡。**这是"整份 deck 变成文字列表"的唯一自动防线。**
  *   geometry — 引擎 `--layout-out` 的真实盒子:溢出、重叠、贴边、字号过小、对比度
  *   pixels   — 渲染出来的图:整页发白、内容塌在上半屏、纯色板
  *   vision   — 视觉模型的审美判断:重心、层级、拥挤、图文关系(未配置时为空)
@@ -12,7 +14,7 @@
 import type { DeckSpecJson, PreviewSlide } from './types'
 import { contrastRatio } from './contrast'
 
-export type ProblemSource = 'geometry' | 'pixels' | 'vision'
+export type ProblemSource = 'shape' | 'geometry' | 'pixels' | 'vision'
 
 export interface PageProblem {
   page: number
@@ -198,6 +200,160 @@ export function reviewGeometry(
 
 /** 这些原型天生"少字",不该按"内容没排到底"来判 */
 const SPARSE_BY_DESIGN = new Set(['cover', 'section', 'quote', 'credits'])
+
+// ── 原型构图审查 ───────────────────────────────────────────────────────────
+
+interface SpecElement {
+  type?: string
+  text?: unknown
+  fontSize?: unknown
+  children?: SpecElement[]
+  chartType?: unknown
+  path?: unknown
+  rows?: unknown
+  columns?: unknown
+  columnTracks?: unknown
+  columnSpan?: unknown
+}
+
+/** 把一页的元素树压平成 (元素, 所在栏数) 序列 —— 判构图只需要这两样 */
+function flattenElements(elements: SpecElement[] | undefined, columns = 1): Array<{ element: SpecElement; columns: number }> {
+  const out: Array<{ element: SpecElement; columns: number }> = []
+  const walk = (list: SpecElement[] | undefined, inheritedColumns: number) => {
+    for (const element of Array.isArray(list) ? list : []) {
+      if (!element || typeof element !== 'object') continue
+      const own = Array.isArray(element.columnTracks) && element.columnTracks.length
+        ? element.columnTracks.length
+        : Math.max(inheritedColumns, Number(element.columns) > 1 ? Math.floor(Number(element.columns)) : inheritedColumns)
+      out.push({ element, columns: own })
+      if (Array.isArray(element.children)) walk(element.children, own)
+    }
+  }
+  walk(elements, columns)
+  return out
+}
+
+/** 数字类文本(69% / 3.2s / 1,200 / 2026)—— 指标页靠它承载信息 */
+function looksNumeric(text: unknown): boolean {
+  const value = String(text ?? '').trim()
+  if (!value || value.length > 16) return false
+  return /\d/u.test(value) && /^[\d\s.,%+\-/：:年月日亿元万千百sSms倍xX×]+$/u.test(value)
+}
+
+/**
+ * 原型构图审查:这一页有没有画出它该有的**东西**。
+ *
+ * 引擎的几何校验只管"盒子对不对",不管"该有的东西在不在":一个图表页只写两段文字,
+ * 几何完全合法、渲染也不空,但那页就是变成了文字列表 —— 整份 deck 的品质塌陷主要
+ * 发生在这里,而且到现在为止没有任何自动检查发现它。
+ *
+ * 判据全部是结构性的(有没有 chart 元素、有没有两栏容器、卡片够不够),不看措辞,
+ * 所以既能交给修复轮,也不会因为文案不同而误报。
+ */
+export function reviewComposition(spec: DeckSpecJson | undefined): PageProblem[] {
+  const slides = Array.isArray(spec?.slides) ? spec!.slides as unknown as Array<Record<string, unknown>> : []
+  const problems: PageProblem[] = []
+  slides.forEach((slide, index) => {
+    const page = index + 1
+    const template = String(slide?.template || 'content')
+    const flat = flattenElements(slide?.elements as SpecElement[] | undefined)
+    const elements = flat.map((entry) => entry.element)
+    const count = (type: string): number => elements.filter((element) => element.type === type).length
+    const containers = elements.filter((element) => element.type === 'container')
+    const textCount = count('text')
+    const cards = containers.filter((container) => container.columns === undefined || Number(container.columns) <= 1)
+    const multiColumn = containers.filter((container) => Number(container.columns) > 1 || Array.isArray(container.columnTracks))
+    const childrenOf = (container: SpecElement): number =>
+      Array.isArray(container.children) ? container.children.length : 0
+    const widest = multiColumn.reduce((best, container) => Math.max(best, childrenOf(container)), 0)
+
+    const push = (code: string, detail: string, advice: string, severity: 'warning' | 'info' = 'warning') => {
+      problems.push({ page, code, severity, detail, source: 'shape', advice })
+    }
+
+    switch (template) {
+      case 'chart':
+        if (count('chart') === 0) {
+          push('SHAPE_MISSING_CHART',
+            '这一页标的是图表页,但规格里没有任何 chart 元素',
+            '把这些数字写成 chart 元素(数据进内嵌工作簿),不要用文字或表格代替图表;右侧留一栏写读图结论。')
+        }
+        break
+      case 'table':
+        if (count('table') === 0) {
+          push('SHAPE_MISSING_TABLE',
+            '这一页标的是表格页,但规格里没有任何 table 元素',
+            '要用 table 元素承载对照数据(首行表头),不要把表格写成用文本拼的行。')
+        }
+        break
+      case 'image':
+        if (count('image') === 0) {
+          push('SHAPE_MISSING_IMAGE',
+            '这一页标的是配图页,但规格里没有 image 元素',
+            '从配图清单里取本页指定的 path 放一张图(fit=cover,h 3.5-4.2),再配一段说明与署名。')
+        }
+        break
+      case 'kpi': {
+        const numeric = elements.filter((element) => element.type === 'text' && looksNumeric(element.text)).length
+        if (cards.length < 2 && numeric < 2) {
+          push('SHAPE_NO_METRICS',
+            `指标页没有可看的指标:卡片 ${cards.length} 个、数字文本 ${numeric} 个`,
+            '至少给 2-4 个指标卡(容器 + 大字号数值 + 标签 + 一句注解);数字要单独成元素,不要混在正文里。')
+        } else if (cards.length >= 2 && cards.length > 4) {
+          push('SHAPE_TOO_MANY_CARDS',
+            `指标页有 ${cards.length} 张卡片,一页放不下这么多个重心`,
+            '收敛到 2-4 个最有说服力的指标;其余的换成一句注解或放到下一页。', 'info')
+        }
+        break
+      }
+      case 'comparison':
+      case 'process':
+      case 'bento': {
+        const needed = template === 'comparison' ? 2 : 3
+        if (widest < needed) {
+          push(template === 'comparison' ? 'SHAPE_NOT_TWO_COLUMNS' : 'SHAPE_NOT_ENOUGH_STEPS',
+            `这一页没有做出${template === 'comparison' ? '两栏对照' : '多步并列'}的版心:最宽的一组只有 ${widest} 个子元素`,
+            template === 'comparison'
+              ? '用 columns:2 的容器装两栏(各一段说明),底部再加一句结论条。'
+              : `用 columns:${needed} 以上的容器装 ${needed} 个以上的并列项(每项一个小标题 + 一句说明)。`)
+        }
+        break
+      }
+      case 'cover':
+      case 'section':
+      case 'quote': {
+        // 停顿页:重心要少。卡片一多,停顿感就没了。
+        if (cards.length >= 3 || textCount > 8) {
+          push('SHAPE_OVERBUILT_PAUSE_PAGE',
+            `停顿页塞了 ${cards.length} 张卡片 / ${textCount} 段文本,它应该只有一句话`,
+            '封面 / 章节 / 引语页只留一个重心:一行 kicker、一句主标题、最多一段说明。内容多就该换成正文页。', 'info')
+        }
+        break
+      }
+      default: {
+        // content / editorial / hero / credits:至少要有"标题之外的一段正文"
+        const bodies = elements.filter((element) => element.type === 'text'
+          && element.text !== undefined
+          && !looksNumeric(element.text)
+          && Number(element.fontSize ?? 0) < 24).length
+        if (bodies < 2 && count('chart') + count('table') + count('image') === 0) {
+          push('SHAPE_THIN_PAGE',
+            `这一页除标题外只有 ${bodies} 段正文,也没有图表/表格/配图`,
+            '补一个真正承载信息的主体:一组对照、一个数据块、一张图,或者一段把它讲透的正文。')
+        }
+        break
+      }
+    }
+
+    // 通用:一页里重复同一种构图太多次,读起来就是"卡片墙"
+    if (cards.length > 6) {
+      push('SHAPE_CARD_WALL',
+        `这一页有 ${cards.length} 张卡片,已经是一堵卡片墙`,
+        '把同类项合并成一栏列表,或者拆成两页:一页讲结论,一页讲证据。')
+    }
+  })
+  return dedupe(problems)
+}
 
 export interface PixelReviewContext {
   /** 每页的页面原型(与 metrics 的 page 对齐,1-based) */

@@ -39,7 +39,13 @@ function spec(): DeckSpecJson {
     },
     slides: [
       { template: 'cover', background: 'EEF3F6', elements: [{ type: 'text', text: '封面' }] },
-      { template: 'content', background: 'EEF3F6', elements: [{ type: 'text', text: '正文' }] },
+      // 正文页必须有两段正文,否则会触发构图审查(SHAPE_THIN_PAGE)——
+      // 这里刻意做成"合格的一页",好让被测的是循环而不是内容
+      { template: 'content', background: 'EEF3F6', elements: [
+        { type: 'text', role: 'title', text: '正文', fontSize: 26 },
+        { type: 'text', text: '第一段正文,给出判断。', fontSize: 14 },
+        { type: 'text', text: '第二段正文,给出依据。', fontSize: 14 },
+      ] },
       { template: 'section', background: 'EEF3F6', elements: [{ type: 'text', text: '收束' }] },
     ],
   }

@@ -357,6 +357,7 @@ async function runPipeline(input: GenerateInput): Promise<void> {
       const kinds = Array.from(new Set(qcProblems.map((problem) => {
         if (problem.source === 'vision') return '审美'
         if (problem.source === 'pixels') return '版面留白'
+        if (problem.source === 'shape') return '构图'
         return '排版'
       })))
       const repairedPages = quality.repairs.length
