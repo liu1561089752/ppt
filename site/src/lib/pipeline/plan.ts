@@ -80,7 +80,7 @@ export async function stage3Plan(
         maxTokens: 16000,
       })
       await addUsage(taskId, res.usage?.promptTokens ?? 0, res.usage?.completionTokens ?? 0)
-      const plan = parsePlan(res.content, input)
+      const plan = parsePlan(res.content, input, research.facts)
       await emitEvent(taskId, 'status', {
         status: 'generating',
         stage: `大纲就绪:${plan.pages.length} 页(${plan.styleName} / ${plan.preset})`,
@@ -125,7 +125,7 @@ interface RawPlan {
 }
 
 /** 解析 + 收敛:模板名必须在原型白名单内,页数按 slideCount 补齐/截断 */
-function parsePlan(content: string, input: GenerateInput): OutlinePlan {
+function parsePlan(content: string, input: GenerateInput, researchFacts = ''): OutlinePlan {
   const raw = parseJsonLoose<RawPlan>(content)
   if (!raw || typeof raw !== 'object') throw new Error('大纲不是合法 JSON')
   const rawPages = Array.isArray(raw.pages) ? raw.pages : Array.isArray(raw.slides) ? raw.slides : []
@@ -138,7 +138,11 @@ function parsePlan(content: string, input: GenerateInput): OutlinePlan {
     keyMessage: (page.key_message || page.keyMessage || '').trim() || undefined,
     visualIntent: (page.visual_intent || page.visualIntent || '').trim() || undefined,
     imageQuery: (page.image_query || page.imageQuery || '').trim().slice(0, 160) || undefined,
-    evidenceRefs: (Array.isArray(page.evidence_refs) ? page.evidence_refs : Array.isArray(page.evidenceRefs) ? page.evidenceRefs : []).filter((item): item is string => typeof item === 'string').slice(0, 5),
+    evidenceRefs: (Array.isArray(page.evidence_refs) ? page.evidence_refs : Array.isArray(page.evidenceRefs) ? page.evidenceRefs : [])
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0 && researchFacts.includes(item))
+      .slice(0, 5),
   }))
   // 补齐不足的页数:用 content 原型 + 主题相关的兜底要点,不留空洞
   while (pages.length < input.slideCount) {
