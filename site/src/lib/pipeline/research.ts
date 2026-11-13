@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from 'fs'
 import { extname, join, resolve } from 'path'
 import { PATHS } from '@/lib/config'
 import { setProgress, emitEvent, addCost } from './events'
+import { rankSources, describeSourceMix, sourceTier } from './sources'
 import type { GenerateInput, OutlinePlan } from './types'
 import { isMockLLM, mockResearch } from './mock'
 import { webSearchDetailed, hasBochaKey, type SearchSource } from '@/lib/search-client'
@@ -45,20 +46,16 @@ const LANDSCAPE_RATIO = { min: 1.25, max: 2.4 }
 const PORTRAIT_RATIO = { min: 0.5, max: 0.85 }
 
 function uniqueSources(sources: SearchSource[]): SearchSource[] {
-  const seen = new Set<string>()
-  return sources.filter((source) => {
-    const key = source.url.trim().replace(/\/$/, '').toLowerCase()
-    if (!key || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  // 归一化 URL(去移动域/跟踪参数)+ 归一化标题去重,再按来源类型分级排序:
+  // 实测博查会把同一篇文章的桌面域与移动域各返回一次,还会让研报代销站排在政府来源前面
+  return rankSources(sources)
 }
 function toImageKeyword(topic: string): string {
   return topic.replace(/ppt|幻灯片|演示文稿/gi, '').trim() || topic
 }
 
 /** 下载单张图;失败返回 undefined(调用方换下一张候选) */
-async function downloadOne(url: string, target: string): Promise<string | undefined> {
+export async function downloadOne(url: string, target: string): Promise<string | undefined> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(20_000), cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -176,6 +173,22 @@ export async function stage2Research(input: GenerateInput, taskId: string): Prom
   const unique = uniqueSources(sources)
   const validImages = images.filter((image) => image.localPath).length
   await addCost(taskId, { searches, images: validImages })
+  // 来源构成要让人看得见:十有八九用的是研报代销站,这件事必须写在界面上而不是藏起来
+  if (unique.length) {
+    const mix = describeSourceMix(unique)
+    const mills = unique.filter((source) => sourceTier(source.url) === 3).length
+    console.log(`[pipeline] 来源构成:${mix}`)
+    await emitEvent(taskId, 'status', {
+      status: 'generating',
+      stage: `来源 ${unique.length} 条(${mix})`,
+    })
+    if (mills * 2 >= unique.length && mills >= 3) {
+      await emitEvent(taskId, 'status', {
+        status: 'generating',
+        stage: `注意:${mills} 条来源来自研报代销/内容聚合站,数字请以官方口径复核`,
+      })
+    }
+  }
   await setProgress(taskId, 'generating', 25, `资料就绪（${unique.length} 个来源，${validImages} 张配图）`)
   return { facts: sections.join('\n\n'), sources: unique, images, researchQueries }
 }
@@ -184,7 +197,7 @@ export async function stage2Research(input: GenerateInput, taskId: string): Prom
  * 候选图能不能用作幻灯片配图:要么够宽(放大不糊),要么比例适合横版构图。
  * Unsplash 的 orientation=landscape 本身已经筛过一遍,这里再兜一层尺寸。
  */
-function isUsablePhoto(photo: UnsplashPhoto): boolean {
+export function isUsablePhoto(photo: UnsplashPhoto): boolean {
   const width = Number(photo.width)
   const height = Number(photo.height)
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false
@@ -194,13 +207,13 @@ function isUsablePhoto(photo: UnsplashPhoto): boolean {
 }
 
 /** 页面级检索的版式偏好:视觉意图里明确要竖构图才搜竖版 */
-function orientationFor(plan: { template?: string; visualIntent?: string }): 'landscape' | 'portrait' {
+export function orientationFor(plan: { template?: string; visualIntent?: string }): 'landscape' | 'portrait' {
   const intent = String(plan.visualIntent || '')
   if (/竖向|竖版|竖构图|portrait|直幅/i.test(intent) || /\bportrait\b/i.test(plan.template || '')) return 'portrait'
   return 'landscape'
 }
 
-function ratioOk(photo: UnsplashPhoto, orientation: 'landscape' | 'portrait'): boolean {
+export function ratioOk(photo: UnsplashPhoto, orientation: 'landscape' | 'portrait'): boolean {
   const width = Number(photo.width)
   const height = Number(photo.height)
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false

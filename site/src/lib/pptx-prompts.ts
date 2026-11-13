@@ -893,12 +893,21 @@ export function buildPageRepairPrompt(
 // ---------- 阶段 2:检索查询 ----------
 
 /** 构建搜索查询(3 条,覆盖数据/背景/案例) */
+/**
+ * 检索角度:三组"内容型"问题 + 一组"权威口径"问题。
+ *
+ * 实测(低空经济):只问内容型问题时,9 条来源里 8 条来自研报代销站,官方口径一条都
+ * 没进来 —— PPT 里引用的数字于是全都无法追溯。多问一句"政策 / 官方 / 数据"能把
+ * gov.cn、部委、统计口径的页面拉进来;来源分级(见 pipeline/sources.ts)再把它们排到前面。
+ * 多这一次检索的成本,比"整份 deck 的引用都不可信"低得多。
+ */
 export function buildSearchQueries(topic: string): string[] {
   const year = new Date().getFullYear()
   return [
     `${topic} ${year}年 市场规模 最新数据`,
     `${topic} ${year}年 行业现状 发展趋势`,
     `${topic} 典型案例 应用场景`,
+    `${topic} 政策文件 官方数据 发布`,
   ]
 }
 

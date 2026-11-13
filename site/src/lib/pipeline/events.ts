@@ -63,6 +63,10 @@ export async function emitEvent(taskId: string, type: string, payload: unknown):
  *
  * 搜索按次计费、图床按次限流,token 只是三者之一。以前只记 token,于是"这份 deck 成本
  * 多少"这个问题没人答得出来。用原子 increment 而不是读改写,阶段之间并发也不会丢计数。
+ *
+ * 踩过的坑:这两个字段起初是**可空**的,而 `increment` 在 SQL 里是 `SET x = x + N`,
+ * 对 NULL 求值仍然是 NULL —— 记了等于没记,而且一声不响(真机实测:两次检索 + 两张图
+ * 全部读回 0)。现在字段是 `Int @default(0)`,写失败也会打日志而不是静默吞掉。
  */
 export async function addCost(
   taskId: string,
@@ -79,8 +83,9 @@ export async function addCost(
         ...(images ? { imageCount: { increment: images } } : {}),
       },
     })
-  } catch {
-    /* 记账失败不影响交付 */
+  } catch (error) {
+    // 记账失败不影响交付,但绝不能静默:成本数字错了比没有数字更糟
+    console.warn(`[pipeline] 成本记账失败(${taskId}):`, (error as Error).message)
   }
 }
 
@@ -91,10 +96,12 @@ export async function setRepairRounds(taskId: string, rounds: number): Promise<v
       where: { id: taskId },
       data: { repairRounds: Math.max(0, Math.floor(rounds)) },
     })
-  } catch {
-    /* 忽略 */
+  } catch (error) {
+    console.warn(`[pipeline] 修复轮数落库失败(${taskId}):`, (error as Error).message)
   }
 }
+
+/** 累计 token 用量(事务内读改写,SQLite 写锁下并发安全) */
 export async function addUsage(taskId: string, prompt: number, completion: number): Promise<void> {
   if (prompt === 0 && completion === 0) return
   try {
