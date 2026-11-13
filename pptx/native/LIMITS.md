@@ -59,7 +59,7 @@ it did write.
 | `engine/native_pptx.js:2141` | Series line style patch: |
 | `engine/native_pptx.js:2345` | Title placeholder patch alignment mismatch on slide |
 | `engine/native_pptx.js:2349` | Title placeholder patch missed on slide |
-| `engine/native_pptx.js:2388` | outputPath is required |
+| `engine/native_pptx.js:2395` | outputPath is required |
 | `engine/image_fit.js:83` | Image focus object requires finite x and y in the 0..1 range |
 | `engine/image_fit.js:87` | Image focus must be a preset name or an { x, y } object |
 | `engine/image_fit.js:172` | A tile needs a positive cell size and a finite picture frame |
