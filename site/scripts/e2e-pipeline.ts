@@ -26,8 +26,12 @@
  *   3. engineReport 能被 JSON.parse,且 warnings === 0,且带 layout 几何(预览要用);
  *   4. resultFile 指向的 .pptx 存在、非空、zip 头是 PK;
  *   5. pptx 里 ppt/slides/slideN.xml 的页数 === 请求页数;
- *   6. outline / theme 两个兼容字段有值(列表页要用)。
+ *   6. outline / theme 两个兼容字段有值(列表页要用);
+ *   7. python-pptx 能打开成品,读到的页数一致,每页都有非空文本,且对象里真的有
+ *      table / chart / picture(整页图片的 deck 会在这一步露馅;没装 python-pptx 则跳过并说明);
+ *   8. mock 模式下 searches / images 必须为 0(fixture 不许偷偷花钱)。
  */
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 
@@ -77,8 +81,81 @@ function countSlidesInZip(file: string): number {
 
 /** 从 zip 里取一个条目的明文内容(仅用于探测 [Content_Types].xml 是否存在) */
 function hasEntry(file: string, entry: string): boolean {
-  const text = readFileSync(file).toString('latin1')
-  return text.includes(entry)
+  try {
+    const text = readFileSync(file).toString('latin1')
+    return text.includes(entry)
+  } catch {
+    return false
+  }
+}
+
+interface PptxParse {
+  available: boolean
+  ok: boolean
+  error?: string
+  slides: number
+  text: number
+  shapes: number
+  tables: number
+  charts: number
+  pictures: number
+  everySlideHasText: boolean
+}
+
+/**
+ * 用 python-pptx 真的解析一遍成品。
+ *
+ * 这是本机能做到的、最接近"PowerPoint 打得开"的证据:python-pptx 是一个独立的
+ * OOXML 消费者,它打不开的文件 PowerPoint 也打不开。它同时能回答"是不是每页都有
+ * 可编辑文本对象"——整页图片的 deck 会在这里露馅。
+ */
+function parseWithPythonPptx(file: string): PptxParse {
+  const empty: PptxParse = {
+    available: false, ok: false, slides: 0, text: 0, shapes: 0, tables: 0, charts: 0,
+    pictures: 0, everySlideHasText: false,
+  }
+  const script = [
+    'import json,sys',
+    'try:',
+    '    from pptx import Presentation',
+    'except Exception as e:',
+    '    print(json.dumps({"available": False, "error": str(e)})); sys.exit(0)',
+    'try:',
+    '    p = Presentation(sys.argv[1])',
+    'except Exception as e:',
+    '    print(json.dumps({"available": True, "ok": False, "error": str(e)})); sys.exit(0)',
+    'from pptx.enum.shapes import MSO_SHAPE_TYPE',
+    'counts = {"text": 0, "shapes": 0, "tables": 0, "charts": 0, "pictures": 0}',
+    'every = True',
+    'slides = list(p.slides)',
+    'for s in slides:',
+    '    has_text = False',
+    '    for sh in s.shapes:',
+    '        t = sh.shape_type',
+    '        body = (sh.text_frame.text or "").strip() if getattr(sh, "has_text_frame", False) else ""',
+    '        # 先按类型归类:python-pptx 里 AutoShape 也有 text_frame,先判文本会把它算成文本框',
+    '        if t == MSO_SHAPE_TYPE.TABLE: counts["tables"] += 1',
+    '        elif t == MSO_SHAPE_TYPE.CHART: counts["charts"] += 1',
+    '        elif t == MSO_SHAPE_TYPE.PICTURE: counts["pictures"] += 1',
+    '        elif t == MSO_SHAPE_TYPE.AUTO_SHAPE:',
+    '            counts["shapes"] += 1',
+    '            if body: has_text = True',
+    '        elif t == MSO_SHAPE_TYPE.TEXT_BOX or getattr(sh, "has_text_frame", False):',
+    '            counts["text"] += 1',
+    '            if body: has_text = True',
+    '    every = every and has_text',
+    'print(json.dumps({"available": True, "ok": True, "slides": len(slides), "everySlideHasText": every, **counts}))',
+  ].join('\n')
+  const python = process.platform === 'win32' ? 'python' : 'python3'
+  try {
+    const output = execFileSync(python, ['-c', script, file], { encoding: 'utf8', timeout: 60_000 })
+    const parsed = JSON.parse(output.trim().split('\n').pop() || '{}') as Partial<PptxParse>
+    return { ...empty, ...parsed }
+  } catch (error) {
+    const e = error as { code?: string; message?: string }
+    // 没有 python / 没有 python-pptx 不是失败,是不具备条件
+    return { ...empty, error: e.code === 'ENOENT' ? 'python 不在 PATH 上' : e.message }
+  }
 }
 
 async function main(): Promise<void> {
@@ -238,6 +315,26 @@ async function main(): Promise<void> {
     if (!magic) problems.push('产物 zip 头不是 PK')
     if (zipped !== slides) problems.push(`zip 里 slideN.xml 数 ${zipped} ≠ 请求 ${slides}`)
     if (!contentTypes) problems.push('产物缺少 [Content_Types].xml')
+  }
+
+  // 7.5 真正解析一遍成品:zip 头对只能说明"是个 zip",用 python-pptx 打开才说明
+  // "是一份 OOXML 演示文稿,且里面的对象真的是文本/表格/图表/图片,不是整页图片"。
+  // 这台机器没有 PowerPoint,所以这是"能不能打开、能不能改"最接近的证据。
+  if (after.resultFile) {
+    const parsed = parseWithPythonPptx(join(PATHS.generated, after.resultFile))
+    if (!parsed.available) {
+      say('[7.5] ooxml        跳过:环境里没有 python-pptx(不假装验证过)')
+    } else if (!parsed.ok) {
+      say(`[7.5] ooxml        解析失败:${parsed.error}`)
+      problems.push(`python-pptx 打不开成品:${parsed.error}`)
+    } else {
+      say(`[7.5] ooxml        slides=${parsed.slides} text=${parsed.text} shape=${parsed.shapes}`
+        + ` table=${parsed.tables} chart=${parsed.charts} picture=${parsed.pictures}`
+        + ` 每页都有文本=${parsed.everySlideHasText}`)
+      if (parsed.slides !== slides) problems.push(`python-pptx 读到 ${parsed.slides} 页 ≠ 请求 ${slides}`)
+      if (!parsed.everySlideHasText) problems.push('有页面没有任何文本对象(等于空页)')
+      if (parsed.text < slides) problems.push(`文本对象只有 ${parsed.text} 个,少于页数 ${slides}`)
+    }
   }
 
   // 8. 兼容字段
