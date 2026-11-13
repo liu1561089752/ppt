@@ -396,8 +396,9 @@ export function buildPlanPrompt(input: SpecPromptInput): string {
   if (req) lines.push('', req)
 
   if (input.facts) {
-    lines.push('', '## 真实资料(内容必须基于这些事实,不要编造数据)')
+    lines.push('', '## 真实资料与来源证据(内容必须基于这些事实,不要编造数据)')
     lines.push(input.facts.slice(0, 6000))
+    lines.push('使用市场规模、增长率、政策、公司案例等可核验事实时，brief 必须保留对应来源标题或 URL；资料不足时降低断言强度或明确标记待核实。模型内置知识/Kimi Formula 结果不视为博查网页来源。')
   }
 
   const usable = (input.images || []).filter((image) => image.path || image.url)
