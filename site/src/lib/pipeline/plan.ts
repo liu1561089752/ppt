@@ -145,10 +145,13 @@ const IMAGE_CANDIDATES = ['content', 'editorial', 'hero', 'comparison', 'process
  * 一页配图、一页图表都没有 —— 整份稿子就是"标题 + 卡片",正是这个产品最不该出现的形态。
  * 同时检索阶段已经下载了 6 张图,一张没用上,钱白花。
  *
- * 这里只做一件事:如果没有任何配图页,就把最像"需要画面"的那一页改成配图页,并把标题
- * 当作检索词。**只在有图可用时**才改,而且改动会打印出来,不做无声替换。
+ * 这里只做一件事:如果没有任何配图页,就把最像"需要画面"的那一页改成配图页。
+ * **只在有图可用时**才改,而且改动会打印出来,不做无声替换。
+ *
+ * 检索词用**主题**而不是这一页的标题:实测拿标题当检索词,「链路要么全通」搜回来的是一张
+ * 全是 "LIGHT" 字样的纹理图 —— 图是配上了,但那张图与内容毫无关系,还把阅读搅得更乱。
  */
-function ensureVisualMix(pages: PageOutline[], availableImages: number): string[] {
+function ensureVisualMix(pages: PageOutline[], availableImages: number, topic: string): string[] {
   const changed: string[] = []
   if (availableImages <= 0 || pages.length < 4) return changed
   const hasImagePage = pages.some((page) => page.template === 'image')
@@ -167,8 +170,14 @@ function ensureVisualMix(pages: PageOutline[], availableImages: number): string[
   const target = preferred.page
   changed.push(`第 ${preferred.index + 1} 页 ${target.template} → image(${target.title})`)
   target.template = 'image'
-  target.imageQuery = target.imageQuery || `${target.title} 实景`.slice(0, 80)
+  // 主题词优先:标题常常是抽象判断句,拿去搜图只会搜到无关的纹理/字体图
+  target.imageQuery = target.imageQuery || `${shortTopic(topic)} 实景`.slice(0, 80)
   return changed
+}
+
+/** 主题词太长时只取前面几个词,图库检索词越短越准 */
+function shortTopic(topic: string): string {
+  return String(topic || '').replace(/[，,。;；:：]/gu, ' ').trim().split(/\s+/u).slice(0, 3).join(' ')
 }
 
 /** 解析 + 收敛:模板名必须在原型白名单内,页数按 slideCount 补齐/截断 */
@@ -200,7 +209,7 @@ function parsePlan(content: string, input: GenerateInput, researchFacts = '', av
       brief: `围绕"${input.topic}"补充一条独立要点,3-4 句说明。`,
     })
   }
-  const mixChanges = ensureVisualMix(pages, availableImages)
+  const mixChanges = ensureVisualMix(pages, availableImages, input.topic)
   if (mixChanges.length) {
     console.log(`[pipeline] 大纲补画面:${mixChanges.join(';')}(模型一页配图都没排)`)
   }
