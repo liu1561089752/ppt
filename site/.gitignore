@@ -1,0 +1,29 @@
+# deps / build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# 运行时数据(部署机本地)
+# 注意:必须根锚定(/),否则会误伤 src/app/api/download/ 路由目录(实测曾致该 API 路由从未入库)
+.env
+/.env.local
+/.db/
+/db/
+/data/
+/download/
+/deploy/logs*/
+*.db
+*.db-journal
+*.sqlite
+!.env.example
+
+# 日志与临时
+*.log
+
+# 施工区:验收总账、基线快照、成员日志(不属产品)
+/.work/
+
+# 系统
+.DS_Store
+Thumbs.db
