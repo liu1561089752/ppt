@@ -81,7 +81,8 @@ export async function stage3Plan(
         maxTokens: 16000,
       })
       await addUsage(taskId, res.usage?.promptTokens ?? 0, res.usage?.completionTokens ?? 0)
-      const plan = parsePlan(res.content, input, research.facts)
+      // 有下载下来的图才有资格把某页改成配图页,所以把可用图数一并传进去
+      const plan = parsePlan(res.content, input, research.facts, research.images.filter((image) => image.localPath).length)
       const quality = reviewOutlinePlan(plan)
       if (quality.issues.length) {
         console.warn('[pipeline] 大纲质量检查:', quality.issues.map((issue) => issue.code).join(', '))
@@ -130,8 +131,48 @@ interface RawPlan {
   slides?: RawPlanPage[]
 }
 
+/** 一句话视觉意图里出现这些词,说明这页本来就该有「画面」 */
+const VISUAL_HINT = /(场景|实景|现场|案例|画面|外观|设备|人物|城市|工厂|产线|工地|演示|照片|图)/u
+/** 这些原型不能改成配图页:封面/章节/停顿页的重心是一句话 */
+const NO_IMAGE_TEMPLATES = new Set(['cover', 'section', 'quote', 'credits'])
+/** 配图页候选:本来就承载"说明一段内容"的页 */
+const IMAGE_CANDIDATES = ['content', 'editorial', 'hero', 'comparison', 'process', 'bento']
+
+/**
+ * 保证整份 deck 里**至少有一页有画面**。
+ *
+ * 真机上发生的事:8 页大纲全给了 cover/hero/process/table/editorial/bento/comparison/section,
+ * 一页配图、一页图表都没有 —— 整份稿子就是"标题 + 卡片",正是这个产品最不该出现的形态。
+ * 同时检索阶段已经下载了 6 张图,一张没用上,钱白花。
+ *
+ * 这里只做一件事:如果没有任何配图页,就把最像"需要画面"的那一页改成配图页,并把标题
+ * 当作检索词。**只在有图可用时**才改,而且改动会打印出来,不做无声替换。
+ */
+function ensureVisualMix(pages: PageOutline[], availableImages: number): string[] {
+  const changed: string[] = []
+  if (availableImages <= 0 || pages.length < 4) return changed
+  const hasImagePage = pages.some((page) => page.template === 'image')
+  if (hasImagePage) return changed
+
+  const candidates = pages
+    .map((page, index) => ({ page, index }))
+    .filter(({ page }) => IMAGE_CANDIDATES.includes(page.template) && !NO_IMAGE_TEMPLATES.has(page.template))
+  if (!candidates.length) return changed
+
+  // 优先挑"文案里就在说画面"的那一页;没有就挑 brief 最长的一页(信息最需要视觉缓冲)
+  const preferred = candidates.find(({ page }) => (
+    VISUAL_HINT.test(`${page.brief} ${page.visualIntent || ''} ${page.keyMessage || ''}`)
+  )) || candidates.sort((a, b) => b.page.brief.length - a.page.brief.length)[0]
+
+  const target = preferred.page
+  changed.push(`第 ${preferred.index + 1} 页 ${target.template} → image(${target.title})`)
+  target.template = 'image'
+  target.imageQuery = target.imageQuery || `${target.title} 实景`.slice(0, 80)
+  return changed
+}
+
 /** 解析 + 收敛:模板名必须在原型白名单内,页数按 slideCount 补齐/截断 */
-function parsePlan(content: string, input: GenerateInput, researchFacts = ''): OutlinePlan {
+function parsePlan(content: string, input: GenerateInput, researchFacts = '', availableImages = 0): OutlinePlan {
   const raw = parseJsonLoose<RawPlan>(content)
   if (!raw || typeof raw !== 'object') throw new Error('大纲不是合法 JSON')
   const rawPages = Array.isArray(raw.pages) ? raw.pages : Array.isArray(raw.slides) ? raw.slides : []
@@ -158,6 +199,10 @@ function parsePlan(content: string, input: GenerateInput, researchFacts = ''): O
       template: index === input.slideCount - 1 ? 'section' : 'content',
       brief: `围绕"${input.topic}"补充一条独立要点,3-4 句说明。`,
     })
+  }
+  const mixChanges = ensureVisualMix(pages, availableImages)
+  if (mixChanges.length) {
+    console.log(`[pipeline] 大纲补画面:${mixChanges.join(';')}(模型一页配图都没排)`)
   }
   return {
     title: (raw.title || input.topic).trim(),

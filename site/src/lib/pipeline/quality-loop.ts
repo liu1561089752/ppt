@@ -21,7 +21,23 @@ import {
 import { renderDeck, measureRenderedPages, type RenderResult, type PixelMetricsResult } from './render'
 import { reviewDeckVisually, visionConfigured, type DeckVisionReview } from './vision'
 import { repairSpecPages, type PageRepairResult, type ResearchForSpec } from './spec'
+import { isMockLLM } from './mock'
 import type { DeckSpecJson, GenerateInput, NativeBuildResult, OutlinePlan } from './types'
+
+/** 引擎级硬伤:越界/溢出/贴边——出现即意味着成品上有一行被裁掉,或跑到画布外 */
+const HARD_WARNINGS = new Set([
+  'OUT_OF_BOUNDS', 'ELEMENT_OVERFLOW', 'TEXT_OVERFLOW', 'CONTENT_OVERFLOW', 'ELEMENT_CLIPPED',
+])
+
+/** 把一次构建的硬伤收成 `页:码` 集合,用来判断某轮修复有没有"新引入"问题 */
+function hardKeysOf(built: { warningDetails?: Array<{ slide?: number | null; code: string }> }): Set<string> {
+  const keys = new Set<string>()
+  for (const warning of built.warningDetails || []) {
+    if (!HARD_WARNINGS.has(String(warning.code))) continue
+    keys.add(`${Number(warning.slide) || 0}:${warning.code}`)
+  }
+  return keys
+}
 
 export interface QualityLoopRepair {
   round: number
@@ -175,8 +191,10 @@ export async function runQualityLoop(deps: QualityLoopDeps): Promise<QualityLoop
       ? reviewPixels(pixels.pages, { templates, renderer: render.renderer })
       : []
 
-    // 视觉模型按轮计费:第一次看全貌,最后一轮看结果;中途不为中间态花钱
-    const runVision = (deps.hooks?.vision ? true : visionConfigured()) && (visionRounds === 0 || repairRound === maxRepairs)
+    // 视觉模型按轮计费:第一次看全貌,最后一轮看结果;中途不为中间态花钱。
+    // mock 模式(fixture 自测)不调视觉模型:那不是真实产物,也不该产生真实账单。
+    const runVision = (deps.hooks?.vision ? true : visionConfigured() && !isMockLLM())
+      && (visionRounds === 0 || repairRound === maxRepairs)
     let vision: DeckVisionReview | undefined
     if (runVision) {
       visionRounds++
@@ -215,6 +233,7 @@ export async function runQualityLoop(deps: QualityLoopDeps): Promise<QualityLoop
     const targets = grouped.map((group) => ({ page: group.page, lines: group.lines }))
     await deps.emitStage(`第 ${targets.map((target) => target.page).join('、')} 页需要修改,正在按页重写…`)
     const beforeFingerprint = fingerprintPages(built.layout)
+    let beforeHard = hardKeysOf(built)
     let repair
     try {
       const repairFn = deps.hooks?.repair ?? repairSpecPages
@@ -268,12 +287,34 @@ export async function runQualityLoop(deps: QualityLoopDeps): Promise<QualityLoop
       break
     }
 
+    // 修复轮的另一个硬底线:不许**新引入**引擎级硬伤(越界/溢出/贴边)。
+    // 真机上见过:模型为了"填满"页面,把一段文字塞到 y=7.43in,越出画布,
+    // 引擎只给 warning 不失败,于是成品带着一行被裁切的字发出去了。
+    const hardNew = (rebuilt.warningDetails || []).filter((warning) => (
+      HARD_WARNINGS.has(String(warning.code))
+      && repair.repairedPages.includes(Number(warning.slide) || 0)
+      && !beforeHard.has(`${warning.slide}:${warning.code}`)
+    ))
+    if (hardNew.length) {
+      const restored = await deps.rebuild(spec)
+      repairs.push({
+        round: repairRound + 1, pages: repair.repairedPages, changedPages: changed,
+        rolledBack: true, missedPages: repair.missedPages,
+        error: `修复引入了新的版面硬伤:${hardNew.slice(0, 3).map((warning) => `p${warning.slide} ${warning.code}`).join('、')}`,
+      })
+      stopped = 'regression'
+      note = `修复后出现新的越界/溢出(${hardNew.slice(0, 3).map((w) => `第 ${w.slide} 页 ${w.code}`).join('、')}),已回滚`
+        + (restored.ok ? '' : `;回滚重建失败:${restored.error || '未知原因'}`)
+      break
+    }
+
     repairs.push({
       round: repairRound + 1, pages: repair.repairedPages, changedPages: changed,
       rolledBack: false, missedPages: repair.missedPages,
     })
     spec = repair.spec
     built = rebuilt
+    beforeHard = hardKeysOf(rebuilt)
   }
 
   return finish(stopped, {

@@ -328,3 +328,29 @@ test('vision problems are attributed to the vision channel, never merged into ge
   assert.equal(visionProblems[0].page, 2)
   assert.equal(report.problems.filter((problem) => problem.source === 'geometry').length, 0)
 })
+
+test('a repair that pushes text out of bounds is rejected, not shipped', async () => {
+  let rebuilds = 0
+  const report = await runQualityLoop(deps({
+    // 第一轮就把第 2 页改越界:修复"成功",但成品上有一行被裁掉
+    rebuild: async () => {
+      rebuilds++
+      const built = builtAt(layout(0.6, 0.55, 0.6))
+      built.warningDetails = [{ slide: 2, code: 'OUT_OF_BOUNDS', message: 'Element 10 exceeds slide bounds' }]
+      built.warnings = 1
+      return built
+    },
+    hooks: {
+      render: async () => goodRender,
+      measure: async () => sparsePixels,
+      vision: async () => noVision,
+      repair: async (_input, _taskId, _plan, deck): Promise<PageRepairResult> => ({
+        spec: deck, repairedPages: [2], missedPages: [],
+      }),
+    },
+  }))
+  assert.equal(report.stopped, 'regression')
+  assert.equal(report.repairs[0].rolledBack, true)
+  assert.match(String(report.repairs[0].error), /越界|OUT_OF_BOUNDS/u)
+  assert.ok(rebuilds >= 2, '回滚必须真的用上一份规格重建一次')
+})

@@ -83,7 +83,7 @@ test('body text below the presentation scale is lifted, never shrunk', () => {
   const report = enforceDeckDesign(spec)
   assert.equal(report.fontSizesRaised, 1)
   const [small, big] = spec.slides[0].elements as Array<Record<string, unknown>>
-  assert.equal(small.fontSize, 16)
+  assert.equal(small.fontSize, 18, '12pt 直接抬到 18pt:16pt 会被下一档再抬一次,不幂等')
   assert.equal(big.fontSize, 40, 'a large display size must not be rewritten')
 })
 
@@ -178,4 +178,36 @@ test('sparse page detection skips the archetypes that are sparse by design', () 
   ]
   const sparse = sparsePages(layout, spec)
   assert.deepEqual(sparse.map((page) => page.page), [1])
+})
+
+// ── 幂等性:修复轮会把同一套兜底再跑一遍 ──────────────────────────────────
+
+test('the design fallback is idempotent: running it twice changes nothing the second time', () => {
+  const sizes = [12, 14, 16, 18, 22, 26]
+  const subject = deck([{
+    template: 'content',
+    elements: sizes.map((size) => ({ type: 'text', text: `${size}pt 正文`, fontSize: size })),
+  }])
+  const once = JSON.stringify(subject.slides)
+  enforceDeckDesign(subject, [], [])
+  const afterFirst = JSON.stringify(subject.slides)
+  const reportSecond = enforceDeckDesign(subject, [], [])
+  const afterSecond = JSON.stringify(subject.slides)
+
+  assert.notEqual(once, afterFirst, '第一次应当抬字号')
+  assert.equal(afterSecond, afterFirst, '第二次不许再改:否则修复轮会"顺手改到别的页"')
+  assert.equal(reportSecond.fontSizesRaised, 0, '第二次不应再报告字号改动')
+})
+
+test('every lifted size is a fixed point of the ladder', () => {
+  // 直接验判据本身:任何输入抬一次之后再抬,必须不动
+  for (const size of [8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 32, 40]) {
+    const probe = deck([{ template: 'content', elements: [{ type: 'text', text: `t${size}`, fontSize: size }] }])
+    enforceDeckDesign(probe, [], [])
+    const first = (probe.slides[0].elements[0] as unknown as { fontSize: number }).fontSize
+    const report = enforceDeckDesign(probe, [], [])
+    const second = (probe.slides[0].elements[0] as unknown as { fontSize: number }).fontSize
+    assert.equal(second, first, `${size}pt 抬到 ${first}pt 之后又变了`)
+    assert.equal(report.fontSizesRaised, 0, `${size}pt 第二次仍被算作"抬字号"`)
+  }
 })

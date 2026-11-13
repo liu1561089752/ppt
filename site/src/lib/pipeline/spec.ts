@@ -421,6 +421,12 @@ export async function repairSpecPages(
     enforceDeckDesign(merged, images, plan.pages)
     const fixed = fixSpecContrast(merged)
     if (fixed > 0) console.log(`[pipeline] 修复页对比度兜底:修正 ${fixed} 处`)
+    // 兜底是整份跑一遍的,但**未授权的页必须逐字节还原**:修复轮只允许改被点名的页,
+    // 否则"顺手改坏别的页"会被回归判据抓到并整轮回滚 —— 那样自动修复永远不可能生效。
+    const authorized = new Set(repairedPages)
+    merged.slides = merged.slides.map((slide, index) => (
+      authorized.has(index + 1) ? slide : spec.slides[index]
+    ))
     const check = await checkSpec(merged)
     if (check.ok) return { spec: merged, repairedPages, missedPages: [...new Set(missed)] }
     lastErrors = check.errors

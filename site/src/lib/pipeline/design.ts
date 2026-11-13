@@ -79,13 +79,20 @@ function isThemeColor(value: unknown, colors: Colors): boolean {
     .includes(v)
 }
 
-/** 字号尺度:只升不降,保留相对层级 */
+/**
+ * 字号尺度:只升不降,保留相对层级。
+ *
+ * **必须幂等** —— `liftedSize(liftedSize(x)) === liftedSize(x)`。这条不是洁癖:
+ * 修复轮会把同一套兜底再跑一遍,如果 14pt→16pt 而 16pt 又会→18pt,那么"只修第 3 页"
+ * 的一轮会顺手把所有正文页的字号再抬一格,几何随之改变,回归判据于是报"非目标页被改动",
+ * 整轮修复被回滚 —— 真机上就是这样,自动修复一次都没成功过。
+ * 所以每个档位的输出必须是本档位的固定点:12-17 一律 18,18 不再变。
+ */
 function liftedSize(size: number): number {
   if (!Number.isFinite(size) || size <= 0) return size
   if (size >= 26) return Math.max(size, 32)
   if (size >= 20) return Math.max(size, 22)
-  if (size >= 15) return Math.max(size, 18)
-  if (size >= 12) return Math.max(size, 16)
+  if (size >= 12) return Math.max(size, 18)
   return Math.max(size, 11)
 }
 

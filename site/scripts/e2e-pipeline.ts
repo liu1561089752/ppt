@@ -344,8 +344,12 @@ async function main(): Promise<void> {
   say(`[9] 账务          creditsUsed=${after.creditsUsed} tokens=${(after.promptTokens ?? 0)}+${(after.completionTokens ?? 0)}`
     + ` searches=${after.searchCount ?? 0} images=${after.imageCount ?? 0} repairRounds=${after.repairRounds ?? 0}`
     + `  qcWarnings=${after.qcWarnings ?? 'null'}`)
-  // mock 下不检索图库、也不修复:这两项必须是 0,非 0 说明有路径在 fixture 里偷偷花钱
-  if ((after.searchCount ?? 0) !== 0 || (after.imageCount ?? 0) !== 0) {
+  // mock 下不检索图库、也不修复:这两项必须是 0,非 0 说明有路径在 fixture 里偷偷花钱。
+  // --real 下反过来:真实检索就该产生成本,0 才是异常(说明记账又静默失败了)。
+  if (real) {
+    if ((after.searchCount ?? 0) <= 0) problems.push('真实模式下 searches=0:成本记账没落库')
+    if ((after.imageCount ?? 0) <= 0) problems.push('真实模式下 images=0:配图没走真实图库')
+  } else if ((after.searchCount ?? 0) !== 0 || (after.imageCount ?? 0) !== 0) {
     problems.push(`mock 模式不该产生搜索/图片成本,实际 searches=${after.searchCount} images=${after.imageCount}`)
   }
 

@@ -89,6 +89,10 @@ interface TextLike {
   bold?: unknown
   fontSize?: unknown
   children?: unknown
+  /** 容器是否画底(null/undefined = 未声明;false = 明确不画) */
+  background?: unknown
+  /** 容器底色(与引擎的 container fill 同名) */
+  fill?: unknown
 }
 
 /** 一页的底色(显式优先,否则主题背景) */
@@ -142,10 +146,32 @@ function fixElement(element: TextLike, background: string, bgIsDark: boolean, co
     }
   }
   const children = Array.isArray(element?.children) ? (element.children as TextLike[]) : []
-  for (const child of children) {
-    changed += fixElement(child, background, bgIsDark, colors)
+  if (children.length) {
+    // 子元素真正的底色是**最近的、画了底的那个容器**,不是整页底色。
+    // 真机上就栽在这里:深色章节页里的白卡片,文字也被写成了 `FBFDFB`,
+    // 按"页底是深色"去判当然读得清,然而它实际落在白卡片上 —— 渲染出来是三个空卡片。
+    const childBackground = surfaceColor(element, background, colors)
+    const childDark = relativeLuminance(childBackground) < DARK_BG_LUMINANCE
+    for (const child of children) {
+      changed += fixElement(child, childBackground, childDark, colors)
+    }
   }
   return changed
+}
+
+/**
+ * 容器自己的底色:只有 `background` 为真时容器才画底(与引擎 `containerBackgroundSpec` 一致),
+ * 否则视为透明、沿用上层底色。
+ */
+function surfaceColor(element: TextLike, fallback: string, colors: ContrastColors): string {
+  if (!element || element.type !== 'container') return fallback
+  if (!element.background) return fallback
+  const spec = element.background
+  if (spec && typeof spec === 'object' && typeof (spec as { fill?: unknown }).fill === 'string') {
+    return normaliseHex(String((spec as { fill: string }).fill)) || fallback
+  }
+  if (typeof element.fill === 'string') return normaliseHex(element.fill) || fallback
+  return normaliseHex(colors.surface) || fallback
 }
 
 /**
