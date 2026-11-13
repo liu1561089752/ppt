@@ -59,6 +59,9 @@ jobs:
       - name: Every page skeleton in the prompt must survive the engine
         working-directory: site
         run: bun run test:recipes
+      - name: Visual regression against the committed baseline
+        working-directory: site
+        run: bun run test:visual
       - name: Whole pipeline, mock LLM, real engine and DB
         working-directory: site
         run: bun run e2e:pipeline

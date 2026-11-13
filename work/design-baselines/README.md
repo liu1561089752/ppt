@@ -35,6 +35,27 @@ python pptx/native/scripts/preview_deck.py work/design-baselines/recipes.pptx `
 `probe.js` 以 `--strict` 构建必须 0 警告:它是 CI 里 `native-ppt.yml` 的一步。
 `recipe-probe.ts` 在 CI 里逐步检查 13 段骨架(`pipeline-e2e.yml`)。
 
+## 视觉回归基线
+
+`baseline-visual.json` 是 `probe.js` 渲染后的**确定性指纹**,由
+`site/scripts/visual-baseline.ts` 比对(`pipeline-e2e.yml` 会跑):
+
+```powershell
+cd site
+npx tsx scripts/visual-baseline.ts           # 默认:比基线,漂移就退 1
+npx tsx scripts/visual-baseline.ts --update  # 人工确认后重写基线
+```
+
+它比对两组东西,容差不同是有原因的:
+
+- **几何指纹**(元素个数 / 内容高度):字体无关,严格比对(高度容差 1/50 英寸)。
+  这一组才是真正的"版式没被改坏"——卡片背景丢了、配图没落地、标题挤成两行,都会红。
+- **像素度量**(墨量 / 内容底边 / 颜色数):跟字体绑定,只在**同一平台**上按紧容差比;
+  换平台(Windows 基线 vs Linux CI)时只做"没画成白页"的底线检查。
+
+两条都通过才算过。改版式是允许的,但要 `--update` 并**看一眼 sheet.png** —— 基线不是
+用来禁止改动的,是用来禁止"没人注意的改动"。
+
 ## 看图时该看什么
 
 - **节奏**:整份 deck 不该是"标题 + 三个等宽卡片"重复 12 次。停顿页(封面/章节/引语)

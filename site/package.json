@@ -17,8 +17,9 @@
     "e2e:native": "tsx scripts/e2e-native.ts",
     "e2e:pipeline": "tsx --conditions=react-server scripts/e2e-pipeline.ts",
     "smoke": "node scripts/release-smoke.mjs",
-    "verify": "bun run typecheck && bun run lint && bun run test:pipeline && bun run test:recipes && bun run engine:doctor && bun run e2e:native && bun run e2e:pipeline",
-    "test:recipes": "tsx scripts/recipe-probe.ts"
+    "verify": "bun run typecheck && bun run lint && bun run test:pipeline && bun run test:recipes && bun run test:visual && bun run engine:doctor && bun run e2e:native && bun run e2e:pipeline",
+    "test:recipes": "tsx scripts/recipe-probe.ts",
+    "test:visual": "tsx scripts/visual-baseline.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
