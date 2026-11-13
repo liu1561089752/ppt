@@ -79,10 +79,18 @@ test('dark ink on a dark field is caught even though the engine wrote it happily
   const layout = [slide([
     { type: 'text', text: '深绿字压深绿底', x: 1, y: 1, w: 8, h: 0.6, fontSize: 16, color: '12432F' },
   ])]
-  const problems = reviewGeometry(layout, spec('0F3D2E'))
+  const problems = reviewGeometry(layout, darkSpec())
   const low = problems.find((problem) => problem.code === 'LOW_CONTRAST_TEXT')
   assert.ok(low, 'LOW_CONTRAST_TEXT should fire')
   assert.match(low!.detail, /:1/)
+})
+
+test('light text on a dark card inside a light page is not reported as low contrast', () => {
+  // 曾经的误报:按整页底色判,深卡片上的浅字被算成 1.0:1,修复轮于是去改本来正确的文字
+  const layout = [slide([
+    { type: 'text', text: '深卡片上的浅字', x: 1, y: 5, w: 8, h: 0.5, fontSize: 18, color: 'E6EFE8' },
+  ])]
+  assert.equal(reviewGeometry(layout, cardSpec()).some((p) => p.code === 'LOW_CONTRAST_TEXT'), false)
 })
 
 test('a page whose ink is all text is flagged as dense, a page with a chart is not', () => {
@@ -278,3 +286,29 @@ test('composition problems carry a page number and an actionable advice', () => 
   assert.deepEqual(problems.map((problem) => problem.page), [1, 2])
   for (const problem of problems) assert.ok((problem.advice || '').length > 10)
 })
+
+/** 深绿字压深绿底的规格:与上面的布局一致(对比度按规格判,不在布局里) */
+function darkSpec(): DeckSpecJson {
+  const base = spec('0F3D2E')
+  base.slides = [{
+    template: 'content',
+    background: '0F3D2E',
+    elements: [{ type: 'text', text: '深绿字压深绿底', fontSize: 16, color: '12432F' }],
+  }] as never
+  return base
+}
+
+/** 浅色页里放一张深卡片,卡片里是浅色字 —— 读得清,不该报 */
+function cardSpec(): DeckSpecJson {
+  const base = spec('EEF3F6')
+  base.slides = [{
+    template: 'section',
+    background: 'EEF3F6',
+    elements: [{
+      type: 'container', background: true, fill: '1F4438', children: [
+        { type: 'text', text: '深卡片上的浅字', fontSize: 18, color: 'E6EFE8' },
+      ],
+    }],
+  }] as never
+  return base
+}

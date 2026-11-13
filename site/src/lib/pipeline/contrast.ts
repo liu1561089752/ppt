@@ -200,3 +200,55 @@ export function fixSpecContrast(spec: unknown): number {
   const slides = Array.isArray(deck.slides) ? (deck.slides as { background?: unknown; elements?: unknown }[]) : []
   return slides.reduce((sum, slide) => sum + fixSlideContrast(slide, colors), 0)
 }
+
+export interface LowContrastText {
+  /** 1-based 页码 */
+  page: number
+  text: string
+  ratio: number
+  fontSize?: number
+  /** 按元素**真实**底色判出来的底色(便于人核对) */
+  surface: string
+}
+
+/**
+ * 找出全篇读不清的文字(不改写,只报告)。
+ *
+ * 与 `fixSpecContrast` 共用同一套"最近的画底容器"解析 —— 否则会出现最难查的一类错:
+ * 深色卡片里的浅色文字明明是好的,却被按页面底色判成 1.0:1,于是修复轮去"修"一段
+ * 本来正确的文字。
+ */
+export function findLowContrastTexts(spec: unknown, minRatio = MIN_RATIO): LowContrastText[] {
+  const deck = (spec || {}) as { slides?: unknown; theme?: { colors?: ContrastColors } }
+  const colors = deck.theme?.colors
+  if (!colors) return []
+  const out: LowContrastText[] = []
+  const slides = Array.isArray(deck.slides) ? (deck.slides as { background?: unknown; elements?: unknown }[]) : []
+  slides.forEach((slide, index) => {
+    const pageBackground = slideBackgroundColor(slide, colors)
+    const walk = (element: TextLike, background: string) => {
+      if (element?.type === 'text') {
+        const declared = typeof element.color === 'string' ? normaliseHex(element.color) : null
+        const color = declared || normaliseHex(colors.foreground) || colors.foreground
+        const ratio = contrastRatio(color, background)
+        if (ratio > 0 && ratio < minRatio) {
+          out.push({
+            page: index + 1,
+            text: String((element as { text?: unknown }).text ?? ''),
+            ratio,
+            fontSize: Number(element.fontSize) || undefined,
+            surface: background,
+          })
+        }
+      }
+      const children = Array.isArray(element?.children) ? (element.children as TextLike[]) : []
+      if (!children.length) return
+      const childBackground = surfaceColor(element, background, colors)
+      for (const child of children) walk(child, childBackground)
+    }
+    for (const element of (Array.isArray(slide.elements) ? slide.elements : []) as TextLike[]) {
+      walk(element, pageBackground)
+    }
+  })
+  return out
+}

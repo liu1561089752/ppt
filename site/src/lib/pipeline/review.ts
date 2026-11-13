@@ -12,7 +12,7 @@
  * `fingerprintPages()` 用来验证修复没有顺手改坏其它页。
  */
 import type { DeckSpecJson, PreviewSlide } from './types'
-import { contrastRatio } from './contrast'
+import { findLowContrastTexts } from './contrast'
 
 export type ProblemSource = 'shape' | 'geometry' | 'pixels' | 'vision'
 
@@ -62,8 +62,6 @@ const SMALL_TEXT_PT = 12
 const EDGE_MARGIN_IN = 0.32
 /** 两个文字盒重叠面积超过较小盒的这个比例 = 真重叠(不是并排贴边) */
 const OVERLAP_RATIO = 0.18
-/** 同一行文字的最低可读对比度 */
-const MIN_CONTRAST = 3.0
 
 function boxesOf(slide: PreviewSlide | undefined): Box[] {
   const elements = Array.isArray(slide?.elements) ? slide.elements : []
@@ -103,13 +101,14 @@ export function reviewGeometry(
   const width = Number(pageSize?.width) > 0 ? Number(pageSize!.width) : DEFAULT_WIDTH
   const height = Number(pageSize?.height) > 0 ? Number(pageSize!.height) : DEFAULT_HEIGHT
   const problems: PageProblem[] = []
+  // 对比度要按规格里的真实底色算(布局里没有底色),全篇算一次再逐页取用
+  const allLowContrastTexts = findLowContrastTexts(spec)
 
   layout.forEach((slide, index) => {
     const page = index + 1
     const boxes = boxesOf(slide)
     const texts = boxes.filter((box) => box.type === 'text')
-    const slideBg = String((spec.slides[index] as { background?: unknown } | undefined)?.background
-      || spec.theme?.colors?.background || 'FFFFFF')
+    const lowContrastTextsForPage = allLowContrastTexts.filter((item) => item.page === page)
 
     // ① 字号:小于 10pt 的正文/说明基本不可读,<12pt 只提示
     for (const box of texts) {
@@ -169,18 +168,16 @@ export function reviewGeometry(
       }
     }
 
-    // ④ 对比度:深底深字/浅底浅字(引擎忠实写入,只能在这里抓)
-    for (const box of texts) {
-      const color = String(box.color || spec.theme?.colors?.foreground || '')
-      if (!/^#?[0-9a-f]{6}$/i.test(color.replace('#', ''))) continue
-      const ratio = contrastRatio(color, slideBg)
-      if (ratio > 0 && ratio < MIN_CONTRAST) {
-        problems.push({
-          page, code: 'LOW_CONTRAST_TEXT', severity: 'warning', source: 'geometry',
-          detail: `文字对比度 ${ratio.toFixed(2)}:1(字号 ${box.fontSize ?? '?'}pt):「${compact(box.text)}」`,
-          advice: '这一页的背景色与文字色撞了:改用主题的浅色/深色组合,不要自造色值。',
-        })
-      }
+    // ④ 对比度:深底深字/浅底浅字。
+    // 必须按**元素自己的底色**判(深卡片里的浅字是好的),所以用 contrast.ts 那套
+    // "最近的画底容器"解析,而不是拿整页底色套所有文字 —— 后者会把深卡片上的
+    // 浅字误报成 1.0:1,修复轮于是去改一段本来正确的文字。
+    for (const item of lowContrastTextsForPage) {
+      problems.push({
+        page, code: 'LOW_CONTRAST_TEXT', severity: 'warning', source: 'geometry',
+        detail: `文字对比度 ${item.ratio.toFixed(2)}:1(字号 ${item.fontSize ?? '?'}pt,底色 ${item.surface}):「${compact(item.text)}」`,
+        advice: '这段文字和它落在的底色撞了:改用主题的深/浅组合,不要把浅色字放进浅色卡片。',
+      })
     }
 
     // ⑤ 内容量:文字盒面积占比过高 = 拥挤
