@@ -32,6 +32,7 @@ import {
 export interface ResearchForSpec {
   facts: string
   images: Array<{
+    id?: string
     url: string
     description: string
     author?: string
@@ -47,6 +48,7 @@ export interface SpecArtifact {
 }
 
 interface UsableImage {
+  id?: string
   path: string
   caption: string
   author?: string
@@ -61,6 +63,7 @@ function usableImages(research: ResearchForSpec): UsableImage[] {
   return research.images
     .filter((image) => typeof image.localPath === 'string' && image.localPath.length > 0)
     .map((image) => ({
+      id: image.id,
       path: image.localPath as string,
       caption: image.description,
       author: image.author,

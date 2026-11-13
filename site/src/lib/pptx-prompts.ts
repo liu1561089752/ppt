@@ -629,9 +629,9 @@ export function buildSpecPrompt(plan: OutlinePlan, input: SpecPromptInput, theme
       const subject = entry.image.caption || '配图'
       const author = entry.image.author || '未知作者'
       const licence = entry.image.licence || 'Unsplash License'
-      lines.push(`${index + 1}. path="${entry.path}" · subject="${subject}" · author="${author}" · licence="${licence}"`)
+      lines.push(`${index + 1}. image_id="${entry.image.id || 'unknown'}" · path="${entry.path}" · subject="${subject}" · author="${author}" · licence="${licence}"`)
     })
-    lines.push('引用时原样抄 path 与三个 credit 字段,不要改写作者名或许可名。')
+    lines.push('引用时必须遵守大纲指定的 image_id；原样抄 path 与三个 credit 字段,不要改写作者名或许可名。不得使用大纲未选择的图片,不得重复使用同一图片。')
   }
 
   lines.push('', '## 输出格式(严格 JSON,不要代码块包裹)')
