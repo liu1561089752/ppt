@@ -29,6 +29,12 @@ export interface PageOutline {
   title: string
   template: string
   brief: string
+  /** 页面核心结论,供规格阶段保持信息焦点 */
+  keyMessage?: string
+  /** 视觉表达意图,描述应该让观众看到/比较/理解什么 */
+  visualIntent?: string
+  /** 对应研究来源标题或 URL,只引用真实证据 */
+  evidenceRefs?: string[]
 }
 
 /** S3 产物:只在"讲什么"层面做决定,不产出任何样式/坐标 */

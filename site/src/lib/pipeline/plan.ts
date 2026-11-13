@@ -103,6 +103,12 @@ interface RawPlanPage {
   template?: string
   brief?: string
   task_brief?: string
+  key_message?: string
+  keyMessage?: string
+  visual_intent?: string
+  visualIntent?: string
+  evidence_refs?: string[]
+  evidenceRefs?: string[]
   summary?: string
 }
 
@@ -127,6 +133,9 @@ function parsePlan(content: string, input: GenerateInput): OutlinePlan {
     title: (page.title || `第 ${index + 1} 页`).trim(),
     template: normaliseTemplate(page.template, index),
     brief: (page.brief || page.task_brief || page.summary || '').trim(),
+    keyMessage: (page.key_message || page.keyMessage || '').trim() || undefined,
+    visualIntent: (page.visual_intent || page.visualIntent || '').trim() || undefined,
+    evidenceRefs: (Array.isArray(page.evidence_refs) ? page.evidence_refs : Array.isArray(page.evidenceRefs) ? page.evidenceRefs : []).filter((item): item is string => typeof item === 'string').slice(0, 5),
   }))
   // 补齐不足的页数:用 content 原型 + 主题相关的兜底要点,不留空洞
   while (pages.length < input.slideCount) {
