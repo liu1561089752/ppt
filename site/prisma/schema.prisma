@@ -1,0 +1,205 @@
+// ChatPPT - 商业化版本数据库 schema
+// 表: User / CardBatch / Card / Redemption / GenerationTask /
+//     ChatMessage / DownloadToken / CreditChange / AuditLog / Announcement / SystemConfig
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  username         String   @unique
+  email            String?  @unique
+  passwordHash     String
+  remainingCredits Int      @default(0)
+  isActive         Boolean  @default(true)
+  isAdmin          Boolean  @default(false)
+  passwordChangedAt DateTime? // 最近一次改密时间;早于它的会话 token 全部失效
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  redemptions   Redemption[]
+  tasks         GenerationTask[]
+  creditChanges CreditChange[]
+  auditLogs     AuditLog[]     @relation("AuditLogAdmin")
+  cardBatches   CardBatch[]
+  redeemedCards Card[]
+}
+
+model CardBatch {
+  id          String   @id @default(cuid())
+  batchNo     String   @unique
+  credits     Int
+  quantity    Int
+  remark      String?
+  expiresAt   DateTime?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  cards Card[]
+}
+
+model Card {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  credits    Int
+  status     String    @default("unused") // unused / used / revoked
+  batchId    String?
+  batch      CardBatch? @relation(fields: [batchId], references: [id])
+  expiresAt  DateTime?
+  redeemedBy String?
+  redeemedByUser User? @relation(fields: [redeemedBy], references: [id])
+  redeemedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  redemptions Redemption[]
+
+  @@index([status])
+  @@index([batchId])
+}
+
+model Redemption {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  cardId    String
+  card      Card     @relation(fields: [cardId], references: [id])
+  credits   Int
+  xianyuOrderNo String? // 闲鱼订单号(可选,方便客服核对)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([cardId])
+}
+
+model GenerationTask {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id])
+  requestId        String    @unique // 幂等键
+  topic            String
+  audience         String?
+  tone             String?
+  preset           String?
+  language         String    @default("zh-CN")
+  slideCount       Int       @default(8)
+  customStyle      String?   // 用户自定义风格描述(可选,优先级高于 preset)
+  customRequirements String? // 用户万能输入框:额外要求(中文/英文,自由文本)
+  status           String    @default("pending")
+    // pending(排队) / generating / finalizing / succeeded / failed / refunded / cancelled
+    // 旧流程兼容态(仅历史数据): starting / question_pending / answering / stage1..stage4 / processing
+  mode             String    @default("native") // native(现行唯一模式:原生 PPTX 引擎)
+  promptSent       String?   // 组装后的任务描述(对话页展示)
+  progress         Int       @default(0)    // 0-100,各阶段累计进度
+  progressStage    String?   // 当前阶段描述:"调研资料"/"规划设计"/"生成规格"/"构建 PPTX"/"校验"
+
+  creditsUsed      Int       @default(1)
+  resultFile       String?
+  deckSpec         String?   // 整份 Deck Spec JSON —— 预览与重下载的唯一来源
+  engineReport     String?   // 引擎构建报告 JSON(warnings/objects/bytes/耗时)
+  errorMessage     String?
+  qcWarnings       String?   // JSON: 引擎构建 warnings 摘要 [{code,message}](质量提示)
+  model            String?
+  promptTokens     Int?
+  completionTokens Int?
+  searchCount      Int       @default(0) // 本任务实际发出的搜索请求数(搜索按次计费)
+  imageCount       Int       @default(0) // 本任务实际下载并采用的候选图数
+  repairRounds     Int       @default(0) // 视觉闭环实际执行的修复轮数
+  durationMs       Int?
+  outline          String?   // JSON string of OutlineSlide[](列表/详情页纲要)
+  theme            String?   // JSON string of ThemeConfig(列表页配色摘要)
+  createdAt        DateTime  @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+
+  downloadTokens DownloadToken[]
+  creditChanges  CreditChange[]
+  chatMessages   ChatMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([userId, status])     // 并发限额检查
+  @@index([userId, createdAt])  // 每日限额检查
+}
+
+// z.ai 对话流事件落库(轮询增量拉取)
+model ChatMessage {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      GenerationTask @relation(fields: [taskId], references: [id])
+  seq       Int      // 任务内自增序号(从 1 开始)
+  type      String   // user_prompt / thinking / tool_call / tool_response / answer / question / status / error / usage / done
+  payload   String   // JSON 字符串(事件数据)
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, seq])
+}
+
+model DownloadToken {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      GenerationTask @relation(fields: [taskId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@index([expiresAt])  // 过期清理
+}
+
+model CreditChange {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  taskId    String?
+  task      GenerationTask? @relation(fields: [taskId], references: [id])
+  change    Int      // +N (兑换/退款/管理员加) / -N (生成扣)
+  reason    String   // redeem / generate / refund / admin_adjust
+  balance   Int      // 变动后余额(审计)
+  remark    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([taskId])   // 按任务对账
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  admin     User     @relation("AuditLogAdmin", fields: [adminId], references: [id])
+  action    String   // generate_cards / revoke_card / adjust_credits / ban_user / update_announcement ...
+  target    String?
+  detail    String   // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  type      String   @default("info") // info / warning / success
+  pinned    Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SystemConfig {
+  id     String  @id @default(cuid())
+  key    String  @unique
+  value  String
+}

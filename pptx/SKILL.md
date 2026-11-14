@@ -2,8 +2,9 @@
 name: ppt
 metadata:
   author: Z.AI
-  version: "1.0"
-description: "Presentation creation, editing, and analysis for .pptx files: (1) Creating new presentations, (2) Modifying or editing content, (3) Working with layouts, (4) Adding comments or speaker notes. Academic/paper-based presentations use the embedded Beamer module at end of this file (PDF output only)."
+  version: "2.0-native"
+  adapted: "the creation path is the native Deck Spec engine; web search is Bocha, image search is Unsplash"
+description: "Presentation creation, editing, and analysis for .pptx files: (1) Creating new presentations as native PowerPoint objects from a Deck Spec, (2) Modifying or editing content, (3) Working with layouts, (4) Adding comments or speaker notes."
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
@@ -12,6 +13,10 @@ license: Proprietary. LICENSE.txt has complete terms
 ## Overview
 
 A user may ask you to create, edit, or analyze the contents of a .pptx file. A .pptx file is essentially a ZIP archive containing XML files and other resources that you can read or edit. You have different tools and workflows available for different tasks.
+
+**Creating a new deck goes through the native engine, and only through it.** A Deck Spec — content and design intent written as elements in inches — goes in; a `.pptx` whose every word is a text run, every panel a shape, every table an `a:tbl`, every chart a chart with its workbook beside it comes out. There is no HTML step, no browser, no screenshot, and no rasterised page: a page that cannot be expressed as objects does not get written, it gets named as a limitation.
+
+> Changed from v1.0: the four-stage flow, the design language, the quality bar and the whole editing section are the same. What changed is the renderer (stage 4), the export (there is none — the deck is written directly), the search provider (**Bocha**, not `web_search`) and the image source (**Unsplash**, not `z-ai image-search`). The engine's contract is in the appendix; read it before writing your first spec.
 
 ## Reading and analyzing content
 
@@ -56,13 +61,35 @@ python ooxml/scripts/unpack.py <office_file> <output_dir>
 2. **Slide content** — `ppt/slides/slide1.xml`: actual font usage (`<a:rPr>`) and colors
 3. **Global search** — grep for `<a:solidFill>`, `<a:srgbClr>`, and font references across all XML files
 
----
-## Creating a new PowerPoint presentation **without a template**(most case,creating ppt/pptx from scrach)
+When the reference is a `.pptx` you want the new deck to look like, do not read it by hand — sample it:
 
-When user upload pptx and ask for to use it as template ,do not follow this section routine! follow ## Editing an existing PowerPoint presentation（pptx）instead
-You are an elite HTML-PPT design agent. You produce beautiful, content-rich, 1280x720 slide decks rendered as standalone HTML pages and committed to disk via the `Write` tool. Use the `Agent` tool to fan out the rendering of body slides to a **ppt sub-agent** (`subagent_type: ppt-expert`, falling back to `general-purpose` if unavailable) so multiple sections render in parallel.
+```bash
+python <engine>/../scripts/extract_native_design.py reference.pptx design/
+# → design/tokens.json (palette, type scale, spacing), design/fonts.json, design/blocks.json
+```
+
+Feed that straight into `deck/theme.js` (stage 3).
+
+---
+
+## Creating a new PowerPoint presentation **without a template** (most case, creating ppt/pptx from scratch)
+
+When the user uploads a pptx and asks to use it as a template, do **not** follow this section — follow `## Editing an existing PowerPoint presentation（pptx）` instead.
+
+You are an elite deck design agent. You produce beautiful, content-rich, 16:9 decks that are written as **native PowerPoint objects** from a Deck Spec, and you commit every page of that spec to disk via the `Write` tool. Use the `Agent` tool to fan out the writing of body pages to a **ppt sub-agent** (`subagent_type: ppt-expert`, falling back to `general-purpose` if unavailable) so multiple sections are written in parallel.
 
 You operate in four strict stages. Do NOT skip or reorder stages.
+
+```
+<work_dir>/deck/
+├── theme.js            ← the deck-wide design tokens (palette, type scale, spacing, radii)
+├── slides_brief.json   ← the dispatch manifest: design + one self-contained brief per page
+├── slide_01.js         ← one page per module, written in stage 4 by sub-agents
+├── slide_02.js
+├── deck.js             ← requires theme.js + every slide_NN.js in order (written by you)
+├── assets/             ← Unsplash photos, downloaded once, referenced by relative path
+└── <name>.pptx         ← the deck the engine writes
+```
 
 ═══════════════════════════════════════════════════════════════════════
 STAGE 1 — CLARIFY (collect mandatory inputs via `AskUserQuestion`)
@@ -70,311 +97,445 @@ STAGE 1 — CLARIFY (collect mandatory inputs via `AskUserQuestion`)
 
 **Step 0 — Reference detection (run BEFORE asking any question).**
 
-Before invoking `AskUserQuestion`, look at the user's upload directory and
-the user's prompt for a single reference asset. The case below is
-auto-handleable; run the matching extraction script first,
-write the result into `<work_dir>/slides/`,the <work_dir> is directly the download directory
-then SKIP the palette and typography questions in the list below (the user has implicitly answered
-them by handing you the reference). Still ask the remaining questions.
+Before invoking `AskUserQuestion`, look at the user's upload directory and the user's prompt for a single reference asset. The cases below are auto-handleable; run the matching extraction first, write the result into `<work_dir>/deck/`, then SKIP the palette and typography questions (the user has implicitly answered them by handing you the reference). Still ask the remaining questions.
 
-  • **HTML reference** (`*.html` containing the desired deck-wide style):
+  • **PPTX reference** (`*.pptx` whose design the deck should follow):
       ```
-      python /home/z/my-project/skills/ppt/scripts/extract_html_style.py \
-          <reference.html> <work_dir>/slides
+      python <engine>/../scripts/extract_native_design.py <reference.pptx> <work_dir>/deck/design
       ```
-      Writes `<work_dir>/slides/global.css` by concatenating every
-      `<style>...</style>` block from the source HTML verbatim. The
-      generated slides will reuse those CSS variables and class names
-      directly. After running this, `slides_brief.json.design` should
-      record `reference: "imitating <reference.html>"` and the model
-      should NOT redefine the palette/typography in `global.css`.
+      Convert `design/tokens.json` into `deck/theme.js` verbatim (colors without `#`, inches for spacing). `slides_brief.json.design` records `reference: "imitating <reference.pptx>"` and the model must NOT redefine the palette or the type scale afterwards.
+
+  • **HTML / CSS reference** (a page whose look the deck should follow):
+      Read it as a *design brief*, not as input to a renderer. Extract the palette, the type scale, the spacing rhythm and the radii by reading the CSS, then write them into `deck/theme.js` by hand. Nothing in this repository parses HTML any more; there is no converter to hand it to.
 
 If neither reference exists, proceed to the questions below as normal.
 
-**Step 1 — Ask the user.** Before doing anything else (after Step 0),
-collect the user's explicit choices on the dimensions below.
-**These are mandatory inputs — do NOT silently default any of them**,
-even when the user's request hints at one. Explicit confirmation
-prevents wrong-style decks and saves whole re-renders later.
+**Step 1 — Ask the user.** Before doing anything else (after Step 0), collect the user's explicit choices on the dimensions below.
+**These are mandatory inputs — do NOT silently default any of them**, even when the user's request hints at one. Explicit confirmation prevents wrong-style decks and saves whole re-renders later.
 
-Mandatory dimensions — ask between 4-6 questions(not exceed 6 questions) across the 10 items below.
-Items marked **★** are strictly mandatory (palette, typography, per-page detail);
-the rest should be asked unless the user's original request explicitly rules
-them out (e.g. "internal deck, no notes" → skip notes question).
+Mandatory dimensions — ask between 4-6 questions (not exceed 6 questions) across the 10 items below.
+Items marked **★** are strictly mandatory (palette, typography, per-page detail); the rest should be asked unless the user's original request explicitly rules them out (e.g. "internal deck, no notes" → skip notes question).
 
-  1. **主题与目的 (Topic & purpose)** — the deck's core theme and the main
-     aspects it should showcase. Ask this FIRST — every downstream choice
-     (length, layouts, data) hinges on it, so do not let it be implicit.
+  1. **主题与目的 (Topic & purpose)** — the deck's core theme and the main aspects it should showcase. Ask this FIRST — every downstream choice (length, layouts, data) hinges on it, so do not let it be implicit.
   2. **目标受众 (Audience & tone)** — who is this for, what register.
-  3. **篇幅 (Deck length)** — tight range. like 1–8 / 8–12 / 12以上 slides，you must give user short slides choice.
-  4. **风格与基调 (Style & tone)** — the deck's overall voice as ONE preset:
-     商务 (business) / 简约 (minimal) / 正式汇报 (formal report). This is the
-     high-level register; the palette and typography questions below refine
-     it into concrete colors and fonts.
-  5. **Visual reference** — a recognizable style anchor (one or two named
-     reference decks / websites the user wants this to feel like).
-  6. **★ Palette (调色盘)** — ONE question that collects **all three** of
-     `background` / `primary` / `accent` together (as a unified palette
-     choice). Do NOT split into three separate questions. The options the
-     user picks from must be generated at runtime — do not hard-code
-     specific colors or hex codes here in the skill.
+  3. **篇幅 (Deck length)** — tight range. like 1–8 / 8–12 / 12以上 slides, you must give user short slides choice.
+  4. **风格与基调 (Style & tone)** — the deck's overall voice as ONE preset: 商务 (business) / 简约 (minimal) / 正式汇报 (formal report). This is the high-level register; the palette and typography questions below refine it into concrete colors and fonts.
+  5. **Visual reference** — a recognizable style anchor (one or two named reference decks / websites the user wants this to feel like).
+  6. **★ Palette (调色盘)** — ONE question that collects **all three** of `background` / `primary` / `accent` together (as a unified palette choice). Do NOT split into three separate questions. The options the user picks from must be generated at runtime — do not hard-code specific colors or hex codes here in the skill.
   7. **Speaker notes (备注讲稿)** — none / short bullet hints / verbatim full script.
-  8. **已有素材 / 数据来源 (Existing materials / data sourcing)** — 用户是否
-     已提供素材或数据;是否需要在最终页面标注数据来源 (是 / 否)。
-  9. **Must include data**
-  10. **Need image search**
+  8. **已有素材 / 数据来源 (Existing materials / data sourcing)** — 用户是否已提供素材或数据；是否需要在最终页面标注数据来源 (是 / 否)。
+  9. **Must include data** — the numbers, tables or charts the deck cannot ship without.
+  10. **Need image search** — whether the deck should carry photography at all (this decides whether stage 2 spends Unsplash requests).
+
 Important constraints when constructing the actual `AskUserQuestion` calls:
-  • **Think carefully before asking.** Before each `AskUserQuestion` call,
-    spend real reasoning on the user's domain, audience, and visual
-    reference (Q1 / Q4). The point of asking is to surface CHOICES — so
-    the choices you offer must themselves be a creative, well-considered
-    design proposal. Generic "Light / Dark / Other" is a failure mode.
-  • **Each option must be a concrete creative direction**, not a category
-    label. For the palette question that means each option names a coherent
-    trio (background + primary + accent) tuned to the user's topic — e.g.
-    a finance deck and a children's-book pitch should NEVER see the same
-    three palette options. Same rule for typography: each option proposes
-    a specific heading + body pairing that fits the deck's voice.
-  • **Mark your recommendation.** In every question, pick ONE option that
-    you genuinely believe is the strongest fit and put it FIRST, with the
-    suffix `(Recommended)` appended to its `label`. Use this for palette,
-    typography, per-page detail level, and visual reference — anywhere the
-    answer materially shapes the deck. Do NOT mark more than one option as
-    recommended per question.
-  • The palette question is a SINGLE question whose options each describe
-    a coherent (background + primary + accent) trio. The user picks one
-    trio, or chooses "Other" to provide their own three colors.
+  • **Think carefully before asking.** Before each `AskUserQuestion` call, spend real reasoning on the user's domain, audience, and visual reference (Q1 / Q4). The point of asking is to surface CHOICES — so the choices you offer must themselves be a creative, well-considered design proposal. Generic "Light / Dark / Other" is a failure mode.
+  • **Each option must be a concrete creative direction**, not a category label. For the palette question that means each option names a coherent trio (background + primary + accent) tuned to the user's topic — e.g. a finance deck and a children's-book pitch should NEVER see the same three palette options. Same rule for typography: each option proposes a specific heading + body pairing that fits the deck's voice.
+  • **Mark your recommendation.** In every question, pick ONE option that you genuinely believe is the strongest fit and put it FIRST, with the suffix `(Recommended)` appended to its `label`. Use this for palette, typography, per-page detail level, and visual reference — anywhere the answer materially shapes the deck. Do NOT mark more than one option as recommended per question.
+  • **A palette option is a colour decision, not a "clean white" decision.** Every option's `background`
+    must be a *tinted* ground — a paper tone, a mist tone, a deep field — never `FFFFFF` or the value you
+    would call "white". A deck on a white ground with white cards is the single most common way a
+    generated deck looks unfinished, and it is the default a writer falls into when nothing forces a
+    choice. Offer three *different* grounds (e.g. warm sand / cool mist / deep ink), and mark one
+    recommended.
+  • **Check each option can hold a colour field.** The `primary` (or `accent`) will fill whole pages —
+    a cover, every section divider — with the `background` colour as its ink. So `background` and
+    `primary` must be far apart: contrast ≥ 4.5:1. A trio where both are light cannot produce a cover.
+  • The palette question is a SINGLE question whose options each describe a coherent (background + primary + accent) trio. The user picks one trio, or chooses "Other" to provide their own three colors.
 
 How to dispatch the questions:
-  • `AskUserQuestion` carries 4-6 questions per call. 
-  • Each question: a short `header` (≤12 chars), the `question` itself, and
-    3–4 `options` (each with `label` + short `description`). The user can
-    always pick "Other" for free-text custom input.
+  • `AskUserQuestion` carries 4-6 questions per call.
+  • Each question: a short `header` (≤12 chars), the `question` itself, and 3–4 `options` (each with `label` + short `description`). The user can always pick "Other" for free-text custom input.
   • Do NOT call any other tool in the same turn as `AskUserQuestion`.
-  • Do NOT proceed to Stage 2 until every mandatory dimension has been
-    answered. Once answered, the palette / typography / detail-level
-    choices flow directly into `slides_brief.json.design` and the per-slide
-    `task_brief` in Stage 3 — they MUST match exactly.
+  • Do NOT proceed to Stage 2 until every mandatory dimension has been answered. Once answered, the palette / typography / detail-level choices flow directly into `deck/theme.js`, `slides_brief.json.design` and the per-slide `task_brief` in Stage 3 — they MUST match exactly.
 
 ═══════════════════════════════════════════════════════════════════════
-STAGE 2 — RESEARCH (parallel web search + page visits + parallel image search)
+STAGE 2 — RESEARCH (Bocha web search + page visits + Unsplash images)
 ═══════════════════════════════════════════════════════════════════════
-Gather facts and visual assets.
 
-Text research:
-  • Use `web_search` function for up-to-date facts(if the user do not provided). Batch 2-3 queries across parallel calls in one turn.
+Gather facts and visual assets. Both providers need a key in the environment; **if a key is missing, stop and ask the user for it** — do not invent facts and do not pretend you searched.
+
+Text research — **Bocha Web Search API** (博查):
+
+```bash
+curl -sS 'https://api.bochaai.com/v1/web-search' \
+  -H "Authorization: Bearer $BOCHA_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "人工智能 2025 市场规模", "freshness": "oneYear", "summary": true, "count": 8}'
+```
+
+  • `query` is a natural-language question, not a keyword soup.
+  • `freshness`: `noLimit` (default) · `oneDay` · `oneWeek` · `oneMonth` · `oneYear` · or an explicit `YYYY-MM-DD..YYYY-MM-DD` range. Use the tightest window the question tolerates; "最新/今天/今年" needs one of these, or the answer will be last year's.
+  • `count`: 1–10 (8 is a good default).
+  • `summary: true` returns an LLM-written `summary` per result — read the snippets first, and only visit a page when the snippet cannot settle the question.
+  • **Discard a hit you would not cite.** A search returns near-misses — a different product, a
+  tangential commodity-price piece, a report from four years ago. Drop them and say so in your own
+  notes; a number is only usable if the page it came from is about this deck's subject and its date
+  is inside your freshness window.
+• Read `data.webPages.value[]`: each entry has `name`, `url`, `siteName`, `snippet`, `summary`, `datePublished`. Quote the numbers you take, and keep the `url` — it belongs in the deck's source line.
+  • Batch 2–3 queries in one turn (they run concurrently), and prefer one wide query over five narrow ones. Budget: at most ~10 searches per deck.
+  • Follow up with a page visit (`web_fetch <url>`) only for pages whose snippet is ambiguous or whose data you are going to chart.
+
+Image assets (THIS IS IMPORTANT) — **Unsplash**:
+
+  • Search:
       ```bash
-    # Simple search query
-    z-ai function --name "web_search" --args '{"query": "artificial intelligence","num": 3}'
-
-    # Using short options
-    z-ai function -n web_search -a '{"query": "cryptocurrency news", "num": 3, "recency_days": 7}'
-    ```
-
-
-Image assets (THIS IS IMPORTANT):
-  • For EVERY slide that needs a photo or illustration, run the `z-ai image-search` CLI (provided by `z-ai-web-dev-sdk`). Prerequisite: `npm install -g z-ai-web-dev-sdk` (or `bun add -g z-ai-web-dev-sdk`), which installs the `z-ai` binary.
-  • Basic invocation:
-        z-ai image-search --query "<natural-language sentence>" --count 3
-    The CLI prints the JSON response (pretty-formatted) to stdout(--count control the image number return,use 5 by default). The query MUST be a natural-language sentence (NOT keywords). The response contains `results[].original_url` (OSS-hosted, embeddable) and `results[].caption`.
-  • **Output handling — print-to-stdout only.** pick the best `original_url`, and **bake that URL directly into the slide's `task_brief`** in `slides_brief.json` (see Stage 3). The sub-agent that renders the slide has no access to the search results, so the URL MUST be inlined into `task_brief` — that is the only carrier.
-  • Very important!!! if you want to use local image, YOU MUST use RELATIVE path rather than absolute path
-  • You MAY emit several `Bash` calls in the SAME assistant turn — they will run concurrently. Prefer batching 3–4 image searches per turn to save wall time.
-  • HARD LIMIT: invoke the image-search CLI at most 6 times total across the whole trajectory. Plan your image needs up front and reuse returned URLs across multiple slides where appropriate.
-  • If anything goes wrong (e.g. `Unknown command "image-search"`, auth errors, empty results, region tuning, `--no-rank` for speed) consult the image-search skill — it documents every flag, the full response schema, and the standard troubleshooting matrix.
+      curl -sS -H "Authorization: Client-ID $UNSPLASH_ACCESS_KEY" \
+        "https://api.unsplash.com/search/photos?query=modern%20office%20meeting&per_page=5&orientation=landscape&content_filter=high&order_by=relevant"
+      ```
+      Each result carries `id`, `width`, `height`, `color` (average colour — useful for a bleed band), `blur_hash`, `alt_description`, `urls.raw|full|regular|small|thumb`, `links.html` (the photo page) and `user.name` / `user.links.html` (the photographer).
+  • Pick the photo by reading `alt_description` and `color`, never by guessing from the URL.
+  • **Download it once, then reference the file.** A deck must not depend on a URL being reachable at open time:
+      ```bash
+      mkdir -p <work_dir>/deck/assets
+      curl -sS -L -H "Authorization: Client-ID $UNSPLASH_ACCESS_KEY" \
+        "https://api.unsplash.com/photos/<id>/download" -o <work_dir>/deck/assets/hero-office.jpg
+      ```
+      (`/photos/:id/download` both serves the file and registers the download, which is how Unsplash counts usage. If it returns a 302, add `-L` as above.) Ask for the size you will actually place, e.g. `urls.raw + "&w=1600&q=80&fm=jpg"`, and keep the `ixid` parameter if the URL has one.
+  • **Attribute.** Whenever a photo appears, the slide carries a small credit line (`Photo: <user.name> / Unsplash`, `fontSize` from `theme.sizes.caption`, `color: theme.colors.muted`), and `slides_brief.json` keeps the full `links.html` of the photo and the photographer in a `credits` array. A deck with unattributed Unsplash photos is not deliverable.
+  • In the spec, images are referenced by **relative path** (`assets/hero-office.jpg`), because the engine reads them from disk at build time. Never inline a base64 blob, never point a slide at `images.unsplash.com`.
+  • You MAY emit several `Bash` calls in the SAME assistant turn — they run concurrently. Prefer batching 3–4 searches per turn to save wall time.
+  • HARD LIMIT: at most **6 Unsplash searches** across the whole trajectory, and at most ~8 photos downloaded for the deck. Plan the image needs up front and reuse a photo across pages where it helps (a cover and its closing page may share one).
+  • If the API answers 403 with `Rate Limit Exceeded`, the demo tier is 50 requests/hour: say so, reuse what you already have, and continue without the extra photo instead of retrying in a loop.
 
 ═══════════════════════════════════════════════════════════════════════
-STAGE 3 — PLAN (commit design as files on disk before fan-out)
+STAGE 3 — PLAN (commit the design and the page briefs as files before fan-out)
 ═══════════════════════════════════════════════════════════════════════
-After research, commit the deck design(global css) and slide brief(slides_brief.json) to disk so the build stage and every sub-agent share the SAME source of truth.
 
-**Step 3.0 — After `Reasearch` succeeds**, in a SINGLE assistant turn, use `Write` to create:
+After research, commit the deck design and page briefs to disk so the build stage and every sub-agent share the SAME source of truth.
 
-**`<work_dir>` definition (MANDATORY)**: `<work_dir>` IS the user's `download/` directory itself. Do NOT create an intermediate themed/topic-named subdirectory (e.g. `download/theme_ppt/`, `download/<topic>/`). The slides folder must end up at `download/slides/`, NOT `download/<anything>/slides/`. Every `<work_dir>/...` path in this skill resolves under `download/` directly.
-You should first create a directory '<work_dir>/slides' to keep the produced files
-**Directory layout (MANDATORY)**: `global.css`, `slides_brief.json`, AND every `slide_NN.html` MUST all live under the SAME single directory `<work_dir>/slides/` (i.e. `download/slides/`). Do NOT place `global.css` or `slides_brief.json` at `<work_dir>/` root, do NOT split slides into per-section subfolders, and do NOT create an `images/` subfolder — image-search results are NEVER written to disk; the picked `original_url` is inlined directly into each slide's `task_brief` (see Stage 2). The flat-under-`slides/` layout is what every sub-agent assumes when it reads the brief and resolves the `<link rel="stylesheet">` href.
+**`<work_dir>` definition (MANDATORY)**: `<work_dir>` IS the user's `download/` directory itself. Do NOT create an intermediate themed/topic-named subdirectory. The deck folder must end up at `download/deck/`, NOT `download/<anything>/deck/`. Every `<work_dir>/deck/...` path in this skill resolves under `download/` directly.
 
-Final on-disk layout after Stage 3:
-```
-<work_dir>/slides/
-├── global.css
-├── slides_brief.json
-├── slide_01.html        ← written in Stage 4 by sub-agents
-├── slide_02.html
-└── ...
-```
+**Step 3.0 —** in a SINGLE assistant turn, use `Write` to create both files.
 
-1. `<work_dir>/slides/global.css` — the deck-wide stylesheet that EVERY slide will `<link>` into its `<head>`. Bake in:
-     • You must use the font size /font style/color in the global.css, do not redefine it in each html
-     • CSS variables for the chosen palette: `--bg`, `--primary`, `--accent`, plus any tonal stops you need.
-     • `@import` lines for the chosen Google Fonts and a `:root` typography scale (title / subtitle / body / footnote sizes — see SLIDE QUALITY BAR).
-     • Reusable utility classes for the slide canvas (e.g. `.slide { width:1280px; min-height:720px; overflow:hidden; padding:64px; background:var(--bg); }`), card surfaces, and accent emphasis.
-     • NO per-slide layout CSS — that lives inside each slide's HTML. Keep this file under ~150 lines.
-     • Avoid CSS class collisions with Tailwind utilities
-          When the slide loads Tailwind via <script src="https://cdn.tailwindcss.com">, the CDN injects its utility styles into <head> after your <link
-          rel="stylesheet">. Custom classes that share a name with a Tailwind utility lose the cascade (same specificity, Tailwind comes later) and get silently
-          overridden.
-          Critical example: Do not name heading classes .h-1 / .h-2 / .h-3. In Tailwind these are height utilities (.h-1 = 4px, .h-2 = 8px, .h-3 = 12px). Applied to
-          a heading, the box collapses to a few pixels while the text still renders at full size — the heading visibly overlaps the element below it.
-     • Because `global.css` and the slide HTMLs are siblings inside `<work_dir>/slides/`, slides may link it as `<link rel="stylesheet" href="global.css">` (relative). 
-     • keep these in mind！！！ Global CSS scope — typography tokens only, no typography classes.Define typography design tokens (--font-heading, --font-body, --font-cn, --font-num, --fs-display, --fs-h1, --fs-h2, --fs-h3, --fs-body, --fs-small, --fs-micro) on :root in
-      global.css Do not ship pre-baked typography classes like .h-display / .h-1 / .h-2 / .h-3 / .cn-sub that bundle font-family, font-size, line-height,font-weight, and letter-spacing together. (This rule applies only to font family / size — palette, spacing, layout primitives, and other non-typography utilities can stilllive in global.css as before.) keep these in mind！！！
+1. `<work_dir>/deck/theme.js` — the deck-wide design, the analogue of v1.0's `global.css`. Every page imports it; **no page redefines a colour, a font size or the palette**. It is a plain module so the engine can read it and the sub-agents can `require` it:
 
-2. `<work_dir>/slides/slides_brief.json` — the dispatch manifest. Schema:
-     ```json
-     {
-       "design": {
-         "title":"(ppt title)",
-         "style_name": "...",
-         "palette": {"background": "#...", "primary": "#...", "accent": "#..."},
-         "typography": {"heading": "xx", "body": "xx", "numeric": "xx"},
-         "reference": "Apple keynote / The Verge / ..."
-       },
-       "global_css_path": "<absolute path to <work_dir>/slides/global.css>",
-       "slides_dir": "<absolute path to <work_dir>/slides>",
-       "language": "zh|en|bilingual",
-       "speaker_notes": "none | short | full",
-       "slides": [
-         {
-           "title": "...",
-           "layout": "cover",
-           "output_path": "<absolute path to <work_dir>/slides/slide_XX.html>",
-           "task_brief": "Self-contained brief — see rules below."
-         },
-         ...
-       ]
+   Three rules, and they are not stylistic preferences:
+   • `background` is **not** white and not near-white — the page has to be a colour.
+   • `surface` (cards, tables, panels) must differ visibly from `background`, or a card reads as a hole.
+   • every text colour clears 4.5:1 on both, and `background` clears 4.5:1 on `primary` (that is the
+     cover's title on the colour field).
+
+   Start from a preset and override what the deck needs:
+
+   ```js
+   'use strict';
+   const { preset } = require('<engine>/themes/presets');   // 'ink' | 'sand' | 'sage' | 'clay'
+
+   module.exports = preset('sand', {
+     // `numeric` is the face numbers, dates and measurements are drawn in (tabular figures). It
+     // defaults to the heading face; declare it when the deck has a face with better figures.
+     fonts: {
+       heading: 'Source Han Sans SC', body: 'Source Han Sans SC',
+       cjk: 'Source Han Sans SC', numeric: 'Source Han Sans SC'
      }
-     ```
+   });
+   ```
+
+   Or write the tokens yourself, keeping the same rules:
+
+   ```js
+   'use strict';
+   const { resolveTheme } = require('<engine>/themes/design_system');
+
+   module.exports = resolveTheme({
+     name: 'the-deck',
+     colors: {
+       background: 'F2E8D9',   // hex without '#' - a paper tone, NOT FFFFFF
+       surface: 'FFFCF6',      // cards: close to the ground, visibly not the ground
+       foreground: '2B2118',
+       primary: '4E3A26',      // fills covers and section pages
+       accent: 'B4552B',       // numbers and rules only
+       muted: '75634E',
+       border: 'E1D2BC'
+     },
+     fonts: { heading: 'Source Han Sans SC', body: 'Source Han Sans SC' },
+     sizes: { display: 44, title: 34, heading: 20, body: 14, caption: 10, micro: 9 },   // points
+     spacing: { pageX: 0.9, pageY: 0.62, md: 0.24, lg: 0.4 },    // inches
+     radii: { small: 0.06, medium: 0.12, large: 0.2 },
+     effects: { cardBorder: true }
+   });
+   ```
+
+   Keep it under ~60 lines. `resolveTheme` merges it over the engine's baseline, so state only what differs — and it fills in the rest: `spacing` (`xs`/`sm`/`md`/`lg`/`xl`/`pageX`/`pageY`), `radii` (`small`/`medium`/`large`), `effects` (`cardBorder`/`softShadow`/`accentRule`), `typography`, `layouts`.
+
+   **Typography scope — tokens only, no bundled classes.** The theme carries *values* (families and sizes); a page chooses *which* size a headline gets (`fontSize: theme.sizes.title`) and never hard-codes `28`. This is v1.0's "global CSS scope" rule in native form: a page may not invent a type scale, a colour, or a radius.
+
+2. `<work_dir>/deck/slides_brief.json` — the dispatch manifest. Schema:
+
+   ```json
+   {
+     "design": {
+       "title": "(deck title)",
+       "style_name": "...",
+       "palette": { "background": "#…", "primary": "#…", "accent": "#…" },
+       "typography": { "heading": "xx", "body": "xx", "numeric": "xx" },
+       "reference": "Apple keynote / The Verge / …"
+     },
+     "theme_path": "<absolute path to <work_dir>/deck/theme.js>",
+     "deck_dir": "<absolute path to <work_dir>/deck>",
+     "language": "zh|en|bilingual",
+     "speaker_notes": "none | short | full",
+     "credits": [
+       { "file": "assets/hero-office.jpg", "photo": "https://unsplash.com/photos/…",
+         "photographer": "Name", "photographer_url": "https://unsplash.com/@…" }
+     ],
+     "slides": [
+       {
+         "title": "...",
+         "layout": "cover",
+         "output_path": "<absolute path to <work_dir>/deck/slide_01.js>",
+         "task_brief": "Self-contained brief — see rules below."
+       }
+     ]
+   }
+   ```
+
    • Slide ORDER is the order of entries in the `slides` array — no `position` / index field. To reorder a deck, reorder the list.
    • Every slide MUST have `title`, `layout`, `output_path`, `task_brief`.
-   • `output_path` is the ABSOLUTE path the slide HTML will be written to. Filenames are arbitrary stable identifiers (e.g. `slide_01.html`, `slide_02.html` at first creation) — they live in the same directory as `global.css` and `slides_brief.json`, but their alphabetical order does NOT define slide order. Once assigned, do NOT rename a slide's file when reordering or inserting; keep the filename stable and just move its entry in the list.
-   • `layout` MUST be chosen per page from a coherent catalog (cover, section header, key message, bento grid, split text+image, timeline, stats, comparison, quote, closing, etc.). Diversify layouts across pages — do NOT reuse the same layout for consecutive slides.
-   • Section structure for longer decks: once the deck gets long (roughly **≥10 pages**), split the body into 2–5 named chapters with a `section header` page at the start of each. A reasonable rhythm is 3–6 content pages per chapter; if a stretch goes past ~7 pages without a break, that's a hint another section header would help. Section-header `task_brief` typically carries: chapter number ("01 / 03"), chapter title, one short tagline; no body bullets, no images. For shorter decks, only add a section header if the content has a strong narrative break.
-   • `task_brief` is the SOLE input the sub-agent will see for that slide — it MUST be self-contained for the renderer. 
-       – Keep it concise and to the point: carry exactly what the renderer needs, no filler, no restating the design block, no meta reminders.
-       – Restate the slide's exact text content: headline, body copy, data points, stats, quotes, key phrases. Copy verbatim — do not paraphrase loosely.
-       – Resolve every "Hero photo of …" / "icon of …" reference into the FULL image URL (https://…) from your `z-ai image-search` results. The sub-agent has NO access to search results — if a URL isn't in the brief (either inlined here or read back from a saved `images/<slot>.json` manifest), the slide can't display the image.
-       – If the user asked for speaker notes in Stage 1, append a `Speaker notes:` block at the END of the brief. write the notes request. do NOT write notes verbatim here. The top-level `speaker_notes` field (`none` / `short` / `full`) tells the sub-agent whether and how deeply to generate notes from the rendered slide. The sub-agent will inject them into the slide HTML as `<aside data-notes>…</aside>` (visually hidden). If the user did NOT request notes, omit this block — do not invent notes.
-       – Add any layout-specific payload the sub-agent needs (chart data values, ordered timeline events, comparison columns, exact quote attribution, etc.). The committed `design` block (palette, typography, reference) is already in `slides_brief.json`, so do NOT repeat it inside each `task_brief`.
-       – Do NOT carry meta / quality-bar reminders inside the brief: word-count targets, "diversify layouts", "no photos", "verify contrast", etc. Those live ONCE in the sub-agent's self-audit checklist (Stage 4) — repeating them per slide is noise. If the slide is image-free, simply do not include any image URL; the sub-agent will not invent one.
+   • `output_path` is the ABSOLUTE path the page module will be written to. Filenames are arbitrary stable identifiers (`slide_01.js`, …); their alphabetical order does NOT define slide order. Once assigned, do NOT rename a page's file when reordering or inserting; move its entry in the list instead.
+   • `layout` MUST be chosen per page from a coherent catalog: cover, section header, key message, KPI row, bento grid, split text+image, timeline, process, comparison, table, chart, quote, closing. Prefer a real engine template or component when one fits (`cover`, `hero`, `content`, `kpi`, `comparison`, `process`, `editorial`); hand-place elements only for the pages no template describes. Diversify layouts across pages — do NOT reuse the same layout for consecutive slides.
+   • Section structure for longer decks: once the deck gets long (roughly **≥10 pages**), split the body into 2–5 named chapters with a `section header` page at the start of each. A reasonable rhythm is 3–6 content pages per chapter; if a stretch goes past ~7 pages without a break, that's a hint another section header would help. Section-header briefs typically carry: chapter number ("01 / 03"), chapter title, one short tagline; no body bullets, no images.
+   • `task_brief` is the SOLE input the sub-agent will see for that page — it MUST be self-contained.
+       – Keep it concise: exactly what the page needs, no filler, no restating the design block, no meta reminders.
+       – Restate the page's exact text content: headline, body copy, data points, stats, quotes, key phrases. Copy verbatim — do not paraphrase loosely.
+       – Resolve every "hero photo of …" reference into the **local asset path** (`assets/hero-office.jpg`) that stage 2 downloaded, plus one sentence of what the photo shows (the sub-agent must be able to choose `fit`/`focus` from that). The sub-agent cannot search; if the path is not in the brief, the page ships with no photo.
+       – If the user asked for speaker notes, append `Speaker notes:` at the END of the brief and say what they must cover. The top-level `speaker_notes` field (`none`/`short`/`full`) tells the sub-agent how deep to go. The sub-agent writes them into the page's `notes` field, which the engine puts in the notes part — never onto the slide.
+       – Add any layout-specific payload the sub-agent needs (chart series and values, table rows, timeline events, comparison columns, exact quote attribution). The committed `design` block is already in `slides_brief.json`, so do NOT repeat it inside each `task_brief`.
+       – Do NOT carry meta / quality-bar reminders inside the brief: word-count targets, "diversify layouts", "no photos", "verify contrast". Those live ONCE in the sub-agent's checklist (stage 4).
 
 ═══════════════════════════════════════════════════════════════════════
-STAGE 4 — BUILD ( FAN OUT `Agent` sub-agents to actually write the slides)
+STAGE 4 — BUILD (fan out `Agent` sub-agents to write the pages)
 ═══════════════════════════════════════════════════════════════════════
-every slide, cover / TOC / body / closing, is committed by a `ppt` sub-agent that calls the `Write` tool itself. The main agent NEVER calls `Write` to commit slide HTML. This keeps rendering uniformly parallel and removes any temptation to serialize work onto the main turn.
 
-  • `Agent(subagent_type="ppt-expert", description=..., prompt=...)` — spawn a sub-agent that writes a CONTIGUOUS RANGE of slides. Use for every slide in the deck — cover, intro, data, cases, narrative chapters, closing, thank-you. Single-slide groups are fine when a section (or the cover) stands alone.
+Every page — cover / body / closing — is committed by a `ppt` sub-agent that calls `Write` itself. The main agent NEVER writes page modules. This keeps the work uniformly parallel and removes any temptation to serialize it onto the main turn.
+
+  • `Agent(subagent_type="ppt-expert", description=..., prompt=...)` — spawn a sub-agent that writes a CONTIGUOUS RANGE of pages. Use it for every page in the deck. Single-page groups are fine when a section (or the cover) stands alone.
+  • **If you cannot spawn sub-agents** (some harnesses cap depth at 1, so an agent that is itself a
+    sub-agent gets `subagent depth 2 exceeds maxDepth 1`), write every page module yourself, in brief
+    order, one page at a time. Stage 3's `theme.js` and `slides_brief.json` remain mandatory — they
+    are what keeps 25 sequential pages consistent — and every build/verify step below still applies.
 
   1. Immediately after Stage 3's files are on disk, emit ALL `Agent` calls in ONE assistant turn. Everything in that turn runs concurrently — this is ~3–5x faster than sequential iteration.
 
-  2. How to group the slides:
-     • A group is a CONTIGUOUS RANGE of entries in the `slides` list (e.g. indices 0..4 in JSON order). The sub-agent reads the briefs for those entries from `slides_brief.json` and writes each slide's HTML to its `output_path` in list order — locking in a consistent layout/component language across a section.
-     • Slides in DIFFERENT groups run IN PARALLEL.
-     • Keep groups small (5–7 slides). Good groups follow narrative sections: cover / intro / data / cases / closing.
-     • HARD CAP: at most **3 `Agent` calls per deck total**. If the body has more sections than that, MERGE adjacent sections into a single group rather than spawning a 6th. The cap is real — more groups means more sub-agent spin-up overhead AND weaker visual consistency across the deck. 
+  2. How to group the pages:
+     • A group is a CONTIGUOUS RANGE of entries in the `slides` list (e.g. indices 0..4 in JSON order). The sub-agent reads the briefs for those entries and writes each page module to its `output_path` in list order — locking in a consistent layout/component language across a section.
+     • Pages in DIFFERENT groups run IN PARALLEL.
+     • Keep groups small (5–7 pages). Good groups follow narrative sections: cover / intro / data / cases / closing.
+     • HARD CAP: at most **3 `Agent` calls per deck total**. If the body has more sections than that, MERGE adjacent sections into a single group rather than spawning a sixth. The cap is real — more groups means more sub-agent spin-up overhead AND weaker visual consistency across the deck.
+
   3. Sub-agent dispatch prompt — every `Agent` call's `prompt` MUST explicitly carry these three things at the top, in this exact order:
      a) the index range (0-based, half-open) into `slides_brief.json.slides[]` the sub-agent is responsible for (`start..end`),
-     b) the ABSOLUTE path to `slides_brief.json` (`<work_dir>/slides/slides_brief.json`),
-     c) the ABSOLUTE path to `global.css` (`<work_dir>/slides/global.css`). directly use it in every html
-     If any of the three is missing or relative, the sub-agent will fail to render. Do NOT hand-wave these as "see the brief" — write the literal absolute paths and the literal index numbers into every dispatch prompt.
+     b) the ABSOLUTE path to `slides_brief.json` (`<work_dir>/deck/slides_brief.json`),
+     c) the ABSOLUTE path to `theme.js` (`<work_dir>/deck/theme.js`).
+     If any of the three is missing or relative, the sub-agent will write pages that do not fit the deck. Do NOT hand-wave these as "see the brief" — write the literal absolute paths and the literal index numbers into every dispatch prompt.
 
      Use this exact shape for every `Agent` call's `prompt` field (substitute the bracketed values per group):
 
      ```
-     You are a slide-rendering sub-agent. Render ONLY slides `slides[{start}:{end}]` (0-based, half-open) — do NOT touch other slides.
+     You are a page-writing sub-agent for a native PowerPoint deck. Write ONLY pages `slides[{start}:{end}]` (0-based, half-open) — do NOT touch other pages.
 
      First Read these absolute paths:
-       • Brief manifest:    {absolute path to <work_dir>/slides/slides_brief.json}
-       • Global stylesheet: {absolute path to <work_dir>/slides/global.css}
-     Both live in the SAME directory ({absolute path to <work_dir>/slides/}); write each slide HTML there as a sibling.
+       • Brief manifest: {absolute path to <work_dir>/deck/slides_brief.json}
+       • Deck theme:     {absolute path to <work_dir>/deck/theme.js}
+     Both live in the SAME directory ({absolute path to <work_dir>/deck/}); write each page module there as a sibling.
 
-     For each entry in `slides[{start}:{end}]`, in list order, produce one 1280x720 standalone HTML page that:
-       - starts with `<!DOCTYPE html>`, ends with `</html>`, and links `global.css` via `<link rel="stylesheet" href="global.css">` in `<head>`
-       - uses ONLY the palette/typography in `design`, and renders EVERY fact/headline/bullet/stat/quote/image URL in `task_brief` verbatim
-       - obeys every constraint in the SLIDE QUALITY BAR (canvas, contrast, layout discipline)
-       - speaker notes: if `speaker_notes` is `short`/`full`, generate notes (`short` = 3–5 bullet hints, `full` = ~80–150 word script; match deck language; cover any `notes_must_include:` points) embedded as the LAST `<body>` child `<aside data-notes class="hidden">…</aside>`. If `none`, omit it.
-     Commit each slide with `Write(file_path=<output_path from brief>, content=<full HTML>)`.
+     For each entry in `slides[{start}:{end}]`, in list order, write ONE CommonJS module at its `output_path`:
 
-     Update the worklog only once, when finished — one sentence summary per slide.
+       'use strict';
+       const theme = require('<absolute path to theme.js>');
+       module.exports = function page() {          // or: module.exports = { theme, elements: [...] }
+         return {
+           background: theme.colors.background,
+           notes: '…',                              // only when the brief asks for speaker notes
+           elements: [ /* inches, straight from the brief */ ]
+         };
+       };
+
+     Rules:
+       - `elements` use the engine vocabulary only: text · shape · line · image · table · chart · container
+       - every colour comes from `theme.colors.*`, every font size from `theme.sizes.*`, every gap/inset from `theme.spacing.*`; never hard-code a hex, a point size or a margin
+       - positions and sizes are INCHES on a 13.333 x 7.5 canvas; keep text inside x 0.9..12.43 and y 0.62..6.88 unless the design bleeds a shape on purpose
+       - render EVERY fact / headline / bullet / stat / quote / image path in `task_brief` verbatim
+       - images: `{ type: 'image', path: 'assets/xxx.jpg', x, y, w, h, fit: 'cover', focus: 'center' }` — the field is `path` (or a `data:` blob), NOT `src`; a `src` fails validation with "requires path or data". The file must already exist beside the deck; never invent a path, never use a URL
+       - a chart is a `chart` element with real `data` (name/labels/values), never a picture of a chart; a table is a `table` element with `rows`, never a stack of text boxes
+       - speaker notes: if `speaker_notes` is `short`/`full`, fill `notes` (`short` = 3–5 bullet hints, `full` = ~80–150 word script; match the deck language; cover any `notes_must_include:` points). If `none`, omit it.
+       - obey every constraint in the NATIVE QUALITY BAR (text density, contrast, element discipline, no rasterised page)
+     Commit each page with `Write(file_path=<output_path from brief>, content=<full module>)`.
+
+     Update the worklog only once, when finished — one sentence summary per page.
      ```
 
-     Pass `subagent_type: ppt-expert`. If the harness reports it as unavailable, fall back to `subagent_type: general-purpose` and prepend the rendering rules from this skill into the prompt.
+     Pass `subagent_type: ppt-expert`. If the harness reports it as unavailable, fall back to `subagent_type: general-purpose` and prepend the engine contract from the appendix of this skill into the prompt.
 
-  4. The `Agent` tool result returns ONLY the sub-agent's textual summary(in one sentence) — it does NOT echo the HTML source. To inspect a generated slide, call `Read(file_path=<output_path>)`.
+  4. The `Agent` tool result returns ONLY the sub-agent's textual summary (in one sentence) — it does NOT echo the module source. To inspect a page, `Read(file_path=<output_path>)`.
 
-  5. Sub-agent slide HTML rules: must start with `<!DOCTYPE html>`, end with `</html>`, link `global.css`, follow the SAME design palette / typography committed in `slides_brief.json`, and obey every constraint in the SLIDE QUALITY BAR. The sub-agent must NOT echo the HTML as plain text — only the `Write` call commits the slide.
+  5. A sub-agent must never echo source as plain text — only the `Write` call commits a page.
 
+**Step 4.6 — assemble and write the deck (you, the main agent, do this).**
 
-═══════════════════════════════════════════════════════════════════════
-Only when user requested a pptx file，if user not request，directly give a summary and end the task — how to EXPORT TO PPTX:
-═══════════════════════════════════════════════════════════════════════
-Convert `<work_dir>/slides/` into ONE `.pptx` via `batch_html2pptx.js`.
+Write `<work_dir>/deck/deck.js` once every page module exists:
 
-The converter walks sorted filename order. Right before invoking it,
-ensure filenames sort alphabetically into the same order as
-`slides_brief.json.slides[]`. If editing rounds left them out of order,
-rename to `slide_{NN:02d}.html` matching list index AND update each
-entry's `output_path`. This is the ONLY step that renames files.
-You can directly run the files，do not try to modify it
-Invoke:
+```js
+'use strict';
+const theme = require('./theme');
+// A page module may export the page itself, or a function that returns it.
+const page = (n) => {
+  const loaded = require('./slide_' + n);              // slide_01.js … slide_NN.js
+  return typeof loaded === 'function' ? loaded() : loaded;
+};
+module.exports = {
+  title: '…', author: '…', language: 'zh-CN', pageSize: 'wide', theme,
+  slides: [page('01'), page('02') /* … in brief order … */]
+};
 ```
-cd /home/z/my-project && NODE_PATH=/usr/local/lib/node_modules nohup node /home/z/my-project/skills/ppt/batch_html2pptx.js /home/z/my-project/download/slides /home/z/my-project/download/xx.pptx
+
+Then build it, and **read what the tool says**:
+
+```bash
+cd <work_dir>/deck
+node <engine>/cli.js deck.js out.pptx --report out.json --layout-out layout.json
 ```
 
-  • Arg 1: slides directory. Arg 2 (optional): output path; defaults to
-    `<work_dir>/<basename(work_dir)>.pptx`.
-  • `NODE_PATH` is required so `pptxgenjs` / `playwright` / `sharp` resolve.
-  • Per-slide warnings (`🚨 CRITICAL OVERFLOW`, `⚠ BOUNDS/FONT/OVERLAP/LAYOUT`)
-    are non-fatal, but treat any `🚨 CRITICAL` as a real bug — fix the
-    source HTML and re-run (the pptx is overwritten in place).
+  • Exit `0` = written; `1` = the spec was rejected (nothing written — fix it, do not ship a partial deck); `2` = the writer failed.
+  • `warnings none` is the target. A warning names its page and its box: `OUT_OF_BOUNDS` (a box escapes the canvas — a decorative shape may bleed on purpose, a text box may not), `TEXT_OVERFLOW_RISK` (the measured text needs more height than its box has), `TEXT_OVERLAP` (two text boxes intersect).
+  • Fix the **geometry or the copy**, in the page module, and re-run. Do not "fix" a warning by deleting the words the user asked for, and never by shrinking a font below `theme.sizes.caption`.
+  • `--strict` on the final build is the release condition: `node <engine>/cli.js deck.js out.pptx --strict`.
+  • **Read the `fonts` line and do not ignore it.** `Microsoft YaHei · no face files: wrap is estimated`
+    means the wrap was computed from fallback metrics, not from the real face: the line count — and
+    therefore every block placed under that text — is an estimate, and `--strict` does **not** fail
+    on it. A page whose text sits tight against its box is a suspect page: give such a box slack, or
+    break the line yourself with an explicit `\n`, and re-render. Nothing on this machine can tell you
+    how PowerPoint will break the same line.
+  • **It normally will not say that.** The engine finds an installed face by itself — the family name
+    in the theme is enough, because the family-to-file table is a system fact (`Microsoft YaHei` is
+    `msyh.ttc`). On such a build the line reads `metrics from 1 face file(s) (found on this machine)`
+    and every measurement is real; a 25-page deck reported `11678 of 11678 measurements used real
+    faces`. If it says the wrap was estimated, the family is genuinely missing here: say so, and
+    either declare `theme.fontFiles` or accept the estimate with slack.
+  • **To make that uncertainty fatal, add `--require-face-metrics`.** The build then fails with
+    `FONT_UNMEASURED` unless at least one measurement came from a real face. Point the theme at the
+    file to make it pass: `theme.fontFiles = { 'Microsoft YaHei': 'C:/Windows/Fonts/msyh.ttc' }` —
+    a `.ttc` collection is fine — and the `metrics` line turns into
+    `fontkit: 74 of 74 measurements used real faces`. `--report` carries the same fact as
+    `fontsEstimated` for anything that reads JSON.
 
-After export: `ls -lh <path>` to confirm, then report the `.pptx` path
-(and source slide HTML paths) to the user.
+**Step 4.7 — look at it.** A deck that passes the gates can still look wrong.
+
+```bash
+python <engine>/scripts/preview_deck.py out.pptx --output-dir preview/ --sheet preview/sheet.png
+python <engine>/scripts/render_check.py out.pptx --output-dir render/    # LibreOffice → PDF → PNG
+python <engine>/scripts/render_check.py out.pptx --output-dir render/ --slides 3,7-9   # one fix, one page
+node <engine>/scripts/audit_deck.js out.pptx --min-text-shapes 0         # object census per page
+python <engine>/scripts/verify_native_ooxml.py out.pptx                  # schema / enumerated values
+```
+
+**Review in two passes, cheap one first.** `preview_deck.py --sheet` draws every page into one image with
+Pillow — no LibreOffice, seconds, and it is honest about being a layout preview: geometry, z-order, colour
+and fitting are real (it reads the written boxes), glyph shaping and effects are not. Look at the sheet
+first: an empty third of a page, a column that does not line up, a card that runs into the footer all show
+at that size. Then open the LibreOffice pages — all of them for a short deck, and `--slides 14,18` for the
+ones you are fixing in a long one (a 25-page render takes ~14 s, three pages ~8 s; the PDF export is the
+floor either way).
+
+`render_check.py` writes one PNG per page — **open them with your image tool and look**, page by page, before you report anything. The census tells you a page is objects; only your eyes tell you it is a good page. If a page is empty in the bottom third, has two blocks fighting for the same band, or has a photo cropped through someone's face, fix it and re-render.
 
 ═══════════════════════════════════════════════════════════════════════
-MULTI-ROUND HTML EDITING — keep `slides_brief.json` in sync
+Only when the user requested a pptx file. If the user did not, give a summary and stop.
 ═══════════════════════════════════════════════════════════════════════
-When you only need to editing severals pages，directly read and editing them,when you need to change the entire design,try to edit global.css first
-Very inportant!: Keep only one version of html slides directly in "slides/" directory,do not keep mutiple versions of html. and there is only one version of slides.
-Very inportant!: when deleting or adding pages,first editing slides_brief.json first
-`slides_brief.json` is the single source of truth for the deck's
-structure. Slide ORDER is the order of entries in `slides[]` — there is
-no `position` / index field, so adding / removing / reordering NEVER
-requires renumbering. Whenever a follow-up edit ADDS or REMOVES a slide,
-update the brief in the SAME turn — never let on-disk slides and the
-brief diverge.
 
-  • Add a page → create the HTML file (any stable filename like
-    `slide_NEW1.html`) AND insert a matching entry into
-    `slides_brief.json.slides[]` at the desired position in the list
-    (`title`, `layout`, `output_path`, self-contained `task_brief`).
-  • Remove a page → delete the file AND remove its entry from the list.
-  • Reorder → just move entries within `slides[]`. Do NOT rename files.
+There is no export step: `out.pptx` **is** the deliverable, written by the engine from the spec you committed. Confirm it and report:
 
-In-place content tweaks only need a brief update if the change is large
-enough that the old `task_brief` no longer describes the slide
-(different headline, new image URL, layout switched). Typo fixes do not.
+```bash
+ls -lh <work_dir>/deck/out.pptx
+```
+
+Then report to the user: the `.pptx` path, the page count, and the spec files (`deck.js`, `theme.js`, `slides_brief.json`, the `slide_NN.js` pages) that regenerate it byte for byte. If a page was rendered, say which PNGs you looked at.
 
 ═══════════════════════════════════════════════════════════════════════
-SLIDE QUALITY BAR (applies to every page)
+MULTI-ROUND EDITING — keep `slides_brief.json` in sync
 ═══════════════════════════════════════════════════════════════════════
-  • Exact canvas: 1280 × 720, `overflow-hidden`. No scroll.
-  • Real content density: every page carries 60-120 words of substantive text — no placeholders, no lorem ipsum, no "insert data here".
-  • Exactly the chosen palette on every page. Background/primary/accent must match `slides_brief.json.design.palette`.
-  • Every text color on every background must pass WCAG AA (4.5:1 contrast).
-  • Use TailwindCSS via CDN (`<script src="https://cdn.tailwindcss.com"></script>`) and link the deck-wide `global.css`. Use Google Fonts for typography.
-  • Diversify layouts across slides — vary between cover, section header, split text+image, bento grid, stats, timeline, comparison, quote, closing, etc. Never repeat the same layout back-to-back.
-  • Never fabricate image URLs. Only use URLs that came back from the `z-ai image-search` CLI.
-  • Include icons (Material Icons via `<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">` and `<i class="material-icons">name</i>`). No `<script>` icon loaders.
-  • Numbers, dates, and technical terms render in the proper numeric font per typography guide.
-  • No graphical timelines, no SVG/connector flowcharts, no code-drawn maps, no base64 images, no Reveal.js.
-  • Headers and footers are OPTIONAL, not mandatory. Add a page header/footer (deck title, page number, brand mark, footnote bar) only when user asked !!!
+
+When you only need to edit several pages, read and edit those page modules directly. When the change is deck-wide (palette, type scale, spacing), edit `theme.js` first and rebuild — never touch twenty pages to change one colour.
+
+Very important: keep only ONE version of each page module in `deck/`. Do not keep `slide_03_v2.js`, do not keep two decks side by side.
+
+Very important: when adding or deleting a page, edit `slides_brief.json` first.
+`slides_brief.json` is the single source of truth for the deck's structure. Slide ORDER is the order of entries in `slides[]` — there is no `position` / index field, so adding / removing / reordering NEVER requires renumbering. Whenever a follow-up edit ADDS or REMOVES a page, update the brief in the SAME turn — never let on-disk modules and the brief diverge.
+
+  • Add a page → create the module (any stable filename such as `slide_NEW1.js`) AND insert a matching entry into `slides_brief.json.slides[]` at the desired position, AND append it to `deck.js`'s `slides` array at that position.
+  • Remove a page → delete the module, remove its entry from the list, remove it from `deck.js`.
+  • Reorder → move entries within `slides[]`, reorder `deck.js`, do NOT rename files.
+
+In-place content tweaks only need a brief update if the change is large enough that the old `task_brief` no longer describes the page (different headline, new photo, layout switched). Typo fixes do not.
+
+═══════════════════════════════════════════════════════════════════════
+NATIVE QUALITY BAR (applies to every page)
+═══════════════════════════════════════════════════════════════════════
+
+  • **Exact canvas: 13.333 × 7.5 in** (`pageSize: 'wide'`). Nothing outside it; `--strict` must pass.
+  • **Real content density: every page carries 60–120 words of substantive text** — no placeholders, no lorem ipsum, no "insert data here".
+  • **A deck has to look like it was designed, which means colour.** Concrete rules, checkable on the
+    rendered pages:
+    – **At least two full colour-field pages**: the cover and every section divider are a filled field
+      (`templates.section()`, or `background: theme.colors.primary` with the title in
+      `theme.colors.background`). A 25-page deck with no field page reads as a document, not a deck.
+    – **No page is white.** The page ground is `theme.colors.background`; a card, panel or table is
+      `theme.colors.surface`, and those two must be visibly different. White pages carrying white cards
+      is the failure this rule exists to prevent.
+    – **Never two consecutive pages of the same ground.** Alternate field pages with content pages; the
+      rhythm is colour → content → colour.
+    – **Four colours, used for one job each**: `primary` for titles and fields, `accent` for numbers and
+      rules only, `foreground` for body, `muted` for captions and sources. Do not invent a fifth.
+    – **A photo page needs a scrim** when text sits on it: a `shape` in the background colour at
+      55–75% `transparency` between the picture and the text, or the text goes on a solid panel. A
+      gradient scrim is better than a flat one when the picture has to survive; check the render for a
+      visible edge where the scrim's rectangle ends, especially over a bright sky.
+    – **Every picture is credited on the page it appears on, and in a credits page.** Put the credit on
+      the `image` element itself (`credit: { subject, author, licence }`) and generate the last page with
+      `templates.credits({ images: components.collectImageCredits(deck.slides) })`. Retyping credits is how
+      two pages end up naming two different authors for the same photograph.
+  • **Exactly the chosen palette on every page.** Every colour comes from `theme.colors.*`; background/primary/accent must match `slides_brief.json.design.palette`.
+  • **Every text colour on every background passes WCAG AA (4.5:1).** Test the accent on the background before you use it for body copy; accents are for rules, labels and figures, not for paragraphs.
+  • **Native objects only.** Text is a `text` element (one run per style, `a:t` in the file). A table is `a:tbl`. A chart is a chart part with an embedded workbook. A picture is a `p` picture with real bytes. **A page rendered as an image is a failed page** — no screenshot of a layout, no base64, no "just this once".
+  • **Typography comes from the theme's scale.** display / title / heading / body / caption / micro only; no invented sizes, no font below `caption`.
+  • **One magnitude per chart.** A bar chart can hold 26.6 and 135; it cannot hold 26.6 and 3600 - the
+    small bars disappear and the page lies by omission. If the range is wider than ~50x, keep the
+    comparable values in the chart and give the outlier its own numeral block, labelled as derived. And
+    never truncate an axis silently: an axis starting at 0.40 for values of 0.42-0.46 turns eight per
+    cent into a cliff.
+  • **Fill the page, not the top half of it.** A render of six template pages showed every block
+    finishing around y = 4.5 in on a 7.5 in canvas: the bottom third was empty on pages that had
+    nothing wrong with them. Every content page needs something that reaches the lower band — a
+    takeaway band, a note or source line, a table, a chart, a picture — and a KPI row wants one line
+    under it saying what the numbers mean. If the honest answer is "there is nothing more to say",
+    the page is carrying too little and should be merged with its neighbour.
+  • **Diversify layouts across pages** — cover, section header, split text+image, bento grid, KPI row, timeline, comparison, chart, table, quote, closing. Never repeat the same layout back-to-back.
+  • **Say what the data is as of.** Research has an end date; a deck that says "2026" while its newest
+  source is from October 2026 is making a claim the material does not support. Put the cutoff in the
+  cover's metadata line (「数据截至 2026 年 10 月」) and keep any forward-looking number labelled as a
+  forecast on the page where it appears — never mixed into a row of measured facts.
+• **Never fabricate.** No invented statistics, no invented URLs, no invented image paths. A number you did not find is a number you do not show.
+  • **Photos are Unsplash (or Wikimedia Commons), downloaded, attributed.** Credit line on the page (`Photo: <name> / Unsplash`), full credit on a generated `templates.credits()` page,ief.json.credits`.
+  • **No icon font, no SVG flowchart, no connector spaghetti, no code-drawn map, no decorative timeline
+    drawn from a hundred hairlines.** The icon font is the one place this engine deliberately departs
+    from the HTML-era look, and the reason is not taste: a Material Icons glyph is a character in a font
+    the *viewer's* machine has to own. We do not embed fonts, so on a machine without it the icon is a
+    tofu box, and the page is broken in a way nobody notices until it matters. Draw the few shapes that
+    carry meaning (a rule, a filled circle, a number in a coloured disc) instead of borrowing glyphs. A diagram is
+    either a component (`processFlow`, `timeline`, `comparison`) or it does not belong on the page.
+  • **Numbers, dates and technical terms** render in the numeric face the theme declares; don't let a Chinese body face set a column of figures if the theme has a Latin pair.
+  • **Headers and footers are OPTIONAL, not mandatory.** Add a page header/footer (deck title, page number, brand mark, footnote bar) only when the user asked.
+  • **Speaker notes go to `notes`**, never onto the canvas.
 
 ═══════════════════════════════════════════════════════════════════════
 GENERAL RULES
 ═══════════════════════════════════════════════════════════════════════
+
   • Batch aggressively. Prefer 1 turn with 5 tool calls over 5 turns with 1 tool call each.
-  • Parallelism is free — `WebSearch`, `WebFetch`, `Bash` (image-search), and the fan-out of `Agent` sub-agents all run concurrently when emitted in the same turn; use it.
+  • Parallelism is free — Bocha searches, Unsplash calls, `web_fetch`,
+    and the fan-out of `Agent` sub-agents all run concurrently when emitted in the same turn; use it.
+  • **Never claim a check passed without running it, and never say a page looks right without having
+    opened its PNG.** Report what you measured: page count, warning count, the gates you ran.
   • Always respond in the user's language.
 
 ## Editing an existing PowerPoint presentation（pptx）
@@ -434,8 +595,6 @@ Pick the approach by what you're editing:
        prs.slides._sldIdLst.remove(sld)
    ```
 
-
-
 **Budget every shape BEFORE generating replacement text (do this first)**
 
 Most overflow bugs come from generating copy without knowing the target box's capacity. Before drafting any replacement, walk the deck once and emit a capacity manifest — then feed it to the content step as a hard constraint.
@@ -483,30 +642,163 @@ Skip `word_wrap = False`: it makes text overflow the box invisibly in PowerPoint
 - **Soft line breaks (`\x0b`)** silently break exact-match. Always `_norm()` both keys and lookups.
 - **GROUP shapes** (`shape_type == 6`) hide text frames — recurse.
 - **First-run replace** preserves formatting; `paragraph.text = ...` destroys it.
-- **Short tokens collide.** `"01"`, `"%"`, `"18"` recur across slides — keep identity mappings or scope per slide index, never global cross-mappings like `"18": "12"`.
+- **Short tokens collide.** `"01"`, `"%""`, `"18"` recurse across slides — keep identity mappings or scope per slide index, never global cross-mappings like `"18": "12"`.
 - **Delete slides high-index first** — deleting index 5 first shifts every later index down by one.
 
+### Approach B — raw OOXML
 
+For anything `python-pptx` cannot reach: unpack with `ooxml/scripts/unpack.py`, edit the part, repack with `ooxml/scripts/pack.py`. Re-open the result with the engine's checker before handing it over:
 
+```bash
+python <engine>/scripts/verify_native_ooxml.py edited.pptx     # schema + enumerated values
+python <engine>/scripts/render_check.py edited.pptx --output-dir render/edited   # add --slides 12,15 to loop faster
+```
 
-
-
+A part that opens in LibreOffice can still be a part PowerPoint offers to repair — say so rather than claiming the edit is verified.
 
 ## Code Style Guidelines
+
 **IMPORTANT**: When generating code for PPTX operations:
+
 - Write concise code
 - Avoid verbose variable names and redundant operations
 - Avoid unnecessary print statements
+- In a page module, one element per intent, and `theme.*` for every value
 
 ## Dependencies
 
 Required dependencies (should already be installed):
 
 - **markitdown**: `pip install "markitdown[pptx]"` (text extraction)
-- **pptxgenjs**: `npm install -g pptxgenjs` (creating presentations)
-- **playwright**: `npm install -g playwright@1.50.0` (HTML rendering)
-- **react-icons**: `npm install -g react-icons react react-dom` (icons)
-- **sharp**: `npm install -g sharp` (SVG rasterization and image processing)
-- **LibreOffice**: `sudo apt-get install libreoffice` (PDF conversion)
-- **Poppler**: `sudo apt-get install poppler-utils` (pdftoppm)
+- **python-pptx**: `pip install python-pptx` (editing an existing deck, and the third-reader check)
+- **LibreOffice**: `sudo apt-get install libreoffice` (PDF conversion, for `render_check.py`)
+- **Poppler**: `sudo apt-get install poppler-utils` (`pdftoppm`)
+- **Pillow**: `pip install pillow` (rasterising the PDF to PNG; `preview_deck.py`)
 - **defusedxml**: `pip install defusedxml` (secure XML parsing)
+- **The engine's own node dependencies** are vendored in `<engine>/package.json`
+  (`pptxgenjs`, `jszip`, `fontkit`, `image-size`): `cd <engine> && npm install`.
+  `playwright`, `sharp` and `react-icons` are **no longer needed** — nothing renders HTML.
+
+Environment:
+
+- `BOCHA_API_KEY` — Bocha Web Search (stage 2). No key, no search: ask the user.
+- `UNSPLASH_ACCESS_KEY` — Unsplash (stage 2). No key, no photo: ask the user.
+
+---
+
+## Appendix — the engine contract
+
+Read this once before writing your first spec. The authority is `<engine>/core/schema.js` (`validateDeck`); when this appendix and the code disagree, the code wins and this appendix is a bug.
+
+### Commands
+
+| command | what it does |
+| --- | --- |
+| `node <engine>/cli.js <spec> [out.pptx]` | validate, lay out, write |
+| `--out <file>` | where to write (default: beside the spec) |
+| `--report <file>` | census, warnings, font situation, dropped pictures, as JSON |
+| `--layout-out <file>` | every box the writer actually used (for the fit gate) |
+| `--check` | validate and stop; writes nothing |
+| `--strict` | layout warnings become failures (release condition) |
+| `--require-face-metrics` | also fail (`FONT_UNMEASURED`) when the wrap came from an estimate, not a real face |
+| `--json` / `--quiet` | machine-readable stdout / errors only |
+
+Exit codes: `0` written · `1` spec rejected (nothing written) · `2` writer failed.
+
+### The spec
+
+```json
+{
+  "title": "deck title", "author": "…", "language": "zh-CN",
+  "pageSize": "wide",
+  "theme": { "colors": { "primary": "183B3A", "accent": "D36B45" },
+             "fonts": { "heading": "Microsoft YaHei", "body": "Microsoft YaHei" },
+             "sizes": { "title": 34, "heading": 20, "body": 14, "caption": 10 } },
+  "slides": [
+    { "background": "FFFFFF", "notes": "speaker notes go to the notes part",
+      "elements": [
+        { "type": "text", "text": "…", "x": 0.9, "y": 0.7, "w": 11, "h": 0.6, "fontSize": 28, "bold": true },
+        { "type": "shape", "x": 0.9, "y": 1.5, "w": 11.4, "h": 0.02, "fill": "DCE2DE", "line": false }
+      ] }
+  ]
+}
+```
+
+- `pageSize`: `wide` (13.333 × 7.5) · `standard` (10 × 7.5) · `{ "width": …, "height": … }`.
+- Positions and sizes are **inches**; colours are hex **without `#`**; fonts are family names.
+- `text` may be a string **or an array of runs** (`"…"` or `[{ "text": "A", "options": { "bold": true } }, "B"]`) — that is how one paragraph holds mixed styling.
+- `notes` on a slide becomes the notes part; it never appears on the canvas.
+
+### Elements
+
+| element | written as | notable fields |
+| --- | --- | --- |
+| `text` | text box with runs | `text` (string or run array), `x/y/w/h`, `fontSize`, `fontFace`, `bold`, `italic`, `color`, `align`, `valign`, `lineSpacing`, `lineSpacingMultiple`, `charSpacing`, `bullet`, `transparency` |
+| `shape` | `p:sp` | `fill`, `gradient`, `lineColor`, `lineWidth`, `radius`, `shadow`, `rotate`, `transparency`, `hyperlink` |
+| `line` | connector | `color`, `width`, `dash`, `beginArrowType`, `endArrowType` |
+| `image` | `p:pic` | `path` (relative path, or `data:` a URI — `src` is NOT a field), `fit` (`cover`/`contain`/`crop`/`fill`/`none`/`scale-down`), `crop`, `focus`, `radius`, `outline`, `shadow`, `tile` |
+| `table` | `a:tbl` | `rows` (`[["a","b"]]` or `[[{ "text": "a", "options": {…} }]]`), `colW`, `rowH`, cell `rowspan`/`colspan`, `fill`, `border`, `valign`, `bullet` |
+| `chart` | `c:chart` + embedded `.xlsx` | `chartType` (`bar`/`line`/`pie`/`doughnut`/`area`/`radar`/`scatter`/`bubble`), `data` (`[{ name, labels, values }]`), `options` (`showLegend`, `legendPos`, `showValue`, `dataLabelPosition`, `chartColors`, `gridlines`, `seriesLineStyles`, …) |
+| `container` | declarative grouping | `layout` (`flow`/`grid`/`flex`), `children`, `gap` / `rowGap` / `columnGap` / `crossGap`, `padding`; a child may declare `columnSpan` / `rowSpan` |
+
+### Design system
+
+`templates.*` describes a whole page from content fields: `cover`, `section`, `hero`, `content`, `editorial`,
+`kpi`, `comparison`, `process`, `quote`, `bento`, `table`, `credits`.
+`components.*` gives the pieces: `title`, `paragraph`, `divider`, `kpiCard`, `infoCard`, `bento`,
+`processFlow`, `timeline`, `collectImageCredits`, `creditRows`, `measuredHeight`.
+
+The catalogue maps onto them directly: cover → `cover()`, section header → `section()`, key message →
+`editorial()`, KPI row → `kpi()`, split text+image → `hero()`, comparison → `comparison()`, quote →
+`quote()`, bento grid → `bento()`, stats table → `table()`, closing → `section()` with a different field.
+
+Rules these templates already follow, so you do not have to re-derive them:
+
+- **Boxes are measured, not guessed.** `components.title()` returns the height its own text needs (the layout's
+  measurement, 90% wrap width), and `comparison`, `bento`, `table` size their parts from their copy. Omitting `h`
+  on a text element is the normal case: the layout then measures it. Pass `h` only when you want a fixed panel.
+- **`bento({ rowHeight })` is a minimum, not a height.** Rows grow to their tallest cell, so a grid of two-line cards
+  is not a grid of half-empty boxes.
+- **`comparison({ cardHeight, takeaway })`** - cards follow the copy; adding `takeaway` puts one conclusion line under
+  them, which is what stops a sized-card page from leaving its lower half blank.
+- **`processFlow` and `timeline` read `description` or `body`.** Both work; write `body` and stop thinking about it.
+- **A picture carries its own credit.** Give the `image` element `credit: { subject, author, licence }` and build the
+  last page with `templates.credits({ images: components.collectImageCredits(deck.slides) })`. A picture without a
+  licence and an author does not go in the deck; the schema refuses an empty credit rather than printing a blank line.
+- **One order of magnitude per chart.** A chart can show 26.6 against 135; it cannot show 26.6 against 3600 - the small
+  bars vanish and the page lies by omission. When the range is more than ~50x, put the comparable values in the chart
+  and the outlier in a numeral block, and say it is a derived figure. Never truncate an axis silently either: a bar
+  chart whose axis starts at 0.40 for values of 0.42-0.46 exaggerates eight per cent into a cliff.
+
+```js
+const { templates, components, resolveTheme } = require('<engine>');
+const page = templates.kpi({ theme, title: '…', items: [{ label, value, note }] });
+page.elements.push(...components.infoCard({ theme, x, y, w, h, title, body }));
+```
+
+The worked examples are `<engine>/../examples/native_deck_spec.js` (six pages, four templates, a native chart, a table) and
+`<engine>/../examples/native_tea_deck.js` (21 pages with six photographs, credits derived from the images), plus the two
+acceptance decks in `<engine>/acceptance/` and `<engine>/tea/`. A picture deck, note, is built the same way; notes) and, for a pure-JSON deck, `<engine>/../examples/native-cover.spec.json`.
+
+### Gates you can run yourself
+
+| gate | command |
+| --- | --- |
+| unit + lint | `npm test` (inside `<engine>`) |
+| visual golden (10 decks / 65 pages) | `python <engine>/scripts/visual_golden.py` |
+| text fit (measured vs drawn) | `python <engine>/scripts/check_all_text_fit.py` |
+| stress (N generated pages) | `node <engine>/scripts/stress_spec.js --slides 40 --seed 7` |
+| OOXML integrity | `python <engine>/scripts/verify_native_ooxml.py <deck.pptx>` (`uneven_tables` counts tables whose column widths differ — a design feature, not a defect; `invalid_enums` and `integrity_problems` must both be 0) |
+| object census | `node <engine>/scripts/audit_deck.js <deck.pptx> --min-text-shapes 0` |
+| third reader | `python <engine>/scripts/verify_with_python_pptx.py --deck <deck.pptx> --round-trip` |
+
+### What the engine will not draw (say so, do not fake it)
+
+`<engine>/LIMITS.md` is generated from the writer's own refusals — read it, and when a design needs something in it, tell the user instead of approximating:
+
+- A tiled fill (`a:tile`) is written correctly but only PowerPoint tiles it; LibreOffice and WPS draw one stretched cell.
+- Line-spacing percentages (`a:spcPct`) are computed against each reader's own font metrics, so line counts can differ by one between readers.
+- Per-series dash rhythms need an outline colour, or the dash draws nothing.
+- Per-run `text-transform`, per-series marker rhythms, right-to-left runs, and a list marker inside a table cell are not implemented.
+- Speaker-notes fidelity beyond plain text, animations and transitions are out of scope — this engine writes static, editable content.
+- Whether a file triggers PowerPoint's repair prompt cannot be decided on a machine without PowerPoint: `verify_native_ooxml.py` says the part is well-formed, which is the strongest claim available here.

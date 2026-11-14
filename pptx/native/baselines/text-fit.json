@@ -1,0 +1,51 @@
+{
+  "demo-basic": {
+    "boxes": 7,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "demo-components": {
+    "boxes": 23,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "demo-images": {
+    "boxes": 17,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "demo-layouts": {
+    "boxes": 11,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "demo-stress": {
+    "boxes": 130,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "spec-cover": {
+    "boxes": 22,
+    "droppedByWindow": 0,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  },
+  "spec-flagship": {
+    "boxes": 52,
+    "droppedByWindow": 1,
+    "extraLines": 0,
+    "missingWords": 0,
+    "unmatched": 0
+  }
+}

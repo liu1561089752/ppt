@@ -1,0 +1,1145 @@
+{
+  "title": "配方探针",
+  "language": "zh-CN",
+  "pageSize": "wide",
+  "theme": {
+    "name": "sage",
+    "colors": {
+      "background": "E6EFE8",
+      "surface": "FBFDFB",
+      "foreground": "1E2B24",
+      "primary": "1F4438",
+      "accent": "C0653A",
+      "muted": "4F6659",
+      "border": "CFDED4"
+    },
+    "fonts": {
+      "heading": "Microsoft YaHei",
+      "body": "Microsoft YaHei",
+      "numeric": "Microsoft YaHei"
+    },
+    "sizes": {
+      "display": 44,
+      "title": 34,
+      "heading": 20,
+      "body": 14,
+      "caption": 10,
+      "micro": 9
+    }
+  },
+  "slides": [
+    {
+      "template": "cover",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "text": "KICKER 一行(可选)",
+          "fontSize": 10,
+          "bold": true,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "主标题",
+          "fontSize": 40,
+          "bold": true,
+          "color": "1F4438"
+        },
+        {
+          "type": "shape",
+          "h": 0.05,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "副标题 / 汇报人 / 日期",
+          "fontSize": 15,
+          "color": "4F6659"
+        }
+      ]
+    },
+    {
+      "template": "section",
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "text": "CHAPTER 01",
+          "fontSize": 11,
+          "bold": true,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "章节标题",
+          "fontSize": 28,
+          "bold": true,
+          "color": "E6EFE8"
+        },
+        {
+          "type": "shape",
+          "h": 0.04,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "一句过渡说明",
+          "fontSize": 14,
+          "color": "E6EFE8"
+        }
+      ]
+    },
+    {
+      "template": "hero",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "text": "核心主张",
+          "fontSize": 10,
+          "bold": true,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "这一页只讲一个主张",
+          "fontSize": 32,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 2,
+          "columnTracks": [
+            {
+              "fr": 1.5
+            },
+            {
+              "fr": 1
+            }
+          ],
+          "gap": 0.4,
+          "children": [
+            {
+              "type": "container",
+              "gap": 0.14,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "两到三句说明:为什么成立、靠什么支撑。",
+                  "fontSize": 15,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "shape",
+                  "h": 0.02,
+                  "fill": "CFDED4",
+                  "line": false
+                },
+                {
+                  "type": "text",
+                  "text": "补充一句限定条件或口径。",
+                  "fontSize": 12,
+                  "color": "4F6659"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "三个数字",
+                  "fontSize": 10,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "container",
+                  "columns": 2,
+                  "columnTracks": [
+                    {
+                      "fr": 1
+                    },
+                    {
+                      "fr": 2
+                    }
+                  ],
+                  "gap": 0.16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "69%",
+                      "fontSize": 26,
+                      "bold": true,
+                      "color": "C0653A"
+                    },
+                    {
+                      "type": "container",
+                      "gap": 0.02,
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "指标名",
+                          "fontSize": 13,
+                          "color": "1E2B24"
+                        },
+                        {
+                          "type": "text",
+                          "text": "一句注解",
+                          "fontSize": 10,
+                          "color": "4F6659"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "template": "content",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "shape",
+          "h": 0.02,
+          "fill": "CFDED4",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "一段 60-120 字的正文,先给判断,再给依据,最后给边界。",
+          "fontSize": 14,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "background": true,
+          "fill": "FBFDFB",
+          "lineColor": "CFDED4",
+          "radius": 0.12,
+          "padding": 0.26,
+          "gap": 0.1,
+          "children": [
+            {
+              "type": "text",
+              "role": "heading",
+              "text": "要点小标题",
+              "fontSize": 15,
+              "bold": true,
+              "color": "1F4438"
+            },
+            {
+              "type": "text",
+              "text": "把它写成一句能独立成立的话。",
+              "fontSize": 13,
+              "color": "1E2B24"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "template": "editorial",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "text": "INSIGHT / ANALYSIS",
+          "fontSize": 10,
+          "bold": true,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 28,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "text",
+          "text": "先给能独立成立的核心判断(一句)。",
+          "fontSize": 17,
+          "color": "1F4438"
+        },
+        {
+          "type": "shape",
+          "h": 0.04,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "container",
+          "columns": 2,
+          "columnTracks": [
+            {
+              "fr": 1.4
+            },
+            {
+              "fr": 1
+            }
+          ],
+          "gap": 0.38,
+          "children": [
+            {
+              "type": "container",
+              "gap": 0.12,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "论点",
+                  "fontSize": 16,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "两段论证,每段 40-70 字。",
+                  "fontSize": 14,
+                  "color": "1E2B24"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "注",
+                  "fontSize": 14,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "口径 / 来源 / 限制条件,可以比正文更短。",
+                  "fontSize": 12,
+                  "color": "4F6659"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "template": "kpi",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 3,
+          "gap": 0.22,
+          "rowGap": 0.22,
+          "children": [
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "columnSpan": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "62%",
+                  "fontSize": 38,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "text",
+                  "text": "最重要的那个指标(一句话说清它是什么)",
+                  "fontSize": 14,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "text",
+                  "text": "口径与时间范围",
+                  "fontSize": 11,
+                  "color": "4F6659"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "3.2s",
+                  "fontSize": 26,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "text",
+                  "text": "指标名",
+                  "fontSize": 13,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "text",
+                  "text": "注解",
+                  "fontSize": 10,
+                  "color": "4F6659"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "153",
+                  "fontSize": 26,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "text",
+                  "text": "指标名",
+                  "fontSize": 13,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "text",
+                  "text": "注解",
+                  "fontSize": 10,
+                  "color": "4F6659"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "34",
+                  "fontSize": 26,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "text",
+                  "text": "指标名",
+                  "fontSize": 13,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "text",
+                  "text": "注解",
+                  "fontSize": 10,
+                  "color": "4F6659"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "口径 / 时间说明",
+          "fontSize": 10,
+          "color": "4F6659"
+        }
+      ]
+    },
+    {
+      "template": "comparison",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 2,
+          "gap": 0.26,
+          "children": [
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "方案 A",
+                  "fontSize": 16,
+                  "bold": true,
+                  "color": "4F6659"
+                },
+                {
+                  "type": "text",
+                  "text": "两到三句说明,含关键差异。",
+                  "fontSize": 14,
+                  "color": "1E2B24"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "方案 B",
+                  "fontSize": 16,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "两到三句说明,含关键差异。",
+                  "fontSize": 14,
+                  "color": "1E2B24"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "container",
+          "background": true,
+          "fill": "1F4438",
+          "radius": 0.12,
+          "padding": 0.22,
+          "children": [
+            {
+              "type": "text",
+              "text": "一句结论:两者差别到底在哪里。",
+              "fontSize": 13,
+              "color": "E6EFE8"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "template": "process",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 4,
+          "gap": 0.2,
+          "children": [
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "01",
+                  "fontSize": 22,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "步骤名",
+                  "fontSize": 14,
+                  "bold": true,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "text",
+                  "text": "一句说明(≤20 字)",
+                  "fontSize": 11,
+                  "color": "4F6659"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "02",
+                  "fontSize": 22,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "步骤名",
+                  "fontSize": 14,
+                  "bold": true,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "text",
+                  "text": "一句说明",
+                  "fontSize": 11,
+                  "color": "4F6659"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "03",
+                  "fontSize": 22,
+                  "bold": true,
+                  "color": "C0653A"
+                },
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "步骤名",
+                  "fontSize": 14,
+                  "bold": true,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "text",
+                  "text": "一句说明",
+                  "fontSize": 11,
+                  "color": "4F6659"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "一句总括:这套流程解决什么问题。",
+          "fontSize": 11,
+          "color": "4F6659"
+        }
+      ]
+    },
+    {
+      "template": "quote",
+      "background": "1F4438",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "结论先行",
+          "fontSize": 18,
+          "bold": true,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "text": "「这一页只放一句能独立成立的话。」",
+          "fontSize": 30,
+          "bold": true,
+          "color": "E6EFE8"
+        },
+        {
+          "type": "shape",
+          "h": 0.04,
+          "w": 2.2,
+          "fill": "C0653A",
+          "line": false
+        },
+        {
+          "type": "text",
+          "text": "— 出处 / 年份",
+          "fontSize": 11,
+          "color": "CFDED4"
+        }
+      ]
+    },
+    {
+      "template": "bento",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 3,
+          "gap": 0.22,
+          "rowGap": 0.22,
+          "children": [
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "columnSpan": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "主格(最重要的一条)",
+                  "fontSize": 17,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "两句说明,把这一格讲透。",
+                  "fontSize": 13,
+                  "color": "1E2B24"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "辅格",
+                  "fontSize": 15,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "一到两句说明。",
+                  "fontSize": 12,
+                  "color": "1E2B24"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "辅格",
+                  "fontSize": 15,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "一到两句说明。",
+                  "fontSize": 12,
+                  "color": "1E2B24"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "background": true,
+              "fill": "FBFDFB",
+              "lineColor": "CFDED4",
+              "radius": 0.12,
+              "padding": 0.26,
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "辅格",
+                  "fontSize": 15,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "一到两句说明。",
+                  "fontSize": 12,
+                  "color": "1E2B24"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "template": "table",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 2,
+          "columnTracks": [
+            {
+              "fr": 2
+            },
+            {
+              "fr": 1
+            }
+          ],
+          "gap": 0.3,
+          "children": [
+            {
+              "type": "table",
+              "h": 3.4,
+              "options": {
+                "fontSize": 12,
+                "valign": "middle"
+              },
+              "rows": [
+                [
+                  {
+                    "text": "列一",
+                    "options": {
+                      "bold": true
+                    }
+                  },
+                  {
+                    "text": "列二",
+                    "options": {
+                      "bold": true
+                    }
+                  },
+                  {
+                    "text": "列三",
+                    "options": {
+                      "bold": true
+                    }
+                  }
+                ],
+                [
+                  "值",
+                  "值",
+                  "值"
+                ]
+              ]
+            },
+            {
+              "type": "container",
+              "gap": 0.12,
+              "children": [
+                {
+                  "type": "text",
+                  "role": "heading",
+                  "text": "读数",
+                  "fontSize": 14,
+                  "bold": true,
+                  "color": "1F4438"
+                },
+                {
+                  "type": "text",
+                  "text": "表里最该被记住的一条是什么。",
+                  "fontSize": 12,
+                  "color": "1E2B24"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "template": "chart",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "text": "TREND",
+          "fontSize": 10,
+          "bold": true,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "标题写结论,不要写「图表」这两个字",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 2,
+          "columnTracks": [
+            {
+              "fr": 2
+            },
+            {
+              "fr": 1
+            }
+          ],
+          "gap": 0.3,
+          "children": [
+            {
+              "type": "container",
+              "gap": 0.1,
+              "children": [
+                {
+                  "type": "chart",
+                  "chartType": "bar",
+                  "h": 3.5,
+                  "data": [
+                    {
+                      "name": "系列A",
+                      "labels": [
+                        "Q1",
+                        "Q2",
+                        "Q3",
+                        "Q4"
+                      ],
+                      "values": [
+                        18,
+                        34,
+                        52,
+                        69
+                      ]
+                    }
+                  ],
+                  "options": {
+                    "showLegend": true,
+                    "showValue": true,
+                    "chartColors": [
+                      "1F4438",
+                      "C0653A"
+                    ]
+                  }
+                },
+                {
+                  "type": "text",
+                  "text": "数据来源 / 口径",
+                  "fontSize": 10,
+                  "color": "4F6659"
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "gap": 0.12,
+              "children": [
+                {
+                  "type": "container",
+                  "background": true,
+                  "fill": "FBFDFB",
+                  "lineColor": "CFDED4",
+                  "radius": 0.12,
+                  "padding": 0.22,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "69",
+                      "fontSize": 24,
+                      "bold": true,
+                      "color": "C0653A"
+                    },
+                    {
+                      "type": "text",
+                      "text": "最该被记住的那个数",
+                      "fontSize": 12,
+                      "color": "4F6659"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "text": "一句读图结论:趋势说明了什么、为什么。",
+                  "fontSize": 12,
+                  "color": "1E2B24"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "template": "image",
+      "background": "E6EFE8",
+      "elements": [
+        {
+          "type": "text",
+          "text": "配图不是装饰",
+          "fontSize": 10,
+          "bold": true,
+          "color": "C0653A"
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "text": "页标题",
+          "fontSize": 26,
+          "bold": true,
+          "color": "1E2B24"
+        },
+        {
+          "type": "container",
+          "columns": 2,
+          "columnTracks": [
+            {
+              "fr": 1.15
+            },
+            {
+              "fr": 1
+            }
+          ],
+          "gap": 0.34,
+          "children": [
+            {
+              "type": "image",
+              "path": "<清单里的 path>",
+              "h": 4,
+              "fit": "cover",
+              "radius": 0.12,
+              "altText": "画面说明",
+              "credit": {
+                "subject": "画面内容",
+                "author": "作者",
+                "licence": "许可"
+              }
+            },
+            {
+              "type": "container",
+              "gap": 0.12,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "这张图说明了什么(与本页结论的关系)。",
+                  "fontSize": 14,
+                  "color": "1E2B24"
+                },
+                {
+                  "type": "shape",
+                  "h": 0.02,
+                  "fill": "CFDED4",
+                  "line": false
+                },
+                {
+                  "type": "text",
+                  "text": "Photo by 作者 / 许可",
+                  "fontSize": 10,
+                  "color": "4F6659"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

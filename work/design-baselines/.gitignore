@@ -1,0 +1,7 @@
+# 逐页 PNG 与 pptx 是重建产物,不入库;只留两张联系表当人工看过的那一版参照
+*.pptx
+preview/slide-*.png
+recipes-preview/slide-*.png
+report.json
+layout.json
+recipes-layout.json

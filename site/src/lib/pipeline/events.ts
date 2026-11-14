@@ -1,0 +1,124 @@
+/**
+ * pipeline/events.ts — 进度写入与对话事件流
+ *
+ * - 终态守卫:任务已结束(退款/取消/超时)后,迟到的阶段写入不得复活任务
+ * - emitEvent 供管线各阶段与结算模块共用;seq 用 aggregate+create 分配,
+ *   并发渲染可能撞唯一约束——捕获后重读重试
+ */
+import { db } from '@/lib/db'
+import { FINAL_STATUSES } from './types'
+
+export async function setProgress(taskId: string, status: string, progress: number, stage: string): Promise<void> {
+  await db.generationTask
+    .updateMany({
+      where: { id: taskId, status: { notIn: FINAL_STATUSES } },
+      data: { status, progress, progressStage: stage },
+    })
+    .catch(() => {})
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === 'P2002'
+}
+
+/**
+ * 终态 status 事件去重(H11/M-96):同一 taskId + 同一终态 status 只进时间线一次。
+ * 进程内存 Map,重启清空无害——重启后迟到终态事件再发一次也可接受。
+ * 退款/取消/成功的最后一条状态行因此能进对话页,且不会重复刷屏。
+ */
+const finalStatusEmitted = new Map<string, string>()
+
+export async function emitEvent(taskId: string, type: string, payload: unknown): Promise<void> {
+  try {
+    if (type === 'status') {
+      const t = await db.generationTask.findUnique({ where: { id: taskId }, select: { status: true } })
+      if (t && FINAL_STATUSES.includes(t.status)) {
+        // 任务已终态:仅放行与当前终态一致的状态事件,且每对 (taskId, status) 只放行一次
+        const p = payload as { status?: string } | null
+        if (p?.status !== t.status) return
+        if (finalStatusEmitted.get(taskId) === t.status) return
+        finalStatusEmitted.set(taskId, t.status)
+      }
+    }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const agg = await db.chatMessage.aggregate({ where: { taskId }, _max: { seq: true } })
+      const seq = (agg._max.seq ?? 0) + 1
+      try {
+        await db.chatMessage.create({
+          data: { taskId, seq, type, payload: JSON.stringify(payload ?? {}) },
+        })
+        return
+      } catch (e) {
+        if (!isUniqueViolation(e) || attempt === 2) throw e
+        await new Promise((r) => setTimeout(r, 50 * (attempt + 1)))
+      }
+    }
+  } catch {
+    /* 事件失败不影响生成 */
+  }
+}
+
+/**
+ * 记账:这一份 deck 到底花了多少次搜索、多少张图。
+ *
+ * 搜索按次计费、图床按次限流,token 只是三者之一。以前只记 token,于是"这份 deck 成本
+ * 多少"这个问题没人答得出来。用原子 increment 而不是读改写,阶段之间并发也不会丢计数。
+ *
+ * 踩过的坑:这两个字段起初是**可空**的,而 `increment` 在 SQL 里是 `SET x = x + N`,
+ * 对 NULL 求值仍然是 NULL —— 记了等于没记,而且一声不响(真机实测:两次检索 + 两张图
+ * 全部读回 0)。现在字段是 `Int @default(0)`,写失败也会打日志而不是静默吞掉。
+ */
+export async function addCost(
+  taskId: string,
+  cost: { searches?: number; images?: number },
+): Promise<void> {
+  const searches = Math.max(0, Math.floor(cost.searches || 0))
+  const images = Math.max(0, Math.floor(cost.images || 0))
+  if (!searches && !images) return
+  try {
+    await db.generationTask.update({
+      where: { id: taskId },
+      data: {
+        ...(searches ? { searchCount: { increment: searches } } : {}),
+        ...(images ? { imageCount: { increment: images } } : {}),
+      },
+    })
+  } catch (error) {
+    // 记账失败不影响交付,但绝不能静默:成本数字错了比没有数字更糟
+    console.warn(`[pipeline] 成本记账失败(${taskId}):`, (error as Error).message)
+  }
+}
+
+/** 视觉闭环跑了几轮修复(成本与质量都看这个数) */
+export async function setRepairRounds(taskId: string, rounds: number): Promise<void> {
+  try {
+    await db.generationTask.update({
+      where: { id: taskId },
+      data: { repairRounds: Math.max(0, Math.floor(rounds)) },
+    })
+  } catch (error) {
+    console.warn(`[pipeline] 修复轮数落库失败(${taskId}):`, (error as Error).message)
+  }
+}
+
+/** 累计 token 用量(事务内读改写,SQLite 写锁下并发安全) */
+export async function addUsage(taskId: string, prompt: number, completion: number): Promise<void> {
+  if (prompt === 0 && completion === 0) return
+  try {
+    await db.$transaction(async (tx) => {
+      const t = await tx.generationTask.findUnique({
+        where: { id: taskId },
+        select: { promptTokens: true, completionTokens: true },
+      })
+      await tx.generationTask.update({
+        where: { id: taskId },
+        data: {
+          promptTokens: (t?.promptTokens ?? 0) + prompt,
+          completionTokens: (t?.completionTokens ?? 0) + completion,
+        },
+      })
+    })
+  } catch {
+    /* 忽略 */
+  }
+}

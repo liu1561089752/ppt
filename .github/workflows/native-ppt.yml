@@ -1,0 +1,151 @@
+name: Native PPT engine tests
+
+# The product is the native generator: a Deck Spec in, a native .pptx out. There is no HTML path in
+# this repository, so nothing here converts a page: every deck below is built by `cli.js` or by an
+# example script, then audited, rendered and looked at.
+
+on:
+  push:
+    branches: [main, native-ppt-engine]
+    paths:
+      - "pptx/**"
+      - ".github/workflows/native-ppt.yml"
+  pull_request:
+    paths:
+      - "pptx/**"
+      - ".github/workflows/native-ppt.yml"
+
+jobs:
+  test-and-render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install rendering tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-impress poppler-utils fonts-noto-cjk python3-pil
+          python3 -m pip install --quiet python-pptx
+      - name: Install native engine dependencies
+        working-directory: pptx/native
+        run: npm install --no-audit --no-fund
+      - name: Lint and unit tests
+        working-directory: pptx/native
+        run: npm test
+      - name: Regenerate the refusal list and compare it to the committed one
+        working-directory: pptx/native
+        run: |
+          node scripts/limits_report.js --update
+          git diff --exit-code LIMITS.md
+      - name: Syntax-check the scripts CI runs by hand
+        run: |
+          node --check pptx/batch_native_pptx.js
+          node --check pptx/native/cli.js
+          node --check pptx/native/scripts/audit_deck.js
+          node --check pptx/native/scripts/stress_spec.js
+          python -m py_compile pptx/scripts/extract_native_design.py pptx/scripts/check_slides.py
+          python -m py_compile pptx/native/scripts/verify_native_ooxml.py pptx/native/scripts/corpus.py
+          python -m py_compile pptx/native/scripts/visual_golden.py pptx/native/scripts/check_all_text_fit.py
+          python -m py_compile pptx/native/scripts/render_metrics.py pptx/native/scripts/preview_deck.py
+      - name: Generate the example decks
+        working-directory: pptx/native
+        run: |
+          npm run deck:example
+          npm run deck:json
+          npm run demo
+          npm run demo:components
+          npm run demo:layouts
+          npm run demo:images
+          npm run demo:stress
+          npm run batch
+      - name: Audit generated decks for editability
+        working-directory: pptx/native
+        run: |
+          node scripts/audit_deck.js native-deck.pptx
+          node scripts/audit_deck.js native-cover.pptx
+          node scripts/audit_deck.js native-demo.pptx --min-text-shapes 1
+          node scripts/audit_deck.js native-components-demo.pptx --min-text-shapes 1
+          node scripts/audit_deck.js native-images-demo.pptx --min-text-shapes 1
+          node scripts/audit_deck.js native-stress-deck.pptx --min-text-shapes 1 --fail-on-warning
+      - name: Stress the engine at two sizes
+        working-directory: pptx/native
+        run: |
+          npm run stress
+          python scripts/verify_native_ooxml.py stress40.pptx
+          npm run gate:big
+      - name: Build the composition baseline (one page per archetype)
+        run: |
+          node pptx/native/cli.js work/design-baselines/probe.js /tmp/probe.pptx --strict --json
+      - name: Verify editable OOXML, not just a rendered picture
+        working-directory: pptx/native
+        run: |
+          python scripts/verify_native_ooxml.py --self-test
+          npm run demo:theme
+          npm run demo:parity
+          python scripts/verify_native_ooxml.py native-design-migration-demo.pptx --require-gradient
+          python scripts/verify_native_ooxml.py native-images-demo.pptx --require-image-crop
+          python scripts/verify_native_ooxml.py native-stress-deck.pptx --require-image-crop
+      - name: Read the decks back with a third reader
+        working-directory: pptx/native
+        run: |
+          python scripts/verify_with_python_pptx.py --deck native-deck.pptx --self-check
+          python scripts/verify_with_python_pptx.py --dir . --only native- --round-trip
+      - name: Extract a design profile from a generated deck
+        working-directory: pptx/native
+        run: python ../scripts/extract_native_design.py native-components-demo.pptx design-profile
+      - name: Render the decks through LibreOffice
+        working-directory: pptx/native
+        run: |
+          npm run render:all
+          npm run render:theme
+          npm run render:parity
+      - name: Draw offline layout previews
+        working-directory: pptx/native
+        run: npm run preview:all
+      - name: Compare against reviewed golden images where they exist
+        working-directory: pptx/native
+        run: |
+          # `baselines/visual.json` records the fingerprint of every corpus page on the development
+          # machine, whose fonts CI does not have, so that frozen baseline is not compared here.
+          # What CI does run is the comparator itself, plus any deck a human has reviewed into
+          # `golden/<deck>/`.
+          python scripts/visual_regression.py --self-test
+          for deck in native-deck native-demo native-components-demo native-design-migration-demo \
+                      native-design-parity-demo native-layouts-demo native-images-demo \
+                      native-stress-deck; do
+            golden="golden/$deck"
+            if [ -d "$golden" ] && find "$golden" -maxdepth 1 -name '*.png' -print -quit | grep -q .; then
+              python scripts/visual_regression.py \
+                --baseline-dir "$golden" \
+                --current-dir "render-check/$deck" \
+                --output-dir "visual-regression/$deck" \
+                --max-mae 0.015 --min-ssim 0.97
+            else
+              echo "No reviewed golden images for $deck; comparator self-test remains enabled."
+            fi
+          done
+      - name: Upload decks and rendered previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ppt-rendered-demos
+          path: |
+            pptx/native/native-deck.pptx
+            pptx/native/native-cover.pptx
+            pptx/native/native-demo.pptx
+            pptx/native/native-components-demo.pptx
+            pptx/native/native-layouts-demo.pptx
+            pptx/native/native-images-demo.pptx
+            pptx/native/native-stress-deck.pptx
+            pptx/native/native-design-migration-demo.pptx
+            pptx/native/native-design-parity-demo.pptx
+            pptx/native/native-image-assets/
+            pptx/native/native-stress-assets/
+            pptx/native/native-theme-profile/
+            pptx/native/batch-dist/
+            pptx/native/render-check/
+            pptx/native/preview/
+            pptx/native/visual-regression/
+            pptx/native/design-profile/
+            pptx/native/themes/

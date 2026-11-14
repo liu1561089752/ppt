@@ -1,0 +1,155 @@
+{
+  "title": "Native deck from a spec",
+  "author": "Native PowerPoint Engine",
+  "language": "zh-CN",
+  "pageSize": "wide",
+  "theme": {
+    "name": "native-paper",
+    "colors": {
+      "background": "F7F4EE",
+      "surface": "FFFFFF",
+      "foreground": "22201D",
+      "primary": "1D3B37",
+      "accent": "D36B45",
+      "muted": "6B6A64",
+      "border": "DED8CA"
+    },
+    "fonts": { "heading": "Microsoft YaHei", "body": "Microsoft YaHei" },
+    "sizes": { "title": 38, "heading": 20, "body": 13, "caption": 10 }
+  },
+  "slides": [
+    {
+      "background": "F7F4EE",
+      "notes": "封面由五个原生对象组成：两块形状、三段文字。没有一张图片。",
+      "elements": [
+        { "type": "shape", "x": 9.55, "y": 0, "w": 3.783, "h": 7.5, "fill": "1D3B37", "line": false },
+        { "type": "shape", "x": 0.95, "y": 2.05, "w": 0.12, "h": 0.62, "fill": "D36B45", "line": false },
+        {
+          "type": "text", "text": "NATIVE DECK / SPEC JSON",
+          "x": 1.25, "y": 2.06, "w": 6.4, "h": 0.3,
+          "fontSize": 10, "bold": true, "color": "6B6A64", "charSpacing": 1.6
+        },
+        {
+          "type": "text", "text": "原生对象，从一份规格开始",
+          "x": 0.95, "y": 2.9, "w": 8.4, "h": 1.55,
+          "fontSize": 38, "bold": true, "color": "1D3B37", "lineSpacing": 1.1
+        },
+        {
+          "type": "text",
+          "text": "这份文件里的每一个字都是可编辑的文本 run，每一个面板都是形状，表格是真表格，图表带着自己的数据工作簿。规格是 JSON，生成过程不经过 HTML，也不截图。",
+          "x": 0.97, "y": 4.62, "w": 8.1, "h": 1.0,
+          "fontSize": 14, "color": "4A4A45", "lineSpacing": 1.5
+        },
+        { "type": "shape", "x": 0.97, "y": 5.86, "w": 2.2, "h": 0.06, "fill": "D36B45", "line": false },
+        {
+          "type": "text", "text": "2026 · 原生 PPTX 工具链",
+          "x": 0.97, "y": 6.12, "w": 6.0, "h": 0.28,
+          "fontSize": 9, "color": "6B6A64"
+        }
+      ]
+    },
+    {
+      "background": "FFFFFF",
+      "notes": "卡片是形状，指标是文本；改数字只需要改 JSON。",
+      "elements": [
+        {
+          "type": "text", "text": "三个数字说明这次切换",
+          "x": 0.95, "y": 0.72, "w": 11.4, "h": 0.66,
+          "fontSize": 28, "bold": true, "color": "1D3B37"
+        },
+        { "type": "shape", "x": 0.95, "y": 1.52, "w": 11.43, "h": 0.02, "fill": "DED8CA", "line": false },
+        { "type": "shape", "x": 0.95, "y": 2.3, "w": 3.64, "h": 2.1, "radius": 0.12, "fill": "F7F4EE", "lineColor": "DED8CA", "lineWidth": 0.8 },
+        { "type": "text", "text": "整页栅格图", "x": 1.19, "y": 2.48, "w": 3.16, "h": 0.28, "fontSize": 10, "color": "6B6A64" },
+        { "type": "text", "text": "0", "x": 1.19, "y": 2.86, "w": 3.16, "h": 0.62, "fontSize": 34, "bold": true, "color": "1D3B37" },
+        { "type": "text", "text": "69 页全部由原生对象组成，没有一页是截图。", "x": 1.19, "y": 3.7, "w": 3.16, "h": 0.52, "fontSize": 9, "color": "6B6A64", "lineSpacing": 1.35 },
+        { "type": "shape", "x": 4.84, "y": 2.3, "w": 3.64, "h": 2.1, "radius": 0.12, "fill": "F7F4EE", "lineColor": "DED8CA", "lineWidth": 0.8 },
+        { "type": "text", "text": "可编辑字符", "x": 5.08, "y": 2.48, "w": 3.16, "h": 0.28, "fontSize": 10, "color": "6B6A64" },
+        { "type": "text", "text": "16288", "x": 5.08, "y": 2.86, "w": 3.16, "h": 0.62, "fontSize": 34, "bold": true, "color": "1D3B37" },
+        { "type": "text", "text": "文字都是文本 run，字距、粗细、颜色分别落在各自的 run 上。", "x": 5.08, "y": 3.7, "w": 3.16, "h": 0.52, "fontSize": 9, "color": "6B6A64", "lineSpacing": 1.35 },
+        { "type": "shape", "x": 8.73, "y": 2.3, "w": 3.64, "h": 2.1, "radius": 0.12, "fill": "F7F4EE", "lineColor": "DED8CA", "lineWidth": 0.8 },
+        { "type": "text", "text": "原生图表", "x": 8.97, "y": 2.48, "w": 3.16, "h": 0.28, "fontSize": 10, "color": "6B6A64" },
+        { "type": "text", "text": "8", "x": 8.97, "y": 2.86, "w": 3.16, "h": 0.62, "fontSize": 34, "bold": true, "color": "1D3B37" },
+        { "type": "text", "text": "每个图表都内嵌一份数据工作簿，可以直接改数。", "x": 8.97, "y": 3.7, "w": 3.16, "h": 0.52, "fontSize": 9, "color": "6B6A64", "lineSpacing": 1.35 },
+        { "type": "text", "text": "数字来自本仓库 21 套 fixture 的逐包审计（69 页、678 个文本框、1,386 个 run）。", "x": 0.97, "y": 5.0, "w": 11.4, "h": 0.3, "fontSize": 11, "color": "6B6A64" }
+      ]
+    },
+    {
+      "background": "FFFFFF",
+      "notes": "图表是 c:chart 加一份嵌入的 xlsx，不是图片。",
+      "elements": [
+        {
+          "type": "text", "text": "数据写进工作簿，图形交给渲染器",
+          "x": 0.95, "y": 0.72, "w": 11.4, "h": 0.66,
+          "fontSize": 28, "bold": true, "color": "1D3B37"
+        },
+        {
+          "type": "text", "text": "规格里只有标签和数值；轴、图例、色板都是图表属性，改数不用重新排版。",
+          "x": 0.97, "y": 1.42, "w": 11.2, "h": 0.34, "fontSize": 12, "color": "6B6A64"
+        },
+        {
+          "type": "chart", "chartType": "bar",
+          "x": 0.95, "y": 1.95, "w": 11.43, "h": 4.5,
+          "data": [
+            { "name": "原生对象", "labels": ["Q1", "Q2", "Q3", "Q4"], "values": [18, 34, 52, 69] },
+            { "name": "栅格页面", "labels": ["Q1", "Q2", "Q3", "Q4"], "values": [12, 6, 2, 0] }
+          ],
+          "options": { "barDir": "col", "showLegend": true, "chartColors": ["1D3B37", "D36B45"], "catAxisLabelColor": "6B6A64", "valAxisLabelColor": "6B6A64" }
+        }
+      ]
+    },
+    {
+      "background": "FFFFFF",
+      "notes": "表头加粗、斑马行与右对齐都是单元格属性。",
+      "elements": [
+        {
+          "type": "text", "text": "表格就是表格",
+          "x": 0.95, "y": 0.72, "w": 11.4, "h": 0.66,
+          "fontSize": 28, "bold": true, "color": "1D3B37"
+        },
+        {
+          "type": "text", "text": "单元格里的字可以直接改；表头行重复、行高、对齐都写在单元格属性上。",
+          "x": 0.97, "y": 1.42, "w": 11.2, "h": 0.34, "fontSize": 12, "color": "6B6A64"
+        },
+        {
+          "type": "table",
+          "x": 0.95, "y": 1.98, "w": 11.43, "h": 3.9,
+          "options": { "fontSize": 12, "valign": "middle" },
+          "rows": [
+            [
+              { "text": "能力", "options": { "bold": true } },
+              { "text": "HTML 转 PPTX", "options": { "bold": true } },
+              { "text": "原生生成", "options": { "bold": true } }
+            ],
+            ["文字", "从 DOM 里量出来", "规格里写，引擎直接写 run"],
+            ["形状", "解析盒模型与装饰", "形状元素，圆角与描边是属性"],
+            ["表格", "解析 table 语义", "行、列、合并与单元格样式"],
+            ["图表", "需要一段数据表", "数据直接进工作簿"],
+            ["修改", "回到 HTML 重跑", "改规格或直接在 PowerPoint 里改"]
+          ]
+        },
+        {
+          "type": "text", "text": "两条路径都能出原生对象；区别在于输入的权威来源是 HTML 还是规格。",
+          "x": 0.97, "y": 6.12, "w": 11.4, "h": 0.3, "fontSize": 11, "color": "6B6A64"
+        }
+      ]
+    },
+    {
+      "background": "1D3B37",
+      "notes": "收尾页只有两段文字和一条线。",
+      "elements": [
+        {
+          "type": "text", "text": "规格是唯一的事实来源",
+          "x": 0.97, "y": 2.2, "w": 11.2, "h": 1.0,
+          "fontSize": 40, "bold": true, "color": "F7F4EE"
+        },
+        { "type": "shape", "x": 0.99, "y": 3.5, "w": 2.4, "h": 0.06, "fill": "D36B45", "line": false },
+        {
+          "type": "text",
+          "text": "改一个数字，改一行规格，重新生成；或者直接在 PowerPoint 里双击那段文字。两条路都行，因为它们改的是同一批对象。",
+          "x": 0.99, "y": 3.86, "w": 9.8, "h": 0.9,
+          "fontSize": 15, "color": "C9D6D2", "lineSpacing": 1.55
+        }
+      ]
+    }
+  ]
+}

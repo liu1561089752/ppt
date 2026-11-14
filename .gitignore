@@ -1,0 +1,50 @@
+# Node dependencies
+node_modules/
+
+# ── Generated output ─────────────────────────────────────────────────────────────────────────────
+# A deck, a PDF and a PNG are always rebuildable from the spec that produced them, and nothing is
+# read back from them, so none of them belong in git. The reviewed baselines under
+# pptx/native/baselines/ and pptx/native/golden/ are the deliberate exception and are tracked.
+*.pptx
+*.pdf
+*.pyc
+__pycache__/
+
+# engine-root output: cli.js and the demo scripts write beside package.json when run by hand
+pptx/native/native-*.json
+pptx/native/render-*/
+pptx/native/preview/
+pptx/native/visual-regression/
+pptx/native/batch-dist/
+pptx/native/design-profile/
+pptx/native/native-image-assets/
+pptx/native/native-stress-assets/
+
+# delivered decks kept on disk for review, never committed (3–8 MB of binaries each)
+pptx/native/acceptance/*.pptx
+pptx/native/acceptance/*.pdf
+pptx/native/acceptance/*.png
+pptx/native/tea/*.pptx
+pptx/native/tea/*.pdf
+pptx/native/tea/*.png
+
+# HTML-era working directory. The reference HTML/CSS that the parity notes compare against is
+# tracked (pptx/examples/design-reference.*); this is its by-product.
+pipeline-converted/
+
+# ── Build caches ────────────────────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── site/ 的产物(与上面 *.pptx/*.pdf 同一条理由:能由 spec 重建,没有人读回)──────────────────
+site/data/generated/
+site/.work/
+
+# work/ 下的对比产物:spec.js 与 report.json 进库,deck/预览图/几何报告都是重建的
+work/*/deck.pptx
+work/*/layout.json
+work/*/preview.png
+work/*/p*.png
+
+# 站点用 bun 锁文件;npm 只是本地备选,不产生第二份锁
+site/package-lock.json
+site/node_modules/

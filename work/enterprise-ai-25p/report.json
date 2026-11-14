@@ -1,0 +1,32 @@
+{
+  "spec": "F:\\native-ppt-engine\\work\\enterprise-ai-25p\\spec.js",
+  "outputPath": "F:\\native-ppt-engine\\work\\enterprise-ai-25p\\deck.pptx",
+  "slides": 25,
+  "pageSize": {
+    "width": 13.333,
+    "height": 7.5
+  },
+  "objects": {
+    "text": 172,
+    "line": 23,
+    "shape": 61,
+    "chart": 1,
+    "table": 3
+  },
+  "warnings": [],
+  "fonts": {
+    "fontkitAvailable": true,
+    "configuredFaces": [],
+    "discoveredFaces": true,
+    "loadedFiles": [
+      "C:\\Windows\\Fonts\\msyh.ttc"
+    ],
+    "measuredCalls": 6768,
+    "estimatedCalls": 0
+  },
+  "fontsEstimated": false,
+  "requestedFaces": "Microsoft YaHei",
+  "droppedPictures": [],
+  "embeddedFonts": [],
+  "skippedFonts": []
+}

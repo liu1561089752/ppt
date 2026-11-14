@@ -1,0 +1,579 @@
+/**
+ * pipeline/index.ts — 生成管线编排(原生链路唯一入口)
+ *
+ * S2 调研 → S3 大纲 → S4 Deck Spec → S5 原生引擎构建 → 交付。
+ * 整条链路限时、失败退款;终态守卫贯穿:超时/取消结算后,迟到的阶段写入与成功结果一律丢弃。
+ *
+ * 与 HTML 时代的差别只在 S4/S5:
+ *   旧:S4 并行渲染 HTML 页 → 转换器子进程 → 成品几何修复
+ *   新:S4 一份 Deck Spec(引擎 schema 校验,带错误重试)→ 引擎一次构建出可编辑 pptx
+ * 账务/守卫/落盘路径全部沿用,没有因为换引擎而放宽任何一条。
+ */
+import { mkdirSync, readFileSync, rmSync } from 'fs'
+import { dirname, resolve } from 'path'
+import { db } from '@/lib/db'
+import { CONFIG, PATHS } from '@/lib/config'
+import { saveGenerated } from '@/lib/file-storage'
+import { hasLLMKey, getKimiModel } from '@/lib/kimi-client'
+import { emitEvent, setRepairRounds } from './events'
+import { refundTask, settleTaskCredits, FINAL_STATUSES } from './credits'
+import { stage2Research, enrichResearchForPlan, trackChosenImages } from './research'
+import { stage3Plan } from './plan'
+import { stage4Spec, repairSpecWithWarnings } from './spec'
+import { sparsePages, balancePageGeometry } from './design'
+import { fitPages, expandPages } from './fit'
+import { reviewDeckSpec, reviewRenderedLayout } from './quality'
+import { runQualityLoop, HARD_WARNING_CODES, type QualityLoopReport } from './quality-loop'
+import { buildPptx, engineRoot } from './native'
+import { isMockLLM } from './mock'
+import { normalizePreset, themeFor } from './theme'
+import {
+  BUILD_MAX_REPAIRS,
+  DENSITY_MAX_REPAIRS,
+  isDensityRepairEnabled,
+  isVisualRepairEnabled,
+  visualRepairRounds,
+  type DeckSpecJson,
+  type GenerateInput,
+  type NativeBuildResult,
+  type OutlinePlan,
+} from './types'
+
+// 兼容导出:路由层从这里取结算函数与终态列表
+export { settleTaskCredits, refundTask }
+export { FINAL_STATUSES }
+
+/** 看门狗:整条管线限时执行,超时按失败退款(防止任务永久卡在 generating) */
+export async function executeNativePipeline(input: GenerateInput): Promise<void> {
+  const timeoutMs = CONFIG.GENERATE.taskTimeoutBaseMs + input.slideCount * CONFIG.GENERATE.taskTimeoutPerSlideMs
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('PIPELINE_TIMEOUT')), timeoutMs)
+    timer.unref?.()
+  })
+  try {
+    await Promise.race([runPipeline(input), timeoutPromise])
+  } catch (e) {
+    if ((e as Error).message === 'PIPELINE_TIMEOUT') {
+      console.error(`[pipeline] 任务 ${input.taskId} 超时(${Math.round(timeoutMs / 1000)}s),强制退款`)
+      await emitEvent(input.taskId, 'error', { message: '生成超时,已自动退款' })
+      await refundTask(input.taskId, '任务超时,已自动退款')
+      return
+    }
+    throw e
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function runPipeline(input: GenerateInput): Promise<void> {
+  const { taskId, userId } = input
+  const startedAt = new Date()
+  try {
+    // 无密钥自测(NATIVE_MOCK_LLM=1)不需要 LLM key;真实模式必须有
+    if (!isMockLLM() && !hasLLMKey()) {
+      throw new Error('未配置 LLM API Key(DEEPSEEK_API_KEY / KIMI_API_KEY)')
+    }
+    // 引擎先探一次:引擎不在就早失败,别等到 S5 烧完 LLM 配额才发现
+    engineRoot()
+
+    // 状态推进守卫(M-12):任务已被取消/退款(终态)时 count===0,不得继续
+    const started = await db.generationTask.updateMany({
+      where: { id: taskId, status: { notIn: FINAL_STATUSES } },
+      data: {
+        status: 'generating',
+        startedAt,
+        progress: 0,
+        progressStage: '开始生成',
+        model: isMockLLM() ? 'native-mock-fixture' : getKimiModel(),
+        mode: 'native',
+      },
+    })
+    if (started.count === 0) {
+      console.warn(`[pipeline] 任务 ${taskId} 已被结算(取消/退款),管线不启动`)
+      return
+    }
+
+    // S2 调研
+    const research = await stage2Research(input, taskId)
+
+    // S3 大纲(只决定讲什么,不产任何样式)
+    const plan = await stage3Plan(input, taskId, research)
+    // The outline determines which pages truly need imagery; search those scenes individually.
+    const pageImages = await enrichResearchForPlan(input, taskId, plan, research)
+
+    // 计划落库守卫(M-12 同族):任务在调研/规划期间被结算则终止,后续规格/构建/落盘全部不再发生
+    const planSaved = await db.generationTask.updateMany({
+      where: { id: taskId, status: { notIn: FINAL_STATUSES } },
+      data: { outline: JSON.stringify(outlineOf(plan)), progress: 35, progressStage: '大纲就绪' },
+    })
+    if (planSaved.count === 0) {
+      console.warn(`[pipeline] 任务 ${taskId} 已被结算(取消/退款),丢弃大纲结果`)
+      return
+    }
+
+    // Unsplash 合规:只对"真的要进稿子"的图片触发下载统计
+    // (页面级绑定 + brief 里引用到的两张清单都算,候选池里的其它图不算)
+    trackChosenImages(
+      research.images,
+      plan.pages.map((p) => p.brief),
+      plan.pages.map((p) => p.imageId || '').filter(Boolean),
+    )
+
+    await emitEvent(taskId, 'answer', {
+      text: `大纲已就绪:**${plan.title}**(${plan.styleName},${plan.pages.length} 页)`
+        + (pageImages.bound ? `\n\n已为 ${pageImages.bound} 页绑定配图,开始生成原生规格…` : '\n\n开始生成原生规格…'),
+    })
+
+    // S4 Deck Spec(引擎 schema 校验,带错误重试)+ S5 构建
+    const artifact = await stage4Spec(input, taskId, plan, research)
+    // 绝对路径:引擎子进程的 cwd 是引擎根,相对路径会被它解析到引擎目录下(实测踩过)
+    const outPath = resolve(PATHS.generated, userId, taskId, `${taskId}.pptx`)
+    mkdirSync(dirname(outPath), { recursive: true })
+
+    await emitEvent(taskId, 'status', { status: 'generating', stage: '正在构建原生 PPTX…' })
+    let built = await buildDeck(artifact.spec, outPath, taskId, 85)
+
+    // 垂直配平:封面/章节/引语这类"一句话"页面居中摆放。
+    // 这是几何问题(流式排布让内容永远贴顶),用第一遍构建的真实盒子算,不劳模型改内容;
+    // 配平后必须重建,重建失败就把 startY 改回去,别把一份能交付的稿子换掉。
+    if (built.ok) {
+      const beforeBalance = JSON.stringify(artifact.spec)
+      const balancedPages = balancePageGeometry(artifact.spec, built.layout, built.pageSize)
+      if (balancedPages > 0) {
+        await emitEvent(taskId, 'status', { status: 'generating', stage: `正在配平 ${balancedPages} 页版心…` })
+        const rebalanced = await buildDeck(artifact.spec, outPath, taskId, 86)
+        if (rebalanced.ok) {
+          built = rebalanced
+        } else {
+          console.warn('[pipeline] 配平后的重建失败,回退到未配平版本:', rebalanced.error)
+          artifact.spec = JSON.parse(beforeBalance) as DeckSpecJson
+          const restored = await buildDeck(artifact.spec, outPath, taskId, 86)
+          if (restored.ok) built = restored
+        }
+      }
+    }
+
+    // 布局警告不阻断交付,但值得再修一次(交给 LLM 带警告原文重写 spec)。
+    // 密度补写会改动版面,可能在补完之后又冒出新的越界警告,所以这段要能重复调用。
+    //
+    // 在此之前先跑**确定性收版**:排不下是算术问题,先降字号/摘注解(离线、瞬间、不会出错),
+    // 只有收完还剩下的警告才值得花一次模型调用。25 页真机实测:模型整份重写返回过非法 spec
+    // 被校验拒收,而"按页重写"又把元素顶出画布被回滚 —— 确定性这一环缺位时,两条路都不收敛。
+    const fitOverflowing = async (maxRounds: number): Promise<void> => {
+      for (let round = 0; round < maxRounds && built.warnings > 0; round++) {
+        const hardPages = Array.from(new Set((built.warningDetails || [])
+          .filter((warning) => HARD_WARNING_CODES.has(String(warning.code)))
+          .map((warning) => Number(warning.slide) || 0)
+          .filter((page) => page > 0)))
+        if (!hardPages.length) return
+        const fit = fitPages(artifact.spec, hardPages)
+        if (!fit.changed) return
+        const rebuilt = await buildDeck(artifact.spec, outPath, taskId, 84)
+        if (!rebuilt.ok) return
+        console.log(`[pipeline] 收版第 ${round + 1} 轮:${fit.actions.join(';')} → warnings ${built.warnings}→${rebuilt.warnings}`)
+        built = rebuilt
+      }
+    }
+    await fitOverflowing(4)
+
+    // 反方向:内容太少的页把它撑开。25 页真机里最普遍的缺陷是"下半屏空"(内容只排到
+    // 53-60%,视觉模型连报九页),像素判据报得出来,但流程此前只有"收进画布"没有"填满"。
+    // 每轮只放大一档,由重建后的真实几何决定要不要继续;放大后如果冒出越界就整轮回滚。
+    const growUnderfilled = async (maxRounds: number): Promise<void> => {
+      for (let round = 0; round < maxRounds; round++) {
+        const sparse = sparsePages(built.layout, artifact.spec)
+          .filter((page) => page.fill < 0.62)
+          .map((page) => page.page)
+        if (!sparse.length) return
+        const snapshot = JSON.stringify(artifact.spec)
+        const grow = expandPages(artifact.spec, sparse.slice(0, 12), { growTitles: round === 0 })
+        if (!grow.changed) return
+        const before = built.warnings
+        const rebuilt = await buildDeck(artifact.spec, outPath, taskId, 85)
+        if (!rebuilt.ok || rebuilt.warnings > before) {
+          artifact.spec = JSON.parse(snapshot)
+          const restored = await buildDeck(artifact.spec, outPath, taskId, 85)
+          if (restored.ok) built = restored
+          console.log(`[pipeline] 扩版第 ${round + 1} 轮回滚:`
+            + (rebuilt.ok ? `会让越界从 ${before} 涨到 ${rebuilt.warnings}` : rebuilt.error))
+          return
+        }
+        console.log(`[pipeline] 扩版第 ${round + 1} 轮:${grow.actions.join(';')} → warnings ${before}→${rebuilt.warnings}`)
+        built = rebuilt
+      }
+    }
+    await growUnderfilled(3)
+
+    const repairLayoutWarnings = async (maxAttempts: number): Promise<void> => {
+      for (let attempt = 0; attempt < maxAttempts && built.warnings > 0 && !isMockLLM(); attempt++) {
+      const warningLines = (built.warningDetails || []).map(
+        (w) => `${w.slide ? `slide ${w.slide}` : 'deck'}: [${w.code}] ${w.message}`,
+      )
+      if (!warningLines.length) warningLines.push(`${built.warnings} 条布局警告(无明细)`)
+      await emitEvent(taskId, 'status', {
+        status: 'generating',
+        stage: `引擎报 ${built.warnings} 条布局警告,正在按警告重写规格(${attempt + 1}/${BUILD_MAX_REPAIRS})`,
+      })
+      let repaired: DeckSpecJson
+      try {
+        repaired = await repairSpecWithWarnings(input, taskId, plan, artifact.spec, warningLines, research)
+      } catch (e) {
+        console.warn('[pipeline] 警告修复失败,沿用当前规格:', (e as Error).message)
+        break
+      }
+      const rebuilt = await buildDeck(repaired, outPath, taskId, 90)
+      if (!rebuilt.ok) {
+        // 重建失败(例如重写后的 spec 被引擎拒绝):磁盘上仍是上一份好成品,
+        // 不能因为"修复尝试失败"就把已经能交付的 deck 判死。
+        console.warn('[pipeline] 警告修复后的重建失败,保留上一份成品:', rebuilt.error)
+        break
+      }
+        artifact.spec = repaired
+        // 引擎写的是最新一份文件,报告一律以它为准(旧报告的文件已被覆盖)
+        built = rebuilt
+        if (built.warnings === 0) break
+      }
+    }
+    await repairLayoutWarnings(BUILD_MAX_REPAIRS)
+
+    // 版面密度:内容塌在页面上半部分的页,再给模型一次"补内容"的机会(不阻断交付)
+    const densityRounds = isDensityRepairEnabled() ? DENSITY_MAX_REPAIRS : 0
+    for (let attempt = 0; attempt < densityRounds && !isMockLLM(); attempt++) {
+      const sparse = sparsePages(built.layout, artifact.spec)
+      if (!sparse.length) break
+      const lines = sparse.map(
+        (p) =>
+          `slide ${p.page}: [SPARSE_LAYOUT] 这一页正文只占到页面 ${Math.round(p.fill * 100)}%,底部大片空白。` +
+          `请在不改主题/模板体系的前提下把这一页补实:至少 3 个内容块,或把要点拆到 3 条以上,或补一组数据/对照;` +
+          `不要用放大字号或加大间距来填满,也不要写坐标。`,
+      )
+      await emitEvent(taskId, 'status', {
+        status: 'generating',
+        stage: `${sparse.length} 页内容偏少,正在补写(${attempt + 1}/${DENSITY_MAX_REPAIRS})`,
+      })
+      let repaired: DeckSpecJson
+      try {
+        repaired = await repairSpecWithWarnings(input, taskId, plan, artifact.spec, lines, research)
+      } catch (e) {
+        console.warn('[pipeline] 密度补写失败,沿用当前规格:', (e as Error).message)
+        break
+      }
+      const rebuilt = await buildDeck(repaired, outPath, taskId, 92)
+      if (!rebuilt.ok) {
+        console.warn('[pipeline] 密度补写后的重建失败,保留上一份成品:', rebuilt.error)
+        break
+      }
+      artifact.spec = repaired
+      built = rebuilt
+      // 补内容后可能撑出边界:再走一轮警告修复(只给 1 次机会,不无限拉长)
+      await repairLayoutWarnings(1)
+    }
+    if (!built.ok) throw new Error(built.error || 'BUILD_FAILED')
+
+    // ── 视觉质量闭环:渲染 → 几何/像素/审美检查 → 只改问题页 → 重渲染 ──
+    // mock 下只检查不修(修复要调 LLM,fixture 重写没有意义);真实模式按轮数推进。
+    const quality = await runQualityLoop({
+      input,
+      taskId,
+      plan,
+      research,
+      spec: artifact.spec,
+      built,
+      outPath,
+      rebuild: async (nextSpec) => buildDeck(nextSpec, outPath, taskId, 95),
+      emitStage: async (stage) => emitEvent(taskId, 'status', { status: 'generating', stage }),
+      enabled: isVisualRepairEnabled() && !isMockLLM(),
+      maxRepairs: isMockLLM() ? 0 : visualRepairRounds(),
+    })
+    artifact.spec = quality.spec
+    built = quality.built
+    // 修复轮数落库:它既是质量指标(修了几轮才合格),也是成本指标(每轮都是一次 LLM + 一次构建)
+    await setRepairRounds(taskId, quality.repairs.filter((repair) => !repair.rolledBack).length)
+    const qcProblems = quality.problems.filter((problem) => problem.severity === 'warning')
+    if (quality.repairs.length) {
+      const fixedPages = Array.from(new Set(quality.repairs.filter((r) => !r.rolledBack).flatMap((r) => r.pages)))
+      console.log(
+        `[pipeline] 视觉闭环:${quality.reviews} 次检查 / ${quality.repairs.length} 轮修复`
+          + `(改过第 ${fixedPages.join('、') || '-'} 页)/ 停因 ${quality.stopped} / 残留 warning ${qcProblems.length}`,
+      )
+    } else {
+      console.log(`[pipeline] 视觉闭环:${quality.reviews} 次检查 / 未修复 / 停因 ${quality.stopped}`)
+    }
+    if (quality.render && !quality.render.ok) {
+      console.warn('[pipeline] 成品渲染失败,视觉检查未执行:', quality.render.error)
+    }
+
+    // 页数不足(引擎确实少写页)时按比例退款:与旧链路"部分失败"同一套账务口径
+    const delivered = built.slides ?? artifact.spec.slides.length
+    const missing = Math.max(0, input.slideCount - delivered)
+    let partialRefunded = 0
+    if (missing > 0) {
+      partialRefunded = Math.floor((input.slideCount * missing) / Math.max(1, input.slideCount))
+      if (partialRefunded > 0) {
+        await db.$transaction(async (tx) => {
+          const t = await tx.generationTask.updateMany({
+            // 条件写守卫:任务若已被结算(取消/超时),这里不再额外退
+            where: { id: taskId, status: { notIn: FINAL_STATUSES } },
+            data: { creditsUsed: Math.max(0, input.slideCount - partialRefunded) },
+          })
+          if (t.count === 0) return
+          const refunded = await tx.user.updateMany({
+            where: { id: userId },
+            data: { remainingCredits: { increment: partialRefunded } },
+          })
+          if (refunded.count === 0) return
+          const user = await tx.user.findUnique({ where: { id: userId }, select: { remainingCredits: true } })
+          await tx.creditChange.create({
+            data: {
+              userId,
+              taskId,
+              change: partialRefunded,
+              reason: 'partial_refund',
+              balance: user?.remainingCredits ?? 0,
+              remark: `引擎只交付 ${delivered}/${input.slideCount} 页,按比例退还 ${partialRefunded} 次`,
+            },
+          })
+        })
+      }
+    }
+
+    // 预守卫(M-12):写文件前先查一次终态,已结算则连 PPTX 都不落盘,不留孤儿产物。
+    // (非互斥的轻量检查;真正的原子守卫是下方 updateMany)
+    const preGuard = await db.generationTask.findUnique({
+      where: { id: taskId },
+      select: { status: true },
+    })
+    if (!preGuard || FINAL_STATUSES.includes(preGuard.status)) {
+      console.warn(`[pipeline] 任务 ${taskId} 已被结算(超时/取消),构建结果不落盘`)
+      rmSync(outPath, { force: true })
+      return
+    }
+    // 存到标准位置(下载 token 用)。此时尚未置 succeeded,
+    // 后续任何失败仍会走 catch → refundTask 正常退款,不吞账
+    const buf = readFileSync(outPath)
+    const storedPath = await saveGenerated(userId, taskId, buf, 'pptx')
+    // M-24:标准位已落盘,删除引擎内层副本,避免同体积产物存两份。
+    // saveGenerated 失败时不会走到这里(异常向上),内层保留作兜底。
+    rmSync(outPath, { force: true })
+
+    const engineReport = buildEngineReport(built, artifact.spec, quality)
+    const qcWarningPayload = [
+      ...(built.warningDetails || []),
+      ...qcProblems.map((problem) => ({
+        slide: problem.page,
+        code: `${problem.source.toUpperCase()}_${problem.code}`,
+        message: problem.detail,
+      })),
+    ]
+    const outline = outlineOf(plan)
+    const themeSnapshotJson = JSON.stringify(themeSnapshotFor(plan, artifact.spec))
+    const finishedAt = new Date()
+    // 终态守卫:任务若已被超时/取消结算,迟到的成功写入不得覆盖
+    const settled = await db.generationTask.updateMany({
+      where: { id: taskId, status: { notIn: FINAL_STATUSES } },
+      data: {
+        status: 'succeeded',
+        resultFile: storedPath,
+        progress: 100,
+        progressStage: '完成',
+        durationMs: finishedAt.getTime() - startedAt.getTime(),
+        finishedAt,
+        qcWarnings: qcWarningPayload.length ? JSON.stringify(qcWarningPayload) : null,
+        outline: JSON.stringify(outline),
+        theme: themeSnapshotJson,
+        deckSpec: JSON.stringify(artifact.spec),
+        engineReport,
+      },
+    })
+    if (settled.count === 0) {
+      // 落盘已成,但库未写:孤儿文件留待每日清理,账务由守卫保证不重复
+      console.warn(`[pipeline] 任务 ${taskId} 已被结算(超时/取消),丢弃迟到的成功结果`)
+      return
+    }
+    // 质量提示:布局警告与视觉检查的残留问题都必须让调用方知道,在终态事件前发出
+    if (built.warnings > 0) {
+      const pages = (built.warningDetails || [])
+        .map((w) => w.slide ?? 0)
+        .filter((n) => n > 0)
+        .sort((a, b) => a - b)
+      await emitEvent(taskId, 'answer', {
+        text: `⚠️ 质量提示:引擎报了 ${built.warnings} 条布局警告${pages.length ? `(第 ${Array.from(new Set(pages)).join('、')} 页)` : ''},`
+          + 'PPT 已生成,个别文字可能偏紧。',
+      })
+    }
+    if (qcProblems.length > 0) {
+      const pages = Array.from(new Set(qcProblems.map((problem) => problem.page))).sort((a, b) => a - b)
+      const kinds = Array.from(new Set(qcProblems.map((problem) => {
+        if (problem.source === 'vision') return '审美'
+        if (problem.source === 'pixels') return '版面留白'
+        if (problem.source === 'shape') return '构图'
+        return '排版'
+      })))
+      const repairedPages = quality.repairs.length
+        ? Array.from(new Set(quality.repairs.filter((r) => !r.rolledBack).flatMap((r) => r.pages)))
+        : []
+      await emitEvent(taskId, 'answer', {
+        text: `⚠️ 视觉检查:第 ${pages.join('、')} 页仍有 ${qcProblems.length} 条${kinds.join('/')}问题`
+          + (repairedPages.length ? `(已尝试修复第 ${repairedPages.join('、')} 页)` : '')
+          + '。成品已交付,建议人工过一遍这几页。',
+      })
+    }
+    if (missing > 0) {
+      const refundNote = partialRefunded > 0
+        ? `其中 ${missing} 页未交付,已按比例退还 ${partialRefunded} 次`
+        : `其中 ${missing} 页未交付(不足一次兑换折算,未退款)`
+      await emitEvent(taskId, 'answer', { text: `✅ 生成完成,${refundNote}。` })
+    }
+    await emitEvent(taskId, 'status', {
+      status: 'succeeded',
+      stage: '完成',
+      slideCount: delivered,
+      filename: `${plan.title}.pptx`,
+    })
+    console.log(
+      `[pipeline] 任务 ${taskId} 成功:${delivered} 页 / ${built.bytes}B / warnings ${built.warnings} / 耗时 ${finishedAt.getTime() - startedAt.getTime()}ms`,
+    )
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[pipeline] 任务 ${taskId} 失败:`, msg)
+    const safe = userSafeError(msg)
+    await emitEvent(taskId, 'error', { message: safe })
+    await refundTask(taskId, safe)
+  }
+}
+
+/** 构建 + 进度;失败原样抛出(错误里已含引擎 stderr 原文) */
+async function buildDeck(
+  spec: DeckSpecJson,
+  outPath: string,
+  taskId: string,
+  progress: number,
+): Promise<NativeBuildResult> {
+  await emitEvent(taskId, 'status', { status: 'generating', stage: '正在用原生引擎写 OOXML(严格模式)…' })
+  const built = await buildPptx(spec, outPath)
+  await emitEvent(taskId, 'tool_response', {
+    name: 'native_engine',
+    status: built.ok ? 'completed' : 'failed',
+    text: built.ok
+      ? `${built.slides ?? spec.slides.length} 页 / ${Math.round(built.bytes / 1024)}KB / warnings ${built.warnings}` +
+        ` / objects ${Object.keys(built.objects).sort().map((k) => `${k} ${built.objects[k]}`).join(' · ')}`
+      : (built.error || '构建失败'),
+  })
+  if (built.ok) await setProgressSafe(taskId, progress, 'PPTX 已生成,正在校验')
+  return built
+}
+
+/** 只在任务未终态时推进进度 */
+async function setProgressSafe(taskId: string, progress: number, stage: string): Promise<void> {
+  await db.generationTask
+    .updateMany({
+      where: { id: taskId, status: { notIn: FINAL_STATUSES } },
+      data: { progress, progressStage: stage },
+    })
+    .catch(() => {})
+}
+
+/** 大纲快照:预览/列表页用(引擎不读) */
+function outlineOf(plan: OutlinePlan): Array<{ title: string; template: string; brief: string; bullets: string[] }> {
+  return plan.pages.map((page) => ({
+    title: page.title,
+    template: page.template,
+    brief: page.brief,
+    bullets: extractBullets(page.brief),
+  }))
+}
+
+/** engineReport 入库内容:预览/排障都要的一份(JSON 字符串) */
+function buildEngineReport(built: NativeBuildResult, spec?: DeckSpecJson, quality?: QualityLoopReport): string {
+  const parsed = (() => {
+    try {
+      return JSON.parse(built.report) as Record<string, unknown>
+    } catch {
+      return {}
+    }
+  })()
+  // stdout 里的字段(objects/warnings/pageSize/slides)在下面又落了一遍,
+  // 入库前把它去掉:engineReport 是 DB 里按任务存的,重复一份没有任何收益。
+  const rest = { ...parsed }
+  delete rest.stdout
+  return JSON.stringify({
+    ...rest,
+    ok: built.ok,
+    warnings: built.warnings,
+    warningsByCode: built.warningsByCode || {},
+    warningDetails: built.warningDetails || [],
+    objects: built.objects,
+    bytes: built.bytes,
+    slides: built.slides,
+    pageSize: built.pageSize,
+    layout: built.layout,
+    quality: spec ? reviewDeckSpec(spec, spec.slides.length) : undefined,
+    renderedLayout: spec ? reviewRenderedLayout(built.layout, spec, built.pageSize) : undefined,
+    // 视觉闭环:三种来源分开存,任何"审美评分"都不能冒充几何结果
+    renderReport: quality
+      ? {
+          enabled: quality.enabled,
+          stopped: quality.stopped,
+          reviews: quality.reviews,
+          repairs: quality.repairs,
+          render: quality.render,
+          pixels: quality.pixels,
+          vision: quality.vision,
+          problems: quality.problems,
+          note: quality.note,
+          ms: quality.ms,
+        }
+      : undefined,
+  })
+}
+
+/** 主题快照:预设有真值,兼容字段留给旧列表页 */
+function themeSnapshotFor(plan: OutlinePlan, spec: DeckSpecJson): Record<string, unknown> {
+  const theme = spec.theme || themeFor(normalizePreset(plan.preset), 'zh-CN')
+  const colors = theme.colors
+  return {
+    name: plan.styleName,
+    preset: theme.name || plan.preset,
+    colors,
+    fonts: theme.fonts,
+    sizes: theme.sizes,
+    // 兼容字段(旧列表页按这几个键取色)
+    bg: colors.background,
+    titleColor: colors.primary,
+    bodyColor: colors.foreground,
+    fontName: theme.fonts.heading,
+    titleSize: theme.sizes?.title ?? 32,
+    bodySize: theme.sizes?.body ?? 14,
+  }
+}
+
+/** 生成用户可见的错误文案:剥离服务器路径、截断日志尾巴 */
+export function userSafeError(msg: string): string {
+  const cleaned = msg
+    .replace(/[A-Za-z]:\\[^\s"'`,;)）】]+/g, '<路径>')
+    .replace(/\/(?:home|usr|var|tmp|app|root)\/\S+/g, '<路径>')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const friendly: Array<[RegExp, string]> = [
+    [/引擎构建超时/, 'PPTX 构建超时,已自动退款,请稍后重试'],
+    [/原生引擎目录不存在|缺少 cli\.js/, 'PPTX 引擎未就绪,请联系管理员(NATIVE_ENGINE_DIR)'],
+    [/规格未通过引擎校验/, '生成的原生规格未通过引擎校验,请稍后重试或换个主题描述'],
+    [/引擎拒绝了这份 spec|引擎未产出 JSON/, 'PPTX 构建失败,请稍后重试;若持续失败请联系客服'],
+  ]
+  for (const [pattern, message] of friendly) {
+    if (pattern.test(msg)) return message
+  }
+  return cleaned.length > 200 ? `${cleaned.slice(0, 200)}…` : cleaned
+}
+
+function extractBullets(brief: string): string[] {
+  const lines = (brief || '').split('\n').map((l) => l.trim()).filter(Boolean)
+  const bullets: string[] = []
+  for (const l of lines) {
+    const c = l.replace(/^[-•*\d.)\s]+/, '')
+    if (c.length > 4 && c.length < 120) bullets.push(c)
+    if (bullets.length >= 5) break
+  }
+  return bullets.length ? bullets : ['要点一', '要点二']
+}
