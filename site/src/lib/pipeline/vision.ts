@@ -107,6 +107,32 @@ interface VisionRequestPage {
   file: string
 }
 
+/**
+ * 审稿时要告诉模型的"这张图是什么渲染器画的"。
+ *
+ * 引擎自带的预览器(python-pptx)不画图表数据,图表位置会显示一行
+ * `chart: COLUMN_CLUSTERED (51) (live object)` 之类的技术占位 —— 那是**渲染器的局限,
+ * 不是成品的缺陷**。不说明的话,模型会一本正经地批评"图表区域完全空白、存在明显的后台
+ * 技术痕迹",这条批评会进修复轮,让流程去改一份其实没问题的图表页。
+ */
+export interface VisionContext {
+  renderer?: string
+  /** 这些页在当前渲染器下必然显示为占位(图表页) */
+  placeholderPages?: number[]
+}
+
+function rendererCaveat(context: VisionContext): string {
+  if (!context.renderer) return ''
+  if (context.renderer === 'preview') {
+    const pages = (context.placeholderPages || []).filter((page) => page > 0)
+    return '【渲染说明】本轮用的是离线预览器:它不渲染图表数据,图表位置只会显示一行'
+      + '"chart: XXX (live object)"之类的技术占位文字,阴影与渐变也可能缺失。'
+      + '这些是渲染器的局限,不是版式缺陷,请**不要**因此判"图表区域空白/技术痕迹/未完成"。'
+      + (pages.length ? `当前批次涉及图表占位页:第 ${pages.join('、')} 页。` : '')
+  }
+  return `【渲染说明】本轮渲染器:${context.renderer}。`
+}
+
 function toDataUrl(file: string): string | null {
   try {
     const buffer = readFileSync(file)
@@ -165,7 +191,10 @@ export function parseVisionReview(text: string): PageVisionReview[] | null {
  * - 未配置 → enabled:false + note 说明未执行(调用方必须如实记录);
  * - 单批失败不影响其它批,失败批的页记为 unknown,error 里留最后一次原因。
  */
-export async function reviewDeckVisually(pages: VisionRequestPage[]): Promise<DeckVisionReview> {
+export async function reviewDeckVisually(
+  pages: VisionRequestPage[],
+  context: VisionContext = {},
+): Promise<DeckVisionReview> {
   const startedAt = Date.now()
   if (!visionConfigured()) {
     return {
@@ -185,11 +214,13 @@ export async function reviewDeckVisually(pages: VisionRequestPage[]): Promise<De
   let calls = 0
   let lastError: string | undefined
 
+  const caveat = rendererCaveat(context)
   for (let offset = 0; offset < targets.length; offset += batchSize) {
     const batch = targets.slice(offset, offset + batchSize)
     const content: Array<Record<string, unknown>> = [
       { type: 'text', text: `这是第 ${batch[0].page}–${batch[batch.length - 1].page} 页,共 ${batch.length} 张。` },
     ]
+    if (caveat) content.push({ type: 'text', text: caveat })
     for (const page of batch) {
       const data = toDataUrl(page.file)
       if (!data) continue

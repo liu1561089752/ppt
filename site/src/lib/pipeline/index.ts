@@ -21,8 +21,9 @@ import { stage2Research, enrichResearchForPlan, trackChosenImages } from './rese
 import { stage3Plan } from './plan'
 import { stage4Spec, repairSpecWithWarnings } from './spec'
 import { sparsePages, balancePageGeometry } from './design'
+import { fitPages, expandPages } from './fit'
 import { reviewDeckSpec, reviewRenderedLayout } from './quality'
-import { runQualityLoop, type QualityLoopReport } from './quality-loop'
+import { runQualityLoop, HARD_WARNING_CODES, type QualityLoopReport } from './quality-loop'
 import { buildPptx, engineRoot } from './native'
 import { isMockLLM } from './mock'
 import { normalizePreset, themeFor } from './theme'
@@ -155,6 +156,55 @@ async function runPipeline(input: GenerateInput): Promise<void> {
 
     // 布局警告不阻断交付,但值得再修一次(交给 LLM 带警告原文重写 spec)。
     // 密度补写会改动版面,可能在补完之后又冒出新的越界警告,所以这段要能重复调用。
+    //
+    // 在此之前先跑**确定性收版**:排不下是算术问题,先降字号/摘注解(离线、瞬间、不会出错),
+    // 只有收完还剩下的警告才值得花一次模型调用。25 页真机实测:模型整份重写返回过非法 spec
+    // 被校验拒收,而"按页重写"又把元素顶出画布被回滚 —— 确定性这一环缺位时,两条路都不收敛。
+    const fitOverflowing = async (maxRounds: number): Promise<void> => {
+      for (let round = 0; round < maxRounds && built.warnings > 0; round++) {
+        const hardPages = Array.from(new Set((built.warningDetails || [])
+          .filter((warning) => HARD_WARNING_CODES.has(String(warning.code)))
+          .map((warning) => Number(warning.slide) || 0)
+          .filter((page) => page > 0)))
+        if (!hardPages.length) return
+        const fit = fitPages(artifact.spec, hardPages)
+        if (!fit.changed) return
+        const rebuilt = await buildDeck(artifact.spec, outPath, taskId, 84)
+        if (!rebuilt.ok) return
+        console.log(`[pipeline] 收版第 ${round + 1} 轮:${fit.actions.join(';')} → warnings ${built.warnings}→${rebuilt.warnings}`)
+        built = rebuilt
+      }
+    }
+    await fitOverflowing(4)
+
+    // 反方向:内容太少的页把它撑开。25 页真机里最普遍的缺陷是"下半屏空"(内容只排到
+    // 53-60%,视觉模型连报九页),像素判据报得出来,但流程此前只有"收进画布"没有"填满"。
+    // 每轮只放大一档,由重建后的真实几何决定要不要继续;放大后如果冒出越界就整轮回滚。
+    const growUnderfilled = async (maxRounds: number): Promise<void> => {
+      for (let round = 0; round < maxRounds; round++) {
+        const sparse = sparsePages(built.layout, artifact.spec)
+          .filter((page) => page.fill < 0.62)
+          .map((page) => page.page)
+        if (!sparse.length) return
+        const snapshot = JSON.stringify(artifact.spec)
+        const grow = expandPages(artifact.spec, sparse.slice(0, 12), { growTitles: round === 0 })
+        if (!grow.changed) return
+        const before = built.warnings
+        const rebuilt = await buildDeck(artifact.spec, outPath, taskId, 85)
+        if (!rebuilt.ok || rebuilt.warnings > before) {
+          artifact.spec = JSON.parse(snapshot)
+          const restored = await buildDeck(artifact.spec, outPath, taskId, 85)
+          if (restored.ok) built = restored
+          console.log(`[pipeline] 扩版第 ${round + 1} 轮回滚:`
+            + (rebuilt.ok ? `会让越界从 ${before} 涨到 ${rebuilt.warnings}` : rebuilt.error))
+          return
+        }
+        console.log(`[pipeline] 扩版第 ${round + 1} 轮:${grow.actions.join(';')} → warnings ${before}→${rebuilt.warnings}`)
+        built = rebuilt
+      }
+    }
+    await growUnderfilled(3)
+
     const repairLayoutWarnings = async (maxAttempts: number): Promise<void> => {
       for (let attempt = 0; attempt < maxAttempts && built.warnings > 0 && !isMockLLM(); attempt++) {
       const warningLines = (built.warningDetails || []).map(

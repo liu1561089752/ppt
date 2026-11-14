@@ -25,9 +25,10 @@ import { isMockLLM } from './mock'
 import type { DeckSpecJson, GenerateInput, NativeBuildResult, OutlinePlan } from './types'
 
 /** 引擎级硬伤:越界/溢出/贴边——出现即意味着成品上有一行被裁掉,或跑到画布外 */
-const HARD_WARNINGS = new Set([
+export const HARD_WARNING_CODES = new Set([
   'OUT_OF_BOUNDS', 'ELEMENT_OVERFLOW', 'TEXT_OVERFLOW', 'CONTENT_OVERFLOW', 'ELEMENT_CLIPPED',
 ])
+const HARD_WARNINGS = HARD_WARNING_CODES
 
 /** 把一次构建的硬伤收成 `页:码` 集合,用来判断某轮修复有没有"新引入"问题 */
 function hardKeysOf(built: { warningDetails?: Array<{ slide?: number | null; code: string }> }): Set<string> {
@@ -200,7 +201,16 @@ export async function runQualityLoop(deps: QualityLoopDeps): Promise<QualityLoop
       visionRounds++
       await deps.emitStage(`正在用视觉模型检查版面(第 ${reviews} 次)…`)
       const visionFn = deps.hooks?.vision ?? reviewDeckVisually
-      vision = await visionFn(render.pages.map((page) => ({ page: page.page, file: page.file })))
+      // 告诉审稿模型这一批图是什么渲染器画的:预览器不画图表数据,别把占位当缺陷
+      vision = await visionFn(
+        render.pages.map((page) => ({ page: page.page, file: page.file })),
+        {
+          renderer: render.renderer,
+          placeholderPages: templates
+            .map((template, index) => (template === 'chart' ? index + 1 : 0))
+            .filter((page) => page > 0),
+        },
+      )
     }
     const visionIssues = vision ? toVisionProblems(vision) : []
     const problems = [...geometry, ...pixelProblems, ...visionIssues]

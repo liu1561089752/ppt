@@ -418,15 +418,21 @@ export async function repairSpecPages(
     }
 
     // 合并后仍要过一遍同一套确定性兜底与引擎校验
+    // 先把未授权页拍成快照:兜底是**整份就地改写**的,而合并出来的 slides 里未授权页
+    // 与 spec.slides 共享同一个对象引用 —— 先跑兜底再"还原",等于把被改过的对象放回去。
+    // 实测代价:收版把第 6 页降到 13pt,修复轮的兜底又把它抬回 18pt,回归判据报"非目标页被改动"。
+    const untouched = new Map<number, string>()
+    for (let index = 0; index < spec.slides.length; index++) {
+      if (!repairedPages.includes(index + 1)) untouched.set(index, JSON.stringify(spec.slides[index]))
+    }
     enforceDeckDesign(merged, images, plan.pages)
     const fixed = fixSpecContrast(merged)
     if (fixed > 0) console.log(`[pipeline] 修复页对比度兜底:修正 ${fixed} 处`)
-    // 兜底是整份跑一遍的,但**未授权的页必须逐字节还原**:修复轮只允许改被点名的页,
-    // 否则"顺手改坏别的页"会被回归判据抓到并整轮回滚 —— 那样自动修复永远不可能生效。
-    const authorized = new Set(repairedPages)
-    merged.slides = merged.slides.map((slide, index) => (
-      authorized.has(index + 1) ? slide : spec.slides[index]
-    ))
+    // 未授权的页逐字节还原:修复轮只允许改被点名的页,否则回归判据会整轮回滚
+    merged.slides = merged.slides.map((slide, index) => {
+      const snapshot = untouched.get(index)
+      return snapshot === undefined ? slide : JSON.parse(snapshot)
+    })
     const check = await checkSpec(merged)
     if (check.ok) return { spec: merged, repairedPages, missedPages: [...new Set(missed)] }
     lastErrors = check.errors

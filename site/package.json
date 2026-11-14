@@ -9,7 +9,7 @@
     "start": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test:pipeline": "tsx --test src/lib/pipeline/review.test.ts src/lib/pipeline/vision.test.ts src/lib/pipeline/spec-merge.test.ts src/lib/pipeline/quality-loop.test.ts src/lib/pipeline/design.test.ts src/lib/pipeline/contrast.test.ts src/lib/pipeline/native.test.ts src/lib/pipeline/sources.test.ts",
+    "test:pipeline": "tsx --test src/lib/pipeline/review.test.ts src/lib/pipeline/vision.test.ts src/lib/pipeline/spec-merge.test.ts src/lib/pipeline/quality-loop.test.ts src/lib/pipeline/design.test.ts src/lib/pipeline/contrast.test.ts src/lib/pipeline/fit.test.ts src/lib/pipeline/native.test.ts src/lib/pipeline/sources.test.ts",
     "prebuild": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
